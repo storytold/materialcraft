@@ -29,6 +29,8 @@ const FOOTER_H: f32 = 14.0;
 const PORT_GAP: f32 = 18.0;
 const PORT_R: f32 = 4.5;
 const DOT_R: f32 = 7.0;
+/// Narrowest the rename field gets, so a small node still has room to type
+const RENAME_MIN_WIDTH: f32 = 120.0;
 
 /// A library item being dragged onto the canvas.
 #[derive(Clone, Debug)]
@@ -101,6 +103,8 @@ pub struct GraphView {
     search: Option<Search>,
     /// Comment being edited: id and text.
     editing: Option<(u64, String)>,
+    /// Node being renamed (F2): id and text.
+    renaming: Option<(NodeId, String)>,
     /// Node rectangles on screen last frame (for `ui.inspect` and scripted input).
     pub rects: Vec<(NodeId, Rect)>,
     pub ports: Vec<PortHit>,
@@ -125,6 +129,7 @@ impl Default for GraphView {
             drag: None,
             search: None,
             editing: None,
+            renaming: None,
             rects: Vec::new(),
             ports: Vec::new(),
             view: Rect::NOTHING,
@@ -808,6 +813,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
 
     search_popup(app, ui, &cam);
     comment_editor(app, ui);
+    node_rename_editor(app, ui);
     let (failed, placeholders) = app.session.cook_failures();
     let mut at = rect.right_bottom() - vec2(8.0, 8.0);
     if !failed.is_empty() {
@@ -1252,6 +1258,44 @@ fn comment_editor(app: &mut MaterialCraftApp, ui: &mut Ui) {
     }
 }
 
+/// Starts renaming the selected node (F2); does nothing unless exactly one node is selected
+pub fn begin_node_rename(app: &mut MaterialCraftApp) {
+    let [id] = app.session.selection[..] else { return };
+    let Some(label) = app.session.graph().ok().and_then(|g| g.node(id).ok()).map(node_label) else { return };
+
+    app.graph.renaming = Some((id, label));
+}
+
+/// The floating text field over the node being renamed: Enter or a click away applies, Escape cancels
+fn node_rename_editor(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    let Some((id, text)) = app.graph.renaming.as_mut() else { return };
+    let id = *id;
+    let Some(rect) = app.graph.rects.iter().find(|(n, _)| *n == id).map(|(_, r)| *r) else {
+        app.graph.renaming = None;
+        return;
+    };
+
+    let mut apply = false;
+    let mut cancel = false;
+    egui::Area::new(egui::Id::unique("node-rename")).fixed_pos(rect.min).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
+        let resp = ui.add(egui::TextEdit::singleline(text).desired_width(rect.width().max(RENAME_MIN_WIDTH)));
+        cancel = ui.input(|i| i.key_pressed(egui::Key::Escape));
+        apply = !cancel && resp.lost_focus();
+        if !apply && !cancel {
+            resp.request_focus();
+        }
+    });
+    if !apply && !cancel {
+        return;
+    }
+
+    let Some((id, text)) = app.graph.renaming.take() else { return };
+    let unchanged = app.session.graph().ok().and_then(|g| g.node(id).ok()).is_none_or(|n| node_label(n) == text.trim());
+    if apply && !unchanged {
+        app.run("graph.node.rename", json!({"id": id.0, "label": text}));
+    }
+}
+
 fn node_menu(app: &mut MaterialCraftApp, ui: &mut Ui, id: NodeId) {
     if !app.session.selection.contains(&id) {
         app.session.selection = vec![id];
@@ -1585,6 +1629,25 @@ mod tests {
         let tab = egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };
         f.run(vec![egui::Event::PointerMoved(pointer), tab], egui::Modifiers::NONE);
         assert!(f.app.graph.search.is_some());
+    }
+
+    #[test]
+    fn rename_starts_only_for_a_single_selected_node() {
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        app.run("file.new", json!({"template": "empty"}));
+        let id = |v: Option<serde_json::Value>| v.and_then(|v| v["id"].as_u64()).map(NodeId).unwrap();
+        let a = id(app.run("graph.node.add", json!({"def": "checker", "at": [0, 0]})));
+        let b = id(app.run("graph.node.add", json!({"def": "blend", "at": [200, 0]})));
+        let ctx = egui::Context::default();
+
+        app.session.selection = vec![a, b];
+        crate::menus::invoke(&mut app, &ctx, "ui.node.rename");
+        assert!(app.graph.renaming.is_none());
+
+        app.session.selection = vec![a];
+        crate::menus::invoke(&mut app, &ctx, "ui.node.rename");
+        let expected = node_label(app.session.graph().unwrap().node(a).unwrap());
+        assert_eq!(app.graph.renaming, Some((a, expected)));
     }
 
     #[test]

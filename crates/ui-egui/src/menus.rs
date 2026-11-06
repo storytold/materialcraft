@@ -59,6 +59,7 @@ pub const CATALOG: &[Item] = &[
     it("Edit", "Delete", "edit.delete", Some("Delete")),
     it("Edit", "Delete and relink", "edit.deleteRelink", Some("Backspace")),
     it("Edit", "Select all", "edit.selectAll", Some("Ctrl+A")),
+    it("Edit", "Rename node", "ui.node.rename", Some("F2")),
     sep("Edit"),
     it("Edit", "Preferences...", "ui.preferences", None),
     it("Tools", "Compute graph", "graph.cook", Some("F5")),
@@ -123,6 +124,7 @@ pub fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str) {
         "ui.export" => app.ui.windows.export = true,
         "ui.quit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         "ui.preferences" => app.ui.windows.preferences = true,
+        "ui.node.rename" => crate::graph_view::begin_node_rename(app),
         "ui.view.graph" => {}
         "ui.resetLayout" => app.ui.dock = crate::docking::Dock::default(),
         // These replace the open package: ask first when it has unsaved changes.
