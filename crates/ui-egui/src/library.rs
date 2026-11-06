@@ -42,8 +42,9 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let tk = Tokens::get(ui.ctx());
     ui.horizontal(|ui| {
         ui.label(RichText::new(icon::MAGNIFYING_GLASS).color(tk.text_dim));
-        let r = ui.add(egui::TextEdit::singleline(&mut app.ui.library_search).hint_text(tr("Search")).desired_width((ui.available_width() - 56.0).max(40.0)));
+        let r = ui.add(egui::TextEdit::singleline(&mut app.ui.library_search).hint_text(tr("Search")).desired_width((ui.available_width() - 76.0).max(40.0)));
         crate::widgets::name(&r, egui::Role::SearchInput, "Search the library");
+        crate::widgets::search_clear_button(ui, &mut app.ui.library_search);
         if crate::widgets::icon_button(ui, icon::SQUARES_FOUR, tr("Icons"), !app.ui.prefs.library_list, 20.0).clicked() {
             app.ui.prefs.library_list = false;
         }

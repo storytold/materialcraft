@@ -1169,13 +1169,17 @@ fn search_popup(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &Cam) {
             let mut reveal_selection = s.focus;
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(icon::MAGNIFYING_GLASS).color(tk.text_dim));
-                let r = ui.add(egui::TextEdit::singleline(&mut s.text).hint_text(tr("Search nodes...")).desired_width(220.0));
+                let r = ui.add(egui::TextEdit::singleline(&mut s.text).hint_text(tr("Search nodes...")).desired_width(196.0));
                 crate::widgets::name(&r, egui::Role::SearchInput, "Search nodes");
                 if s.focus {
                     r.request_focus();
                     s.focus = false;
                 }
-                if r.changed() {
+                let cleared = crate::widgets::search_clear_button(ui, &mut s.text);
+                if cleared {
+                    s.focus = true;
+                }
+                if r.changed() || cleared {
                     s.sel = 0;
                     reveal_selection = true;
                 }

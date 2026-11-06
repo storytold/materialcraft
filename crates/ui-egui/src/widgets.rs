@@ -4,6 +4,7 @@
 use craft_ui::buttons::{ButtonVisuals, IconButton, IconButtonStyle};
 use egui::{Color32, CornerRadius, Response, RichText, Sense, Stroke, Ui, vec2};
 
+use crate::i18n::tr;
 use crate::theme::Tokens;
 
 /// Give a custom widget an accessible name and role (screen readers, AccessKit, tests).
@@ -147,6 +148,23 @@ pub fn icon_button(ui: &mut Ui, icon: &str, tooltip: &str, selected: bool, size:
         .on_hover_text(tooltip)
 }
 
+const SEARCH_CLEAR_SIZE: f32 = 20.0;
+
+/// A clear button at the end of a search field; returns true when it cleared the text
+/// The slot stays reserved while the field is empty so the row does not shift
+pub fn search_clear_button(ui: &mut Ui, text: &mut String) -> bool {
+    if text.is_empty() {
+        ui.allocate_space(vec2(SEARCH_CLEAR_SIZE, SEARCH_CLEAR_SIZE));
+        return false;
+    }
+
+    let clicked = icon_button(ui, egui_phosphor::regular::X, tr("Clear search"), false, SEARCH_CLEAR_SIZE).clicked();
+    if clicked {
+        text.clear();
+    }
+    clicked
+}
+
 /// A flat button filled with the accent, white lettering (a dialog's main action).
 pub fn primary_button<'a>(ui: &Ui, text: &str) -> egui::Button<'a> {
     let tk = Tokens::get(ui.ctx());
@@ -241,4 +259,37 @@ pub fn panel_header(ui: &mut Ui, title: &str, trailing: impl FnOnce(&mut Ui)) {
         ui.label(crate::theme::caption(title));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), trailing);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clear_button_harness(text: &str) -> egui_kittest::Harness<'static, String> {
+        egui_kittest::Harness::builder().build_ui_state(
+            |ui, text: &mut String| {
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(text);
+                    search_clear_button(ui, text);
+                });
+            },
+            text.to_string(),
+        )
+    }
+
+    #[test]
+    fn clear_button_empties_a_filled_search_field() {
+        let mut harness = clear_button_harness("noise");
+        harness.get_by_label("Clear search").click();
+        harness.run();
+
+        assert!(harness.state().is_empty());
+    }
+
+    #[test]
+    fn clear_button_is_hidden_while_the_field_is_empty() {
+        let harness = clear_button_harness("");
+
+        assert!(harness.query_by_label("Clear search").is_none());
+    }
 }
