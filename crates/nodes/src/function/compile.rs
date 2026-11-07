@@ -51,7 +51,7 @@ pub fn compile(graph: &FunctionGraph, seed: u32) -> Result<Program, String> {
         let inferred = super::inferred_type::inferred_type(&node.op, value.as_ref(), input_type);
         let type_code = if node.type_code == 0 { inferred } else { node.type_code };
         let pure = !matches!(node.op.as_str(), "set" | "sequence" | "while" | "rand" | "isdefined")
-            && !(writes_variables && node.op.starts_with("get_"))
+            && (!writes_variables || !node.op.starts_with("get_"))
             && inputs.iter().all(|index| instructions.get(*index).is_some_and(|instruction| instruction.pure));
         indices.insert(id, instructions.len());
         instructions.push(Instruction { id, definition, inputs, value, type_code, pure });
