@@ -105,6 +105,10 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
         let width = (ui.available_width() - 5.0 * 24.0).max(40.0);
         let response = ui.add(egui::TextEdit::singleline(&mut app.ui.library_search).hint_text(hint).desired_width(width));
         crate::widgets::name(&response, egui::Role::SearchInput, "Search the library");
+        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) && !app.ui.library_search.is_empty() {
+            app.ui.library_search.clear();
+            response.request_focus();
+        }
         filter_menu(app, ui);
         let selected = app.ui.library_selected.clone();
         let favorite = selected.as_ref().is_some_and(|id| app.ui.library_favorites.contains(id));
