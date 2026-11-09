@@ -18,6 +18,8 @@ pub struct UiState {
     pub library_search: String,
     /// Recently opened or saved packages, newest first
     pub recent: Vec<String>,
+    /// Node ids picked in the node search, newest first (shown first when the search box is empty)
+    pub recent_nodes: Vec<String>,
     /// New graph dialog fields
     pub new_graph_kind: materialcraft_engine::core::GraphKind,
     pub new_graph_template: String,
@@ -47,6 +49,7 @@ impl Default for UiState {
             library_category: String::new(),
             library_search: String::new(),
             recent: Vec::new(),
+            recent_nodes: Vec::new(),
             new_graph_kind: materialcraft_engine::core::GraphKind::Material,
             new_graph_template: "pbr".into(),
             new_graph_name: "New_graph".into(),
@@ -61,7 +64,17 @@ impl Default for UiState {
     }
 }
 
+/// How many recently picked nodes the search remembers.
+pub const MAX_RECENT_NODES: usize = 8;
+
 impl UiState {
+    /// Remember a node picked in the search at the top of the recent list (no duplicates, capped)
+    pub fn add_recent_node(&mut self, id: &str) {
+        self.recent_nodes.retain(|n| n != id);
+        self.recent_nodes.insert(0, id.to_string());
+        self.recent_nodes.truncate(MAX_RECENT_NODES);
+    }
+
     /// Remember `path` at the top of the recent list
     pub fn add_recent(&mut self, path: &str) {
         self.recent.retain(|p| p != path);
@@ -69,3 +82,7 @@ impl UiState {
         self.recent.truncate(12);
     }
 }
+
+#[cfg(test)]
+#[path = "ui_state.test.rs"]
+mod tests;

@@ -7,4 +7,4 @@ pub use graph_camera::GraphCamera;
 mod image_camera;
 pub use image_camera::ImageCamera;
 mod ui_state;
-pub use ui_state::UiState;
+pub use ui_state::{MAX_RECENT_NODES, UiState};

@@ -1,5 +1,5 @@
 use super::{GraphCamera, NodeSearch};
-use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
+use crate::{MaterialCraftApp, i18n::tr, state::MAX_RECENT_NODES, theme::Tokens};
 use egui::{Pos2, Ui};
 use egui_phosphor::regular as icon;
 use materialcraft_engine::core::NodeId;
@@ -27,6 +27,27 @@ pub(super) fn matches(text: &str) -> Vec<&'static materialcraft_engine::nodes::N
         v.sort_by_key(|d| !d.label.to_ascii_lowercase().starts_with(w.as_str()));
     }
     v
+}
+
+/// With nothing typed, lists the recently picked nodes first, newest first, then the rest in catalog order
+/// A typed query keeps its own ranking, and ids no longer in the catalog are skipped
+pub(super) fn with_recent_first(
+    list: Vec<&'static materialcraft_engine::nodes::NodeDefinition>,
+    query: &str,
+    recent: &[String],
+) -> Vec<&'static materialcraft_engine::nodes::NodeDefinition> {
+    if !query.trim().is_empty() {
+        return list;
+    }
+    let mut out: Vec<&'static materialcraft_engine::nodes::NodeDefinition> = Vec::new();
+    for def in recent.iter().take(MAX_RECENT_NODES).filter_map(|id| list.iter().copied().find(|d| d.id == id.as_str())) {
+        if !out.iter().any(|d| d.id == def.id) {
+            out.push(def);
+        }
+    }
+    let rest: Vec<_> = list.into_iter().filter(|d| !out.iter().any(|r| r.id == d.id)).collect();
+    out.extend(rest);
+    out
 }
 
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
@@ -58,7 +79,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
                     reveal_selection = true;
                 }
             });
-            let list = matches(&s.text);
+            let list = with_recent_first(matches(&s.text), &s.text, &app.ui.recent_nodes);
             let (up, down, enter, esc) = ui.input(|i| {
                 let pressed = |key| !blocked && i.key_pressed(key);
                 (pressed(egui::Key::ArrowUp), pressed(egui::Key::ArrowDown), pressed(egui::Key::Enter), pressed(egui::Key::Escape))
@@ -100,6 +121,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
         && ui.ctx().pointer_interact_pos().is_some_and(|p| !ui.ctx().layer_id_at(p).is_some_and(|l| l.id == egui::Id::unique("node-search")));
     if let Some(def) = pick.filter(|_| !crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked()) {
         let s = app.graph.search.take();
+        app.ui.add_recent_node(def);
         if let Some(s) = s {
             let mut p = json!({"def": def, "at": [s.at.x, s.at.y - 20.0]});
             if let Some((n, port)) = s.connect {
@@ -111,3 +133,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
         app.graph.search = None;
     }
 }
+
+#[cfg(test)]
+#[path = "search.test.rs"]
+mod tests;
