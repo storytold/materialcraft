@@ -49,6 +49,8 @@ fn save_snapshot(harness: &mut Harness<'static, MaterialCraftApp>, name: &str) {
     }
 }
 
+#[path = "search/count.rs"]
+mod count;
 #[path = "search/query.rs"]
 mod query;
 #[path = "search/rows.rs"]
