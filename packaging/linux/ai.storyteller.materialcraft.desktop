@@ -11,4 +11,4 @@ StartupNotify=true
 StartupWMClass=materialcraft
 Categories=Graphics;3DGraphics;
 Keywords=material;procedural;node;graph;pbr;texture;noise;3d;
-MimeType=application/x-materialcraft;
+MimeType=application/x-sbs+xml;

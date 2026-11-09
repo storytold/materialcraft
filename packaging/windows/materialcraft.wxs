@@ -4,9 +4,7 @@
 
     wix build materialcraft.wxs -arch x64 -d Version=1.2.3 -d BinDir=... -d IconPath=... -o out.msi
 
-  Per-machine install into Program Files, a Start Menu shortcut, `.mcraft` owned by MaterialCraft,
-  and MaterialCraft offered under "Open with" for the mesh formats it opens (without taking over
-  the user's default app for them).
+  Per-machine install into Program Files, a Start Menu shortcut, and an "Open with" entry for SBS
 
   UpgradeCode is MaterialCraft's for good: generated once (2026-10-14), never change it, or new
   versions install beside old ones instead of replacing them.
@@ -54,17 +52,16 @@
               Icon="MaterialCraftIcon.exe" IconIndex="0" />
         </File>
 
-        <!-- .mcraft: MaterialCraft's own package format; MaterialCraft is its default app. -->
-        <ProgId Id="MaterialCraft.Package" Description="MaterialCraft Package" Icon="MaterialCraftExe" IconIndex="0">
-          <Extension Id="mcraft" ContentType="application/x-materialcraft">
-            <Verb Id="open" Command="Open" TargetFile="MaterialCraftExe" Argument="&quot;%1&quot;" />
-          </Extension>
-        </ProgId>
+        <!-- Register an SBS editor while preserving the user's default application -->
+        <RegistryValue Root="HKLM" Key="Software\Classes\MaterialCraft.SBS" Value="SBS Package" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\MaterialCraft.SBS\DefaultIcon" Value="&quot;[#MaterialCraftExe]&quot;,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\MaterialCraft.SBS\shell\open\command" Value="&quot;[#MaterialCraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.sbs\OpenWithProgids" Name="MaterialCraft.SBS" Value="" Type="string" />
 
         <!-- "Open with" app list and the Run dialog (Win+R "materialcraft"). -->
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\materialcraft.exe" Name="FriendlyAppName" Value="MaterialCraft" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\materialcraft.exe\shell\open\command" Value="&quot;[#MaterialCraftExe]&quot; &quot;%1&quot;" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\materialcraft.exe\SupportedTypes" Name=".mcraft" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\materialcraft.exe\SupportedTypes" Name=".sbs" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\materialcraft.exe" Value="[#MaterialCraftExe]" Type="string" />
       </Component>
 

@@ -219,26 +219,27 @@ fn open(session: &mut Session, parameters: &J) -> Result<J> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn save(s: &mut Session, p: &J) -> Result<J> {
-    let path = match strp(p, "path") {
-        Some(path) => package_path(path),
-        None => s.path.clone().ok_or_else(|| bad("file.save", "the package has no file yet (new, or opened from another program): give a `path`"))?,
-    };
+fn save(session: &mut Session, parameters: &J) -> Result<J> {
+    let path = strp(parameters, "path")
+        .or(session.path.as_deref())
+        .ok_or_else(|| bad("file.save", "the package has no file yet (new, or opened from another program): give a `path`"))?;
 
-    let path = crate::document_path::normalize(&path);
+    let path = crate::document_path::normalize(&package_path(path));
     if path.contains("://") {
         return Err(bad("file.save", "library aliases cannot be overwritten; save to a local .sbs path"));
     }
 
-    if s.open_packages().into_iter().any(|entry| entry.0 != s.document_id && entry.2 == Some(path.as_str())) {
+    if session.open_packages().into_iter().any(|entry| entry.0 != session.document_id && entry.2 == Some(path.as_str())) {
         return Err(bad("file.save", "another open package already uses this file"));
     }
-    let bytes = save_bytes_at(s, Some(&path))?;
+
+    let bytes = save_bytes_at(session, Some(&path))?;
     materialcraft_formats::write_atomic(std::path::Path::new(&path), &bytes)?;
-    s.path = Some(path.clone());
-    s.refresh_links();
-    s.modified = false;
-    s.log(format!("Saved {path}"));
+    session.path = Some(path.clone());
+    session.refresh_links();
+    session.modified = false;
+    session.log(format!("Saved {path}"));
+
     Ok(json!({"path": path, "bytes": bytes.len()}))
 }
 

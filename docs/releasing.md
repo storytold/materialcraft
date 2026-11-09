@@ -78,7 +78,7 @@ gh run view $RID -R storytold/materialcraft --log | grep -E "status: Accepted|st
   file in the table below plus `SHA256SUMS.txt`.
 - Download, check and launch at least one artifact per platform:
   - Windows: `signtool verify /pa /v materialcraft-<v>-windows-x64.msi` succeeds and names the
-    org's publisher; install, open a `.mcraft` by double-click, `materialcraft-cli --version` from the
+    org's publisher; install, open an `.sbs` through Open with, `materialcraft-cli --version` from the
     install dir, uninstall.
   - macOS: `spctl -a -vvv -t install materialcraft-<v>-macos-universal.dmg` says *Notarized
     Developer ID*; the app opens with no Gatekeeper prompt.
@@ -118,7 +118,7 @@ scripts smoke-test `materialcraft-cli --version`, and the Linux job also runs th
 | What | Value |
 |---|---|
 | Bundle / app id | `ai.storyteller.materialcraft` |
-| Package format | `.mcraft`, MIME `application/x-materialcraft`, UTI `ai.storyteller.materialcraft.package` (owned). Declared in `materialcraft.wxs`, `Info.plist.in`, the `.desktop` file, `mime.xml` and the AppStream metainfo: keep all five in step |
+| Package format | `.sbs` (XML), MIME `application/x-sbs+xml`, imported UTI `ai.storyteller.materialcraft.sbs`, Windows ProgID `MaterialCraft.SBS`. Registered as an editor in `materialcraft.wxs`, `Info.plist.in`, the `.desktop` file, `mime.xml` and the AppStream metainfo: keep all five in step |
 | WiX UpgradeCode | `89DE105E-B6C8-4261-ADBE-25BCFA3A0C91`, never change it |
 | Flathub manifest | `packaging/linux/flatpak/ai.storyteller.MaterialCraft.yml` (release bundle: `…MaterialCraft.bundle.yml`) |
 | macOS minimum | 11.0 (`LSMinimumSystemVersion`, `MACOSX_DEPLOYMENT_TARGET`) |

@@ -8,12 +8,12 @@ pub struct Resource {
     pub name: String,
     #[serde(default = "default_folder")]
     pub folder: String,
-    /// File name inside the package's `resources/` folder
+    /// File name recorded by the SBS resource
     pub file: String,
     /// Unavailable external asset retained for repair on a later load
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub source: String,
-    /// The file's bytes (stored in the zip, not in `package.json`)
+    /// Resource content embedded in SBS or loaded from a linked file
     #[serde(skip)]
     pub bytes: ResourceBytes,
 }

@@ -36,8 +36,8 @@ fail() {
 }
 
 # 1. Launch works and passes arguments through.
-out="$("$APPDIR/AppRun" open graph.mcraft)" || fail "AppRun exited non-zero"
-[ "$out" = "stub: open graph.mcraft" ] || fail "arguments not forwarded: $out"
+out="$("$APPDIR/AppRun" open graph.sbs)" || fail "AppRun exited non-zero"
+[ "$out" = "stub: open graph.sbs" ] || fail "arguments not forwarded: $out"
 
 DESKTOP="$XDG_DATA_HOME/applications/$APP_ID.desktop"
 [ -f "$DESKTOP" ] || fail "desktop entry not installed"

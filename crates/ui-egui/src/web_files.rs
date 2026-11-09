@@ -154,7 +154,7 @@ mod web {
 
     /// File ▸ Open: a package, picked in the browser
     pub fn open(ctx: &egui::Context) {
-        pick(ctx, "MaterialCraft package or material", crate::windows::OPEN_EXTS, Pick::Package);
+        pick(ctx, "SBS package or MaterialCraft material", crate::windows::OPEN_EXTS, Pick::Package);
     }
 
     /// 3D view ▸ Scene ▸ Load mesh

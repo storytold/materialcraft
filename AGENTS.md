@@ -64,7 +64,7 @@ The product name is always written **MaterialCraft** (`{Function}Craft` in Pasca
 siblings PhotoCraft, VectorCraft, FilmCraft, LightCraft, PdfCraft, EffectCraft, DesignCraft,
 TextureCraft) in user-facing text: UI, window titles, About, installers, release names, docs prose.
 Machine names stay lowercase: crates (`materialcraft-*`), binaries, file names, ids
-(`ai.storyteller.materialcraft`). The project format is SBS (`.sbs`). Legacy package compatibility is not required.
+(`ai.storyteller.materialcraft`). The project format is SBS (`.sbs`).
 
 Shared code goes only in craft-libs; otherwise copy, don't depend. TextureCraft is the sibling this
 repository's infrastructure (xtask, automation, packaging, docking, theme) was copied from.

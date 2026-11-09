@@ -8,6 +8,6 @@ target/
 /secrets
 /temp
 /craft-fonts
-*.mcraft.tmp
+*.sbs.tmp
 .claude/worktrees/
 pr-review-guidelines.md

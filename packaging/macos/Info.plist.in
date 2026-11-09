@@ -45,27 +45,26 @@
   <key>NSHumanReadableCopyright</key>
   <string>Copyright © the MaterialCraft contributors. MIT OR Apache-2.0.</string>
 
-  <!-- MaterialCraft's own package format (a zip container). -->
-  <key>UTExportedTypeDeclarations</key>
+  <!-- SBS XML document type -->
+  <key>UTImportedTypeDeclarations</key>
   <array>
     <dict>
       <key>UTTypeIdentifier</key>
-      <string>ai.storyteller.materialcraft.package</string>
+      <string>ai.storyteller.materialcraft.sbs</string>
       <key>UTTypeDescription</key>
-      <string>MaterialCraft Package</string>
+      <string>SBS Package</string>
       <key>UTTypeConformsTo</key>
       <array>
-        <string>public.data</string>
-        <string>public.content</string>
+        <string>public.xml</string>
       </array>
       <key>UTTypeIconFile</key>
       <string>MaterialCraft</string>
       <key>UTTypeTagSpecification</key>
       <dict>
         <key>public.filename-extension</key>
-        <array><string>mcraft</string></array>
+        <array><string>sbs</string></array>
         <key>public.mime-type</key>
-        <array><string>application/x-materialcraft</string></array>
+        <array><string>application/x-sbs+xml</string></array>
       </dict>
     </dict>
   </array>
@@ -74,15 +73,15 @@
   <array>
     <dict>
       <key>CFBundleTypeName</key>
-      <string>MaterialCraft Package</string>
+      <string>SBS Package</string>
       <key>CFBundleTypeRole</key>
       <string>Editor</string>
       <key>LSHandlerRank</key>
-      <string>Owner</string>
+      <string>Alternate</string>
       <key>CFBundleTypeIconFile</key>
       <string>MaterialCraft</string>
       <key>LSItemContentTypes</key>
-      <array><string>ai.storyteller.materialcraft.package</string></array>
+      <array><string>ai.storyteller.materialcraft.sbs</string></array>
     </dict>
   </array>
 </dict>

@@ -16,18 +16,11 @@ pub struct Package {
     /// Resolved source packages shared by cooks; SBS stores their file references instead
     #[serde(skip)]
     pub dependencies: std::collections::BTreeMap<String, std::sync::Arc<Package>>,
-    /// Format version of `package.json`
-    #[serde(default = "version")]
-    pub version: u32,
-}
-
-fn version() -> u32 {
-    1
 }
 
 impl Package {
     pub fn new(name: &str) -> Package {
-        Package { name: name.into(), graphs: Vec::new(), folders: Vec::new(), resources: Vec::new(), version: 1, dependencies: Default::default() }
+        Package { name: name.into(), graphs: Vec::new(), folders: Vec::new(), resources: Vec::new(), dependencies: Default::default() }
     }
 
     pub fn folder_paths(&self) -> std::collections::BTreeSet<String> {

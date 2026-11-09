@@ -119,17 +119,17 @@ impl Headless {
         Ok(self.inspect())
     }
 
-    /// Save to `path` (`.sbs` appended without a package extension) or the package's own file; native SBS
+    /// Save native SBS to `path` or the package's own file, appending `.sbs` when needed
     pub fn save(&mut self, path: Option<&str>) -> Result<Value, AutomationError> {
-        let path = match path {
-            Some(p) => file_cmds::package_path(p),
-            None => self.session.path.clone().ok_or_else(|| bad("the package has no file yet (new, or opened from another program): give a `path`"))?,
-        };
+        let path =
+            path.or(self.session.path.as_deref()).ok_or_else(|| bad("the package has no file yet (new, or opened from another program): give a `path`"))?;
+        let path = file_cmds::package_path(path);
 
         let bytes = file_cmds::save_bytes(&self.session)?;
         self.write(&path, &bytes)?;
         self.session.path = Some(path.clone());
         self.session.modified = false;
+
         Ok(json!({"path": path, "bytes": bytes.len()}))
     }
 

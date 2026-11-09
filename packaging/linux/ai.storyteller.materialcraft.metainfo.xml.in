@@ -19,7 +19,7 @@
     <ul>
       <li>Hundreds of procedural nodes: noises, patterns, adjustments, blurs, warps, normal and height tools</li>
       <li>Live 2D and 3D previews with physically based shading</li>
-      <li>Export base color, normal, roughness, metallic, height and ambient occlusion maps as PNG, EXR, TGA, JPEG or TIFF; save packages as .mcraft</li>
+      <li>Export base color, normal, roughness, metallic, height and ambient occlusion maps as PNG, EXR, TGA, JPEG or TIFF; save packages as .sbs</li>
       <li>Every action is a command, scriptable from a CLI, a JSON control channel and an MCP server</li>
     </ul>
   </description>
@@ -56,7 +56,7 @@
   </supports>
   <provides>
     <binary>materialcraft</binary>
-    <mediatype>application/x-materialcraft</mediatype>
+    <mediatype>application/x-sbs+xml</mediatype>
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>

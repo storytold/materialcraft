@@ -67,9 +67,8 @@ pattern traversal have separate modules. Document types each live in their own f
 ## Files and execution
 
 The saved document is native SBS XML: filters, graph bridges, typed value ports, function nodes,
-pattern nodes, parameters and resources. There is no private package comment or embedded JSON
-document. `.mcraft` read/write support has been removed. Portable `.mcmat` materials now contain
-`source.sbs` and use manifest version 2; older archives are rejected.
+pattern nodes, parameters and resources. Portable `.mcmat` materials contain `source.sbs` and use
+manifest version 2.
 
 Function graphs and pattern graphs use iterative traversal, detect cycles and enforce node and
 execution budgets. A shared child in a DAG is legal. Exhausting a budget produces an error.

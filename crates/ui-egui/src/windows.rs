@@ -529,30 +529,34 @@ pub fn file_action(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str) ->
     {
         match id {
             "file.open" => {
-                if let Some(p) = rfd::FileDialog::new().add_filter("SBS or MaterialCraft package, or material", OPEN_EXTS).pick_file() {
-                    open_path(app, &p.display().to_string());
+                if let Some(path) = rfd::FileDialog::new().add_filter("SBS package or MaterialCraft material", OPEN_EXTS).pick_file() {
+                    open_path(app, &path.display().to_string());
                 }
+
                 true
             }
             "file.save" if app.session.path.as_ref().is_some_and(|path| !path.contains("://")) => {
-                if let Some(r) = app.run("file.save", json!({})) {
-                    let path = r["path"].as_str().unwrap_or_default().to_string();
+                if let Some(result) = app.run("file.save", json!({})) {
+                    let path = result["path"].as_str().unwrap_or_default().to_string();
                     app.ui.add_recent(&path);
                     app.toast(format!("{} {path}", tr("Saved")), false);
                 }
+
                 true
             }
             "file.save" | "file.saveAs" | "file.saveCopyAs" => {
                 let name = format!("{}.sbs", materialcraft_engine::formats::safe_file_name(&app.session.pkg.name));
-                if let Some(p) = rfd::FileDialog::new().set_file_name(name).add_filter("SBS package", &["sbs"]).save_file() {
-                    let path = materialcraft_engine::file_cmds::package_path(&p.display().to_string());
+                if let Some(path) = rfd::FileDialog::new().set_file_name(name).add_filter("SBS package", &["sbs"]).save_file() {
+                    let path = materialcraft_engine::file_cmds::package_path(&path.display().to_string());
                     if app.run(if id == "file.saveCopyAs" { id } else { "file.save" }, json!({"path": path})).is_some() {
                         if id != "file.saveCopyAs" {
                             app.ui.add_recent(&path);
                         }
+
                         app.toast(format!("{} {path}", tr("Saved")), false);
                     }
                 }
+
                 true
             }
             "file.exportMaterial" => {
@@ -560,23 +564,26 @@ pub fn file_action(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str) ->
                     "{}.{MATERIAL_EXT}",
                     materialcraft_engine::formats::safe_file_name(&app.session.graph().map(|g| g.name.clone()).unwrap_or_default())
                 );
-                if let Some(p) = rfd::FileDialog::new().set_file_name(name).add_filter("MaterialCraft material", &[MATERIAL_EXT]).save_file()
-                    && let Some(r) = app.run("file.exportMaterial", json!({"path": p.display().to_string()}))
+                if let Some(path) = rfd::FileDialog::new().set_file_name(name).add_filter("MaterialCraft material", &[MATERIAL_EXT]).save_file()
+                    && let Some(result) = app.run("file.exportMaterial", json!({"path": path.display().to_string()}))
                 {
-                    app.toast(format!("{} {}", tr("Exported"), r["path"].as_str().unwrap_or_default()), false);
+                    app.toast(format!("{} {}", tr("Exported"), result["path"].as_str().unwrap_or_default()), false);
                 }
+
                 true
             }
             "file.sendToTextureCraft" => {
                 if app.run("file.sendToTextureCraft", json!({})).is_some() {
                     app.toast(tr("Sent to TextureCraft: find it on the shelf under My smart materials"), false);
                 }
+
                 true
             }
             "file.importBitmap" => {
                 if let Some(path) = rfd::FileDialog::new().add_filter("Images", materialcraft_engine::formats::IMAGE_EXTENSIONS).pick_file() {
                     crate::graph::import_bitmap_file(app, &path.display().to_string());
                 }
+
                 true
             }
             _ => false,
@@ -592,6 +599,7 @@ pub fn file_action(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str) ->
             "file.exportMaterial" => crate::web_files::export_material(app),
             _ => return false,
         }
+
         true
     }
 }
