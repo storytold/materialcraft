@@ -14,7 +14,8 @@ use super::type_code;
 use super::warnings::Warnings;
 use super::xml::{child_element, child_value, children_named, parse_floats};
 use materialcraft_core::{
-    ComponentUsage, Connection, ExposedParameter, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, MISSING_NODE, Node, NodeId, Package, Resource, ResourceBytes, Value,
+    ComponentUsage, Connection, ExposedParameter, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, MISSING_NODE, Node, NodeId, OutputFormat, Package, Resource,
+    ResourceBytes, Value,
 };
 use materialcraft_nodes::find;
 use roxmltree::Node as XmlNode;
@@ -148,6 +149,9 @@ impl<'text> SbsReader<'text, '_> {
         let mut graph = Graph::new(&name);
         let base = read_base_params(child_element(element, "baseParameters"), self.warnings);
         graph.seed = base.seed;
+        if base.format != OutputFormat::Inherit {
+            graph.format = base.format;
+        }
         graph.pixel_ratio = base.pixel_ratio;
         graph.pixel_ratio_mode = base.pixel_ratio_mode;
         graph.tiling = base.tiling;
