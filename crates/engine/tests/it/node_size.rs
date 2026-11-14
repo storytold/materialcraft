@@ -189,3 +189,66 @@ fn a_mode_switch_is_one_undo_step() {
     command(&mut session, "edit.undo", json!({}));
     assert_eq!(stored(&session, id), [1, 0]);
 }
+
+/// What a cook leaves behind: how many cooks ran and what the content cache holds
+fn cook_footprint(session: &Session) -> (u64, usize, usize) {
+    (session.cook_epoch, session.cache.lock().unwrap().len(), session.cooked.nodes.len())
+}
+
+#[test]
+fn a_mode_switch_on_an_uncooked_graph_runs_no_cook() {
+    let mut session = new_session();
+    let blur = blur_fed_by_a_256_px_source(&mut session);
+    let before = cook_footprint(&session);
+    assert_eq!(before.2, 0, "nothing has cooked yet");
+    command(&mut session, "graph.node.base", json!({"id": blur, "param": "outputsize", "inheritance": "absolute"}));
+    assert_eq!(cook_footprint(&session), before, "the switch must not cook");
+    assert_eq!(stored(&session, blur), [8, 8]);
+}
+
+#[test]
+fn a_mode_switch_on_a_dirty_graph_resolves_sizes_without_cooking() {
+    let mut session = new_session();
+    command(&mut session, "graph.size", json!({"width": 2048, "height": 2048}));
+    let source = node(&mut session, "uniform");
+    session.cook();
+    command(&mut session, "graph.node.base", json!({"id": source, "param": "outputsize", "value": [-3, -3]}));
+    // a chain two nodes deep, none of it cooked: each size comes from the one before
+    let first = node(&mut session, "blur");
+    let second = node(&mut session, "blur");
+    command(&mut session, "graph.connect", json!({"from": source.0, "to": first.0}));
+    command(&mut session, "graph.connect", json!({"from": first.0, "to": second.0}));
+    command(&mut session, "graph.node.base", json!({"id": first, "param": "outputsize", "value": [1, 1]}));
+    assert!(session.dirty);
+    let before = cook_footprint(&session);
+    command(&mut session, "graph.node.base", json!({"id": second, "param": "outputsize", "inheritance": "absolute"}));
+    assert_eq!(cook_footprint(&session), before, "the switch must not cook");
+    assert_eq!(stored(&session, second), [9, 9], "256 px source, x2 in the first blur");
+    assert_eq!(full(&session, second), (512, 512));
+}
+
+#[test]
+fn a_mode_switch_after_changing_graphs_resolves_without_cooking() {
+    let mut session = new_session();
+    command(&mut session, "graph.size", json!({"width": 2048, "height": 2048}));
+    let id = node(&mut session, "uniform");
+    session.cook();
+    command(&mut session, "graph.duplicate", json!({}));
+    command(&mut session, "graph.size", json!({"width": 128, "height": 128}));
+    let before = cook_footprint(&session);
+    command(&mut session, "graph.node.base", json!({"id": id, "param": "outputsize", "inheritance": "absolute"}));
+    assert_eq!(cook_footprint(&session), before, "the switch must not cook");
+    assert_eq!(stored(&session, id), [7, 7]);
+}
+
+#[test]
+fn a_disabled_node_passes_its_input_size_through_the_resolver() {
+    let mut session = new_session();
+    let blur = blur_fed_by_a_256_px_source(&mut session);
+    command(&mut session, "graph.node.base", json!({"id": blur, "param": "outputsize", "value": [3, 3]}));
+    session.graph_mut().unwrap().node_mut(blur).unwrap().disabled = true;
+    let before = cook_footprint(&session);
+    command(&mut session, "graph.node.base", json!({"id": blur, "param": "outputsize", "inheritance": "absolute"}));
+    assert_eq!(cook_footprint(&session), before);
+    assert_eq!(stored(&session, blur), [8, 8], "bypassed: it outputs its input's 256 px");
+}

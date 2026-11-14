@@ -28,6 +28,11 @@ impl<'a> PreparedGraph<'a> {
     }
 
     pub fn input_base(&self, id: NodeId, cooked: &crate::Cooked) -> Option<crate::ResolvedBaseParameters> {
+        self.input_base_from(id, |from| cooked.nodes.get(&from).map(|result| result.base))
+    }
+
+    /// The base parameters inherited from the wired primary input, read through `upstream`
+    pub fn input_base_from(&self, id: NodeId, upstream: impl Fn(NodeId) -> Option<crate::ResolvedBaseParameters>) -> Option<crate::ResolvedBaseParameters> {
         let node = self.index.node(id)?;
         let definition = materialcraft_nodes::find(&node.def);
         let primary = definition.and_then(|definition| definition.primary_input);
@@ -38,7 +43,7 @@ impl<'a> PreparedGraph<'a> {
             .filter(|port| port.kind != materialcraft_nodes::PortKind::Value && primary.is_none_or(|primary| port.id == primary))
             .find_map(|port| {
                 let connection = self.index.input_of(id, &port.id)?;
-                cooked.nodes.get(&connection.from).map(|result| result.base)
+                upstream(connection.from)
             })?;
 
         // Only bypassed generators take their image dimensions from the input

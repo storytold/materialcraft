@@ -221,8 +221,9 @@ fn log2_pixels(pixels: u32) -> f64 {
 /// mode, so changing between them must convert it or the node jumps to 16 px (stale offset read as a
 /// resolution) or to 8192 px (stale resolution read as an offset). Either way the node keeps the
 /// resolution it has now (rounded to a power of two, clamped to the allowed range); switching
-/// between the two relative modes keeps the offset. The current resolution comes from a cook of the
-/// open graph, which is run first when the last one is out of date or belongs to another graph.
+/// between the two relative modes keeps the offset. The current resolution comes from the last cook
+/// of the open graph when it is fresh, and otherwise from `materialcraft_eval::resolve_bases`; the
+/// command never cooks, so it cannot block on a costly graph.
 /// The input size used for the relative modes is that of the wired primary input (parent size
 /// for generators and unwired nodes), and parameter functions are not converted.
 fn size_after_mode_change(session: &mut Session, id: NodeId, to: materialcraft_core::ParameterInheritance) -> Result<[i32; 2]> {
@@ -235,20 +236,26 @@ fn size_after_mode_change(session: &mut Session, id: NodeId, to: materialcraft_c
         return Ok(size);
     }
 
-    if session.dirty || session.cooked_graph != Some(session.graph) {
-        session.cook();
-    }
+    // A fresh cook of this graph is exact (parameter functions included). Otherwise the sizes come
+    // from the graph alone, in the order a cook would resolve them, with no image work.
+    let fresh = !session.dirty && session.cooked_graph == Some(session.graph);
+    let resolved;
+    let sizes: Box<dyn Fn(NodeId) -> Option<[u32; 2]> + '_> = if fresh {
+        Box::new(|node| session.cooked.nodes.get(&node).map(|result| result.base.size))
+    } else {
+        let decoder = |_: &str| None;
+        let options = materialcraft_eval::Options::new(&decoder);
+        resolved = materialcraft_eval::resolve_bases(&session.pkg, session.graph, &options);
+        Box::new(|node| resolved.get(&node).map(|base| base.size))
+    };
 
     let graph = session.graph()?;
     let node = graph.node(id)?;
     let parent = graph.size_px();
-    let current = match session.cooked.nodes.get(&id) {
-        Some(result) => result.base.size,
-        None => {
-            let (width, height) = materialcraft_eval::node_size(graph, None, node, None, None);
-            [width, height]
-        }
-    };
+    let current = sizes(id).unwrap_or_else(|| {
+        let (width, height) = materialcraft_eval::node_size(graph, None, node, None, None);
+        [width, height]
+    });
     if to_absolute {
         return Ok(current.map(|pixels| log2_pixels(pixels).clamp(f64::from(MIN_SIZE_LOG2), f64::from(MAX_SIZE_LOG2)) as i32));
     }
@@ -260,8 +267,8 @@ fn size_after_mode_change(session: &mut Session, id: NodeId, to: materialcraft_c
             .connections
             .iter()
             .filter(|connection| connection.to == id && primary.is_none_or(|primary| connection.to_port == primary))
-            .find_map(|connection| session.cooked.nodes.get(&connection.from))
-            .map_or(parent, |result| result.base.size)
+            .find_map(|connection| sizes(connection.from))
+            .unwrap_or(parent)
     } else {
         parent
     };

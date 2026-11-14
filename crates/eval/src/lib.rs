@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod base_resolution;
 mod cache;
 mod cache_key;
 mod cooked;
@@ -24,6 +25,7 @@ mod time;
 mod value_execution;
 mod value_input_label;
 
+pub use base_resolution::resolve_bases;
 pub use cache::Cache;
 pub use cooked::Cooked;
 pub use graph_execution::cook;

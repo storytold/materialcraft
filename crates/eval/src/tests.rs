@@ -571,3 +571,37 @@ fn enabled_generators_use_parent_size_and_inherit_other_input_base_parameters() 
         }
     }
 }
+
+#[test]
+fn resolved_bases_match_a_cook_without_cooking_any_image() {
+    use materialcraft_core::{ParameterInheritance, SizeMode};
+
+    let mut graph = Graph::new("Sizes");
+    graph.size = [11, 11];
+    let source = graph.add_node("uniform", [0.0; 2]);
+    let base = &mut graph.node_mut(source).unwrap().base;
+    base.size_mode = SizeMode::Absolute;
+    base.size = [8, 7];
+    let blur = graph.add_node("blur", [200.0, 0.0]);
+    graph.node_mut(blur).unwrap().base.size = [1, 2];
+    let blend = graph.add_node("blur", [400.0, 0.0]);
+    graph.node_mut(blend).unwrap().base.size_mode = SizeMode::RelativeToParent;
+    graph.node_mut(blend).unwrap().base.size = [-1, 0];
+    graph.node_mut(blend).unwrap().base.format_mode = ParameterInheritance::RelativeToParent;
+    graph.connect(source, "output", blur, "input").unwrap();
+    graph.connect(blur, "output", blend, "input").unwrap();
+    let mut package = Package::new("Sizes");
+    package.graphs.push(graph);
+
+    let options = Options::new(&no_res);
+    let cache = Mutex::new(Cache::default());
+    let bases = resolve_bases(&package, 0, &options);
+    let cooked = cook(&package, 0, &options, &cache);
+    assert_eq!(bases.len(), 3);
+    for (id, base) in &bases {
+        assert_eq!(base.size, cooked.nodes[id].base.size);
+    }
+
+    assert_eq!(bases[&blur].size, [512, 512], "x2 and x4 of the 256 x 128 input");
+    assert!(resolve_bases(&package, 7, &options).is_empty(), "no such graph");
+}
