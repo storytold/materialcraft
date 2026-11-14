@@ -90,9 +90,18 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
             egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
                 for (i, d) in list.iter().enumerate() {
                     let r = ui.add(
-                        egui::Button::selectable(i == s.sel, format!("{}   ", d.label))
-                            .min_size(egui::vec2(ui.available_width(), 0.0))
-                            .right_text(egui::RichText::new(d.group()).size(10.0).color(tk.text_dim)),
+                        egui::Button::selectable(
+                            i == s.sel,
+                            super::search_highlight::highlighted_label(
+                                &format!("{}   ", d.label),
+                                &s.text,
+                                egui::TextStyle::Button.resolve(ui.style()),
+                                tk.text,
+                                if i == s.sel { tk.text_strong } else { tk.accent_strong },
+                            ),
+                        )
+                        .min_size(egui::vec2(ui.available_width(), 0.0))
+                        .right_text(egui::RichText::new(d.group()).size(10.0).color(tk.text_dim)),
                     );
                     if i == s.sel && (up || down || reveal_selection) {
                         r.scroll_to_me(None);
