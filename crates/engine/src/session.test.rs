@@ -197,3 +197,41 @@ fn a_failed_group_recooks_if_it_cooked_a_temporary_document() {
     s.cook_if_dirty();
     assert_eq!(s.cooked.image(id, 0).unwrap().data, before);
 }
+
+#[test]
+fn undo_and_redo_after_saving_track_the_saved_state() {
+    let mut s = crate::new_session();
+    s.edit("Rename", |s| {
+        s.pkg.name = "renamed".into();
+        Ok(())
+    })
+    .unwrap();
+    // What file.save does after writing
+    s.modified = false;
+    s.undo().unwrap();
+    assert!(s.modified, "undoing past the saved state must leave the document modified");
+    s.redo().unwrap();
+    assert!(!s.modified, "redoing back to the saved state must leave the document clean");
+    s.undo().unwrap();
+    s.modified = false;
+    s.redo().unwrap();
+    assert!(s.modified, "redo after saving the undone state must leave the document modified");
+
+    // A save followed by a further edit: undoing two steps lands before the save
+    let mut s = crate::new_session();
+    s.edit("A", |s| {
+        s.pkg.name = "a".into();
+        Ok(())
+    })
+    .unwrap();
+    s.modified = false;
+    s.edit("B", |s| {
+        s.pkg.name = "b".into();
+        Ok(())
+    })
+    .unwrap();
+    s.undo().unwrap();
+    assert!(!s.modified, "undoing to the saved state must leave the document clean");
+    s.undo().unwrap();
+    assert!(s.modified, "undoing before the saved state must leave the document modified");
+}
