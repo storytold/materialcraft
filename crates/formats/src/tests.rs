@@ -50,3 +50,15 @@ fn decode_matches_previous_values() {
     let want = srgb_to_linear(128.0 / 255.0);
     assert!((img.get(1, 1, false)[0] - want).abs() < 1e-4);
 }
+
+#[test]
+fn svg_detected_when_multibyte_char_straddles_sniff_boundary() {
+    let mut s = String::from("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect/><!--");
+    while s.len() < 4095 {
+        s.push('a');
+    }
+    s.push('é');
+    s.push_str("--></svg>");
+    assert!(std::str::from_utf8(&s.as_bytes()[..4096]).is_err());
+    assert!(decode(s.as_bytes(), false).is_ok());
+}
