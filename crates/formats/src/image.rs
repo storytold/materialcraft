@@ -87,7 +87,10 @@ pub fn encode(img: &Image, ext: &str, depth: Depth, srgb: bool) -> Result<Vec<u8
     let sixteen_ok = fmt == image::ImageFormat::Png;
     let q8 = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
     let q16 = |v: f32| (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16;
-    let dynimg: image::DynamicImage = if float_only {
+    let dynimg: image::DynamicImage = if fmt == image::ImageFormat::OpenExr {
+        let data: Vec<f32> = (0..n).flat_map(px).collect();
+        image::Rgba32FImage::from_raw(w, h, data).ok_or_else(|| FormatError::Image("bad buffer".into()))?.into()
+    } else if float_only {
         let data: Vec<f32> = (0..n)
             .flat_map(|i| {
                 let p = px(i);
