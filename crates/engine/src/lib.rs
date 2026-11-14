@@ -4,6 +4,7 @@
 #[cfg(test)]
 extern crate self as materialcraft_engine;
 
+mod decoded_images;
 mod document_path;
 mod evaluation_environment_commands;
 mod explorer_clipboard;
@@ -36,6 +37,7 @@ mod open_document;
 mod package_commands;
 mod package_file_commands;
 mod preview_cook;
+mod preview_fingerprint;
 mod resource_commands;
 pub use material_preview::MaterialPreview;
 pub use material_source::MaterialSource;
@@ -56,8 +58,10 @@ pub mod graph_cmds;
 mod graph_property_commands;
 mod graph_target;
 mod history_prefs;
+mod library_cache_commands;
 pub use graph_target::GraphTarget;
 pub use history_prefs::HistoryPrefs;
+pub use library_cache_commands::LibraryCachePrefs;
 pub mod graph_edit;
 pub mod graph_grid;
 pub mod inspect;
@@ -77,6 +81,7 @@ mod color_space;
 mod connection_commands;
 mod export_request;
 mod export_size;
+mod library_preview;
 pub use clip::Clip;
 pub use color_space::ColorSpace;
 pub use export_request::ExportRequest;

@@ -163,7 +163,7 @@ fn fx_map_starts_with_a_quadrant_and_grows_image_inputs_as_connected() {
     assert!((session.cooked.image(owner, 0).unwrap().mean()[0] - 0.5).abs() < 1e-5);
 
     let bytes = write_sbs(&session.pkg).unwrap();
-    assert!(std::str::from_utf8(&bytes).unwrap().contains("<identifier v=\"input:5\"/>"));
+    assert!(std::str::from_utf8(&bytes).unwrap().contains("<identifier v=\"inputpattern:5\"/>"));
     let read = read_sbs(&bytes, "image_inputs.sbs", &|_| None).unwrap();
     assert!(read.warnings.is_empty(), "{:?}", read.warnings);
     let mut loaded = Session::new(read.pkg);
@@ -214,6 +214,7 @@ fn processors_sample_dynamic_image_inputs_after_sbs_round_trip() {
 
     for definition in ["pixel_processor", "value_processor"] {
         let mut session = new_session();
+        session.graph_mut().unwrap().format = materialcraft_engine::core::OutputFormat::F32;
         session.preview_size = Some(16);
         let source = add(&mut session, "uniform");
         let processor = add(&mut session, definition);

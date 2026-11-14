@@ -4,6 +4,22 @@ use materialcraft_core::Graph;
 #[path = "../tests/support/node_library.rs"]
 mod fixture;
 
+/// Installing a library must not compile and clone graphs that no open document references.
+#[test]
+fn unused_library_packages_remain_shared_without_interface_refresh() {
+    let mut package = Package::new("Unused library");
+    package.graphs.push(Graph::new("Source"));
+    let mut caller = Graph::new("Caller");
+    let id = caller.add_node("graph_instance", [0.0; 2]);
+    caller.nodes.iter_mut().find(|node| node.id == id).unwrap().params.insert("graph".into(), materialcraft_core::Value::Text("Source".into()));
+    package.graphs.push(caller);
+    let source = Arc::new(package);
+    let mut library = NodeLibrary::default();
+    library.packages.insert("sbs://unused.sbs".into(), source.clone());
+    let session = crate::Session::with_library(Package::new("Empty"), Arc::new(library));
+    assert!(Arc::ptr_eq(&source, &session.pkg.dependencies["sbs://unused.sbs"]));
+}
+
 /// Category aliases and frame kinds resolve only to recognized categories.
 #[test]
 fn frame_titles_map_to_library_categories() {
@@ -21,6 +37,135 @@ fn frame_titles_map_to_library_categories() {
     assert_eq!(frame_category("Comparison", true, true).as_deref(), Some("Function nodes/Comparison"));
     assert_eq!(frame_category("Comparison", true, false).as_deref(), Some("Functions/Comparison"));
     assert_eq!(frame_category("Unknown", true, true), None);
+}
+
+/// A graph with these attributes, for category tests
+fn attributed(name: &str, category: &str, tags: &str) -> Graph {
+    let mut graph = Graph::new(name);
+    graph.attributes.category = category.into();
+    graph.attributes.tags = tags.into();
+    graph
+}
+
+/// Package categories and tags resolve to the tree's categories and sub-categories.
+#[test]
+fn package_attributes_map_to_library_categories() {
+    for (category, tags, expected) in [
+        ("Generator", "Noise, Perlin", "Texture generators/Noises"),
+        ("Generator", "Pattern", "Texture generators/Patterns"),
+        ("Filter", "Blur", "Filters/Blurs"),
+        ("Filter", "Effect, light, bloom", "Filters/Effects"),
+        ("Filter", "Normal Map", "Filters/Normal map"),
+        ("Filter", "Transformation, Crop", "Filters/Transforms"),
+        ("Filter", "", "Filters"),
+        ("Material Filter", "1-Click", "Material filters/1-click"),
+        ("Material Filter", "Scan Processing", "Material filters/Scan processing"),
+        ("Material Filters", "Mesh Adaptive", "Mesh-based generators/Utilities"),
+        ("Scan", "", "Material filters/Scan processing"),
+        ("Mesh Adaptive", "Mask Generators", "Mesh-based generators/Mask generators"),
+        ("Splines & Paths", "Splines, Paths", "Spline & Path tools/Spline tools"),
+        ("Splines & Paths", "Paths", "Spline & Path tools/Path tools"),
+        ("3D View", "HDRI Tools", "3D view/HDRI tools"),
+        ("Values", "Constant", "Values/Constant"),
+        ("PBR Materials/Paper ", "", "PBR materials/Paper"),
+        ("SDF function", "Primitive", "MCF functions/Primitives"),
+        ("3D Functions", "Material", "MCF functions"),
+    ] {
+        assert_eq!(library_category(&attributed("graph", category, tags)).as_deref(), Some(expected), "{category} / {tags}");
+    }
+
+    assert_eq!(library_category(&attributed("gravel", "Material", "")).as_deref(), Some("PBR materials/Ground"), "a material's name picks its sub-category");
+    assert_eq!(
+        library_category(&attributed("spot_emboss", "", "Effect")).as_deref(),
+        Some("Filters/Effects"),
+        "a graph without a category uses its listed one"
+    );
+    assert_eq!(library_category(&attributed("graph", "", "Effect")), None);
+    assert_eq!(library_category(&attributed("graph", "Template", "")), None);
+}
+
+/// Hidden graphs and helper functions stay out; categorized functions are listed.
+#[test]
+fn hidden_graphs_and_helper_functions_are_not_listed() {
+    let function = |name: &str, category: &str, tags: &str| {
+        let mut graph = attributed(name, category, tags);
+        graph.function = Some(materialcraft_core::FunctionGraph::default());
+        graph
+    };
+    let mut package = Package::new("Tools");
+    let mut shown = attributed("shown", "Filter", "Blur");
+    shown.add_node("output", [0.0; 2]);
+    let mut hidden = shown.clone();
+    hidden.name = "hidden".into();
+    hidden.attributes.hide_in_library = true;
+    package.graphs.extend([shown, hidden, function("helper", "", ""), function("cube", "SDF function", "Primitive"), function("hash", "", "Random")]);
+    let mut functions = Package::new("Functions only");
+    functions.graphs.push(function("loose", "", ""));
+    let packages = BTreeMap::from([("sbs://tools.sbs".to_string(), Arc::new(package)), ("sbs://user.sbs".to_string(), Arc::new(functions))]);
+
+    let entries = NodeLibrary::default().entries(&packages);
+
+    let listed: BTreeMap<_, _> =
+        entries.iter().filter(|entry| entry.id.starts_with("sbs://")).map(|entry| (entry.id.as_str(), entry.category.as_str())).collect();
+    let expected = [
+        ("sbs://tools.sbs#cube", "MCF functions/Primitives"),
+        ("sbs://tools.sbs#hash", "Functions/Random"),
+        ("sbs://tools.sbs#shown", "Filters/Blurs"),
+        ("sbs://user.sbs#loose", "Functions"),
+    ];
+    assert_eq!(listed, BTreeMap::from(expected), "a package of functions alone lists its loose ones");
+}
+
+/// Every graph the bundled packages list sits in a category of the tree.
+#[test]
+fn the_whole_bundled_library_is_categorized() {
+    let library = NodeLibrary::load(&library::files());
+    let entries = library.entries(&library.packages);
+    let packaged: Vec<_> = entries.iter().filter(|entry| entry.id.starts_with("sbs://")).collect();
+    let known = |category: &str| {
+        let mut parts = category.split('/');
+        let top = parts.next().unwrap_or_default();
+        CATEGORIES.iter().any(|(name, subs)| *name == top && parts.next().is_none_or(|sub| subs.contains(&sub)))
+    };
+
+    let unknown: Vec<_> = packaged.iter().filter(|entry| !known(&entry.category)).map(|entry| (&entry.id, &entry.category)).collect();
+    assert!(unknown.is_empty(), "{unknown:?}");
+    let category = |id: &str| packaged.iter().find(|entry| entry.id == id).map(|entry| entry.category.as_str());
+    for (id, expected) in [
+        ("sbs://noise_perlin_noise_v2.sbs#perlin_noise", "Texture generators/Noises"),
+        ("sbs://pattern_tile_sampler.sbs#tile_sampler", "Texture generators/Patterns"),
+        ("sbs://blur_hq.sbs#blur_hq", "Filters/Blurs"),
+        ("sbs://mg_mask_builder.sbs#mg_mask_builder_2", "Mesh-based generators/Mask generators"),
+        ("sbs://materials/pbr/gravel.sbs#gravel", "PBR materials/Ground"),
+        ("sbs://functions.sbs#Functions/Math/Pi", "Functions/Constant"),
+    ] {
+        assert_eq!(category(id), Some(expected), "{id}");
+    }
+}
+
+#[test]
+fn bundled_material_functions_have_compatible_inputs() {
+    let library = NodeLibrary::load(&library::files());
+
+    for (package_name, graph_names) in [
+        ("sbs://3d_functions.sbs", &["3d_sdf_primitives/3d_sdf_plane"][..]),
+        (
+            "sbs://pbr_render2.sbs",
+            &["ibl_specular_contrib_anisotropic/IBLSpecularContribution", "ibl_specular_contrib_anisotropic/IBLSpecularContribution_iteration"],
+        ),
+    ] {
+        let package = &library.packages[package_name];
+        for graph_name in graph_names {
+            let (_, graph) = package.graph_by_name(graph_name).unwrap();
+            let mut function = graph.function.as_ref().unwrap().clone();
+
+            materialcraft_nodes::function::resolve_instances(&mut function, package, &library.packages);
+
+            if let Err(error) = materialcraft_nodes::function::compile(&function, 0) {
+                panic!("{package_name}#{graph_name}: {error}");
+            }
+        }
+    }
 }
 
 /// Identifier labels preserve recognized acronyms and omit empty words.
@@ -170,4 +315,51 @@ fn function_tags_choose_library_filters_before_path_fallbacks() {
     assert_eq!(categories("Pi"), ["Functions/Maths"]);
     assert_eq!(categories("Tagged"), ["Functions/Comparison", "Functions/Easings"]);
     assert_eq!(categories("Fallback"), ["Functions/Maths"]);
+}
+
+/// Library graphs render a preview from sample inputs; graphs that make no image give none.
+#[test]
+fn library_graphs_cook_previews_from_sample_inputs() {
+    let library = Arc::new(NodeLibrary::load(&library::files()));
+    let preview = |package: &str, graph: &str| NodeLibrary::preview(&library, package, graph, 32);
+
+    let filter = preview("sbs://blur_hq.sbs", "blur_hq").unwrap();
+    assert_eq!((filter.w, filter.h), (32, 32));
+    assert!(preview("sbs://materials/pbr/bricks_001.sbs", "bricks_001").is_some());
+    assert!(preview("sbs://noise_bnw_spots_1.sbs", "bnw_spots_1").is_some(), "an FX-Map noise reads the variables its size function sets");
+    assert!(preview("sbs://blur_hq.sbs", "no_such_graph").is_none());
+    assert!(preview("sbs://functions.sbs", "Functions/Math/Pi").is_none(), "a function has no image");
+}
+
+#[test]
+#[ignore = "repeated bundled preview cooks; run explicitly for memory profiling"]
+fn repeated_library_previews_release_images_and_source_references() {
+    let library = Arc::new(NodeLibrary::load(&library::files()));
+    let references: Vec<_> = library.packages.values().map(Arc::strong_count).collect();
+    for cycle in 0..12 {
+        for (package, graph) in
+            [("sbs://blur_hq.sbs", "blur_hq"), ("sbs://noise_clouds_3_v2.sbs", "clouds_3"), ("sbs://materials/pbr/bricks_001.sbs", "bricks_001")]
+        {
+            let image = NodeLibrary::preview(&library, package, graph, 72).unwrap_or_else(|| panic!("missing preview {package}#{graph}"));
+            let buffer = Arc::downgrade(&image.data);
+            drop(image);
+            assert!(buffer.upgrade().is_none(), "a completed thumbnail must release its image after upload");
+            assert_eq!(Arc::strong_count(&library), 1);
+            assert_eq!(library.packages.values().map(Arc::strong_count).collect::<Vec<_>>(), references);
+        }
+        println!("completed preview cycle {cycle}");
+        #[cfg(target_os = "linux")]
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            let memory: Vec<_> = status.lines().filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:")).collect();
+            println!("{}", memory.join(", "));
+        }
+    }
+}
+
+#[test]
+fn cancelled_library_previews_stop_before_preparing_the_package() {
+    let library = Arc::new(NodeLibrary::default());
+    let cancelled = std::sync::atomic::AtomicBool::new(true);
+    assert!(NodeLibrary::preview_cancellable(&library, "unused", "unused", 72, &cancelled).is_none());
+    assert_eq!(Arc::strong_count(&library), 1);
 }

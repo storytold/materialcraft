@@ -15,6 +15,7 @@ mod layout_frame;
 mod layout_item;
 pub mod library;
 mod library_layout;
+mod linked_resources;
 mod node_identifiers;
 mod node_parameter;
 mod output;
@@ -49,3 +50,4 @@ mod write;
 mod preview_binding;
 
 mod resource;
+mod resource_replacement;

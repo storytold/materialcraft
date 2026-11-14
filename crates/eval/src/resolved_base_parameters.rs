@@ -17,7 +17,7 @@ impl ResolvedBaseParameters {
         let parent = options.parent_base;
         Self {
             size: parent.map_or_else(|| graph.size_px(), |base| base.size),
-            seed: parent.map_or((graph.seed as u32).wrapping_mul(0x9e37_79b9), |base| base.seed),
+            seed: parent.map_or(graph.seed as u32, |base| base.seed),
             format: parent.map_or(graph.format, |base| base.format),
             tiling: graph.tiling_mode.resolve(graph.tiling, options.parent_tiling, options.parent_tiling.unwrap_or(graph.tiling)),
             pixel_ratio: graph.pixel_ratio_mode.resolve(graph.pixel_ratio, options.parent_pixel_ratio, options.parent_pixel_ratio.unwrap_or(graph.pixel_ratio)),
@@ -27,8 +27,13 @@ impl ResolvedBaseParameters {
 
     pub(crate) fn resolve(base: &BaseParameters, input: Option<Self>, parent: Self) -> Self {
         let size_base = BaseParameter::OutputSize.inheritance(base).resolve([1; 2], input.map(|base| base.size), parent.size);
-        let size = std::array::from_fn(|axis| (f64::from(size_base[axis]) * 2f64.powi(base.size[axis].clamp(-12, 13))).round().clamp(16.0, 8192.0) as u32);
-        let inherited_seed = base.seed_mode.resolve(0, input.map(|base| base.seed), parent.seed);
+        // Internal reductions and lookup images can reach one texel. Applying
+        // the graph editor's 16-pixel minimum here breaks their size functions.
+        let size = std::array::from_fn(|axis| (f64::from(size_base[axis]) * 2f64.powi(base.size[axis].clamp(-12, 13))).round().clamp(1.0, 8192.0) as u32);
+        // Images carry size and format, but do not carry a random stream.
+        // Both relative seed modes use the containing graph's seed; chaining
+        // image filters must not accumulate the seeds of upstream nodes.
+        let inherited_seed = base.seed_mode.resolve(0, None, parent.seed);
         let inherited_pixel_size = base.pixel_size_mode.resolve([1.0; 2], input.map(|base| base.pixel_size), parent.pixel_size);
         Self {
             size,
@@ -50,7 +55,7 @@ pub(crate) fn evaluate(
     base: &BaseParameters,
     input: Option<ResolvedBaseParameters>,
     parent: ResolvedBaseParameters,
-    variables: &BTreeMap<String, Value>,
+    variables: &mut std::borrow::Cow<'_, BTreeMap<String, Value>>,
 ) -> Result<(ResolvedBaseParameters, BTreeMap<BaseParameter, Value>), String> {
     if base.functions.is_empty() {
         return Ok((ResolvedBaseParameters::resolve(base, input, parent), BTreeMap::new()));
@@ -73,7 +78,6 @@ pub(crate) fn evaluate(
         pixel_ratio_mode: base.pixel_ratio_mode,
     };
     let mut values = BTreeMap::new();
-    let mut variables = variables.clone();
     let mut resolved = ResolvedBaseParameters::resolve(&evaluated, input, parent);
 
     // Size and seed establish the context used by the remaining parameter functions
@@ -86,13 +90,13 @@ pub(crate) fn evaluate(
         BaseParameter::Tiling,
     ] {
         if let Some(function) = base.functions.get(&parameter) {
-            resolved.variables(&mut variables);
+            resolved.variables(variables.to_mut());
             let size = if parameter == BaseParameter::OutputSize && parameter.inheritance(base) != ParameterInheritance::Absolute {
                 parameter.inheritance(base).resolve(parent.size, input.map(|base| base.size), parent.size)
             } else {
                 resolved.size
             };
-            let value = crate::parameter_function::evaluate(function, parameter.value_type(), &variables, resolved.seed, size)
+            let value = crate::parameter_function::evaluate(function, parameter.value_type(), variables.to_mut(), resolved.seed, size, false)
                 .map_err(|error| format!("function of `{}`: {error}", parameter.identifier()))?;
             parameter.set_value(&mut evaluated, &value)?;
             parameter.set_inheritance(&mut evaluated, parameter.inheritance(base));

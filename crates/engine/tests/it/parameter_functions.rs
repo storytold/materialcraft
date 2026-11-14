@@ -224,9 +224,10 @@ fn empty_and_wrong_type_functions_remain_editable_but_report_cook_errors() {
 
 #[test]
 fn instance_parameter_functions_work_without_stored_literals_and_use_instance_size() {
-    use materialcraft_engine::core::{Graph, Package, ValueType};
+    use materialcraft_engine::core::{Graph, OutputFormat, Package, ValueType};
 
     let mut source = Graph::new("Source");
+    source.format = OutputFormat::F32;
     let color = source.add_node("uniform", [0.0; 2]);
     source.node_mut(color).unwrap().params.insert("color_mode".into(), Value::Bool(false));
     source.node_mut(color).unwrap().functions.insert("color".into(), FunctionGraph::input("amount", ValueType::Float4));
@@ -252,6 +253,7 @@ fn instance_parameter_functions_work_without_stored_literals_and_use_instance_si
     source.connect(dimensions, "output", size_output, "input").unwrap();
     let mut parent = Graph::new("Parent");
     parent.size = [6, 5];
+    parent.format = OutputFormat::F32;
     let owner = parent.add_node("graph_instance", [0.0; 2]);
     parent.node_mut(owner).unwrap().params.insert("graph".into(), Value::Text("Source".into()));
     let mut package = Package::new("Instances");
@@ -296,9 +298,47 @@ fn color_boolean_enum_and_text_parameters_use_typed_function_outputs() {
 
     let owner = node(&mut session, "uniform");
     command(&mut session, "graph.node.function", json!({"id": owner, "param": "color", "function": FunctionGraph::constant(Value::Float(0.5))}));
+    // A gray level fills the color channels, as the library's uniform colors rely on
+    let result = &session.cook().nodes[&owner];
+    assert_eq!(result.error, None);
+    assert_eq!(result.parameters["color"].as_vec4(), Some([0.5, 0.5, 0.5, 1.0]));
+
+    let owner = node(&mut session, "uniform");
+    command(&mut session, "graph.node.function", json!({"id": owner, "param": "color", "function": FunctionGraph::constant(Value::Int(1))}));
     assert!(session.cook().nodes[&owner].error.as_ref().unwrap().contains("Float4"));
     let bitmap = node(&mut session, "bitmap");
     assert!(execute(&mut session, "graph.node.function", &json!({"id": bitmap, "param": "resource"})).is_err());
+}
+
+#[test]
+fn native_channel_parameters_accept_scalar_functions_without_changing_their_bodies() {
+    let mut session = new_session();
+    session.preview_size = Some(16);
+    for (definition, parameters) in [("levels", &["in_low", "in_mid", "in_high", "out_low", "out_high"][..]), ("fx_map", &["background"][..])] {
+        for parameter in parameters {
+            let owner = node(&mut session, definition);
+            let function = FunctionGraph::constant(Value::Float(0.25));
+            command(&mut session, "graph.node.function", json!({"id": owner, "param": parameter, "function": function}));
+            let target = materialcraft_engine::FunctionGraphTarget::Dynamic { node: owner, parameter: (*parameter).into() };
+            assert!(materialcraft_engine::function_inspection::warnings_for(session.graph().unwrap(), &target, &function).is_empty());
+            let result = &session.cook().nodes[&owner];
+            assert_eq!(result.error, None, "{definition}.{parameter}");
+            let expected = if definition == "fx_map" { Value::Color([0.25, 0.25, 0.25, 1.0]) } else { Value::Float4([0.25; 4]) };
+            assert_eq!(result.parameters[*parameter], expected);
+
+            let bytes = formats::sbs::write_sbs(&session.pkg).unwrap();
+            let loaded = formats::sbs::read_sbs(&bytes, "scalar-channel.sbs", &|_| None).unwrap();
+            assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+            let reopened_node = loaded.pkg.graphs[0].nodes.last().unwrap();
+            let reopened_id = reopened_node.id;
+            let saved_function = &reopened_node.functions[*parameter];
+            assert_eq!(saved_function.nodes.len(), 1);
+            assert_eq!(saved_function.nodes[0].value, Some(Value::Float(0.25)));
+            let mut reopened = Session::new(loaded.pkg);
+            reopened.preview_size = Some(16);
+            assert_eq!(reopened.cook().nodes[&reopened_id].parameters[*parameter], expected);
+        }
+    }
 }
 
 #[test]

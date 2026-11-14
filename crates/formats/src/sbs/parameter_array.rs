@@ -31,8 +31,10 @@ pub(super) fn read(node: &mut Node, implementation: XmlNode<'_, '_>) {
                         Some(value) => value.as_vec4().unwrap_or([0.0; 4]),
                         None => [0.0; 4],
                     };
-
                     let midpoint = parameters.get("midpoint").and_then(Value::as_f32).unwrap_or(0.5);
+                    // Legacy gradient arrays use zero for their default linear segments.
+                    // Treating it as a near-zero interpolation fraction clips successive ramps to white.
+                    let midpoint = if midpoint == 0.0 { 0.5 } else { midpoint };
                     gradient.keys.push(GradientKey { pos: position, color, midpoint });
                 }
                 _ => {}
@@ -49,10 +51,16 @@ pub(super) fn read(node: &mut Node, implementation: XmlNode<'_, '_>) {
     }
 }
 
-pub(super) fn write(value: &Value, writer: &mut SbsWriter) -> String {
+pub(super) fn write(value: &Value, color_mode: bool, writer: &mut SbsWriter) -> String {
     let name = match value {
         Value::Curve(_) => "curveluminance",
-        Value::Gradient(_) => "gradientrgba",
+        Value::Gradient(_) => {
+            if color_mode {
+                "gradientrgba"
+            } else {
+                "gradientluminance"
+            }
+        }
         _ => return String::new(),
     };
 
@@ -83,7 +91,8 @@ pub(super) fn write(value: &Value, writer: &mut SbsWriter) -> String {
         }
         Value::Gradient(gradient) => {
             for key in &gradient.keys {
-                cell(vec![("position", Value::Float(key.pos)), ("midpoint", Value::Float(key.midpoint)), ("value", Value::Float4(key.color))]);
+                let color = if color_mode { Value::Color(key.color) } else { Value::Float(materialcraft_image::luminance(key.color)) };
+                cell(vec![("position", Value::Float(key.pos)), ("midpoint", Value::Float(key.midpoint)), ("value", color)]);
             }
         }
         _ => {}

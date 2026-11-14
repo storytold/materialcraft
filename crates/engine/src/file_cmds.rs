@@ -142,7 +142,7 @@ pub fn is_mcraft(path: &str) -> bool {
 }
 
 pub fn open_bytes(session: &mut Session, bytes: &[u8], name: Option<String>) -> Result<()> {
-    open_bytes_linked(session, bytes, name, &|_| None)
+    open_bytes_linked(session, bytes, name, &|reference| materialcraft_formats::sbs::library::read(reference).ok())
 }
 
 pub fn open_bytes_linked(session: &mut Session, bytes: &[u8], name: Option<String>, linked: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<()> {
@@ -225,6 +225,10 @@ pub fn save_files_at(session: &Session, path: &str) -> Result<materialcraft_form
     let archive = is_mcraft(path);
     let package = if archive { session.pkg.clone() } else { package_for_save(session, Some(path)) };
     let filename = std::path::Path::new(path).file_name().and_then(|name| name.to_str()).unwrap_or("package.sbs");
+    #[cfg(not(target_arch = "wasm32"))]
+    if !archive && materialcraft_formats::sbs::library::contains_file(std::path::Path::new(path)) {
+        return Ok(materialcraft_formats::project::ProjectFiles::build_linked(&package, filename)?);
+    }
     Ok(materialcraft_formats::project::ProjectFiles::build(&package, filename, archive)?)
 }
 

@@ -14,7 +14,8 @@ use super::type_code;
 use super::warnings::Warnings;
 use super::xml::{child_element, child_value, children_named, parse_floats};
 use materialcraft_core::{
-    ComponentUsage, Connection, ExposedParameter, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, MISSING_NODE, Node, NodeId, Package, Resource, ResourceBytes, Value,
+    BaseParameter, ComponentUsage, Connection, ExposedParameter, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, MISSING_NODE, Node, NodeId, OutputFormat, Package,
+    ParameterInheritance, Resource, ResourceBytes, Value,
 };
 use materialcraft_nodes::find;
 use roxmltree::Node as XmlNode;
@@ -26,6 +27,8 @@ pub(super) struct SbsReader<'text, 'warnings> {
     pub(super) dependencies: HashMap<String, String>,
     pub(super) graph_names: HashMap<String, String>,
     pub(super) resource_names: HashMap<String, String>,
+    pub(super) external_resource_names: HashMap<(String, String), String>,
+    pub(super) direct_resource_names: HashMap<String, String>,
     pub(super) node_count: usize,
 }
 
@@ -68,7 +71,10 @@ impl<'text> SbsReader<'text, '_> {
                             pending.push((path, group_content));
                         }
                     }
-                    "resource" => self.read_resource(item, &identifier, &path, pkg, linked),
+                    "resource" => {
+                        let name = self.read_resource(item, &identifier, &path, pkg, linked);
+                        self.resource_names.insert(path, name);
+                    }
                     "mdl_graph" | "mdlGraph" => self.warnings.add(format!("MDL graph `{path}` is not supported")),
                     other => self.warnings.add(format!("package item <{other}> `{path}` is not supported")),
                 }
@@ -76,21 +82,31 @@ impl<'text> SbsReader<'text, '_> {
         }
     }
 
-    pub(super) fn read_resource(&mut self, item: XmlNode, identifier: &str, path: &str, pkg: &mut Package, linked: &dyn Fn(&str) -> Option<Vec<u8>>) {
+    pub(super) fn read_resource(&mut self, item: XmlNode, identifier: &str, path: &str, pkg: &mut Package, linked: &dyn Fn(&str) -> Option<Vec<u8>>) -> String {
         let kind = child_value(item, "type").unwrap_or("bitmap");
         let format = child_value(item, "format").unwrap_or("png").trim().to_ascii_lowercase();
         let source = child_element(item, "source");
+        let external_copy = source.and_then(|source| child_element(source, "externalcopy")).and_then(|copy| child_value(copy, "filename"));
+        let fallback_filename = format!("{identifier}.{format}");
+        if let Some(target) =
+            [external_copy, child_value(item, "filepath"), Some(fallback_filename.as_str())].into_iter().flatten().find_map(super::resource_replacement::target)
+        {
+            return super::resource_replacement::load(self, pkg, identifier, path, &target, linked);
+        }
         let external = source
             .and_then(|source| child_element(source, "externalcopy"))
             .and_then(|copy| child_value(copy, "filename"))
             .filter(|path| !path.is_empty())
             .or_else(|| child_value(item, "filepath"));
+        let font = kind == "font" || super::resource_replacement::is_font(&fallback_filename) || external.is_some_and(super::resource_replacement::is_font);
         let mut bytes: Option<Vec<u8>> = None;
+        let mut loaded_source = "";
         let mut why_missing = String::new();
 
         if let Some(embedded) = source.and_then(|s| child_element(s, "binembedded")) {
             match decode_embedded(child_value(embedded, "strdata").unwrap_or("")) {
-                Ok(data) => bytes = Some(data),
+                Ok(data) if !font || !data.is_empty() => bytes = Some(data),
+                Ok(_) => why_missing = "its embedded font data is empty".into(),
                 Err(e) => why_missing = format!("its embedded data is damaged ({e})"),
             }
         }
@@ -104,36 +120,55 @@ impl<'text> SbsReader<'text, '_> {
                 }
 
                 match linked(file) {
-                    Some(data) => {
+                    Some(data) if !font || !data.is_empty() => {
                         bytes = Some(data);
+                        loaded_source = file;
                         break;
                     }
+                    Some(_) => why_missing = format!("its font file `{file}` is empty"),
                     None => why_missing = format!("its file `{file}` was not found next to the package"),
                 }
             }
         }
 
+        // A supplied font, including cour.ttf or embedded data, always wins. Only absence uses the shared fallback.
+        if font && bytes.is_none() {
+            if let Some(name) = super::resource_replacement::load_font(pkg, identifier, path, linked) {
+                return name;
+            }
+            let why = if why_missing.is_empty() { "it has no font data" } else { &why_missing };
+            why_missing = format!("{why}; fallback `{}` is unavailable", super::library::FALLBACK_FONT);
+        }
+
         let taken: Vec<String> = pkg.resources.iter().map(|r| r.name.clone()).collect();
         let name = unique_name(&taken, if identifier.is_empty() { "resource" } else { identifier });
-        self.resource_names.insert(path.to_string(), name.clone());
         match bytes {
             Some(data) => {
                 let ext = if kind == "svg" { "svg".to_string() } else { format };
 
                 let mut resource = Resource::new(name.clone(), crate::safe_file_name(&format!("{name}.{ext}")), ResourceBytes::new(data));
+                // Keep the link as well as the loaded bytes so library saves can retain shared assets.
+                resource.source = loaded_source.into();
                 resource.folder = path.rsplit_once('/').map_or("", |(folder, _)| folder).into();
                 pkg.resources.push(resource);
             }
             None => {
                 let why = if why_missing.is_empty() { "it has no data".to_string() } else { why_missing };
                 let extension = if kind == "svg" { "svg" } else { &format };
-                let mut resource = Resource::new(name.clone(), crate::safe_file_name(&format!("{name}.{extension}")), ResourceBytes::new(Vec::new()));
+                let filename = format!("{name}.{extension}");
+                let filename = if font {
+                    external.and_then(|path| path.rsplit(['/', '\\']).next()).filter(|file| !file.is_empty()).unwrap_or(&filename)
+                } else {
+                    &filename
+                };
+                let mut resource = Resource::new(name.clone(), crate::safe_file_name(filename), ResourceBytes::new(Vec::new()));
                 resource.source = external.unwrap_or("").into();
                 resource.folder = path.rsplit_once('/').map_or("", |(folder, _)| folder).into();
                 pkg.resources.push(resource);
                 self.warnings.add(format!("resource `{path}` could not be loaded: {why}"));
             }
         }
+        name
     }
 
     pub(super) fn resolve_reference(&self, url: &str) -> (String, Option<String>) {
@@ -147,6 +182,7 @@ impl<'text> SbsReader<'text, '_> {
     pub(super) fn read_graph(&mut self, element: XmlNode<'_, 'text>, name: String) -> Graph {
         let mut graph = Graph::new(&name);
         let base = read_base_params(child_element(element, "baseParameters"), self.warnings);
+        graph.format = if BaseParameter::Format.inheritance(&base) == ParameterInheritance::Absolute { base.format } else { OutputFormat::Inherit };
         graph.seed = base.seed;
         graph.pixel_ratio = base.pixel_ratio;
         graph.pixel_ratio_mode = base.pixel_ratio_mode;
@@ -352,7 +388,7 @@ impl<'text> SbsReader<'text, '_> {
         graph: &mut Graph,
         comp_node: XmlNode<'_, 'text>,
         image_inputs: &HashMap<String, InputBridge>,
-        outputs: &HashMap<String, (String, u32)>,
+        outputs: &HashMap<String, (String, u32, u32)>,
     ) -> ReadNode {
         let gpos = child_element(comp_node, "GUILayout").and_then(|l| child_value(l, "gpos")).map(parse_floats).unwrap_or_default();
         let pos = [gpos.first().copied().unwrap_or(0.0) - NODE_HALF_SIZE[0], gpos.get(1).copied().unwrap_or(0.0) - NODE_HALF_SIZE[1]];
@@ -398,11 +434,14 @@ impl<'text> SbsReader<'text, '_> {
             }
             "compOutputBridge" => {
                 let output = child_value(implementation, "output").unwrap_or("");
-                let (identifier, usage) = outputs.get(output).cloned().unwrap_or_else(|| ("output".into(), ComponentUsage::ANY_INDEX));
+                let (identifier, usage, channels) = outputs.get(output).cloned().unwrap_or_else(|| ("output".into(), ComponentUsage::ANY_INDEX, 1));
                 let (id, index, node) = push_node(graph, "output", pos);
                 if let Some(node) = node {
                     node.params.insert("identifier".into(), Value::Text(identifier));
                     node.params.insert("usage".into(), Value::Enum(usage));
+                    if matches!(channels, 1 | 2) {
+                        node.params.insert("color_mode".into(), Value::Bool(channels == 1));
+                    }
                 }
                 let inputs = HashMap::from([("inputNodeOutput".to_string(), "input".to_string())]);
                 ReadNode { id, index, inputs, outputs: Vec::new(), open_inputs: false }
@@ -415,8 +454,30 @@ impl<'text> SbsReader<'text, '_> {
                         let (id, index, node) = push_node(graph, filter.def, pos);
                         if let Some(node) = node {
                             self.read_filter_params(node, filter, params, &graph_name);
+                            // Native files can omit the color switch while declaring a color
+                            // output. Retain that compiled image type instead of the editor preset.
+                            if let [(_, gray)] = output_uids.as_slice()
+                                && find(filter.def).is_some_and(|definition| {
+                                    matches!(definition.param("color_mode").map(|parameter| &parameter.default), Some(Value::Bool(_)))
+                                })
+                                && !node.params.contains_key("color_mode")
+                                && !node.functions.contains_key("color_mode")
+                                && !node.bindings.contains_key("color_mode")
+                            {
+                                node.params.insert("color_mode".into(), Value::Bool(!gray));
+                            }
                             super::parameter_array::read(node, implementation);
                             node.base = read_base_params(params, self.warnings);
+                            if filter.sbs == "pixelprocessor"
+                                && !params
+                                    .into_iter()
+                                    .flat_map(|parameters| children_named(parameters, "parameter"))
+                                    .any(|p| child_value(p, "name") == Some("format"))
+                            {
+                                // A processor defaults to its parent format, even with an image input.
+                                node.base.format = OutputFormat::U8;
+                                node.base.format_mode = ParameterInheritance::RelativeToParent;
+                            }
                             if filter.sbs == "fxmaps"
                                 && let Some(pattern) = child_element(implementation, "paramsGraphs").and_then(|graphs| child_element(graphs, "paramsGraph"))
                             {
@@ -545,11 +606,38 @@ impl<'text> SbsReader<'text, '_> {
     pub(super) fn read_filter_params(&mut self, node: &mut Node, filter: &FilterMap, params: Option<XmlNode>, graph_name: &str) {
         let Some(def) = find(filter.def) else { return };
 
+        if filter.sbs == "uniform" {
+            // An omitted SBS output color is black; the editor's new-node preset is gray.
+            node.params.insert("color".into(), Value::Color([0.0, 0.0, 0.0, 1.0]));
+        }
+        if filter.sbs == "normal" {
+            // Native files omit these defaults; the editor's new-node preset differs.
+            node.params.insert("opengl".into(), Value::Bool(false));
+            node.params.insert("height_alpha".into(), Value::Bool(true));
+        }
+
         let filter_params: Vec<XmlNode> =
             params.into_iter().flat_map(|p| children_named(p, "parameter")).filter(|p| !BASE_PARAMS.contains(&child_value(*p, "name").unwrap_or(""))).collect();
         for param in &filter_params {
             let param_name = child_value(*param, "name").unwrap_or("");
+            // Read the earlier writer's alias without emitting it alongside the native parameter.
+            let param_name = match (filter.sbs, param_name) {
+                ("hsl", "luminance") => "luminosity",
+                ("dyngradient", "position") => "coordinate",
+                ("dyngradient", "orientation") => "uvselector",
+                _ => param_name,
+            };
             let value = child_element(*param, "paramValue").and_then(sbs_constant);
+
+            if filter.sbs == "text"
+                && param_name == "fontdata"
+                && let Some(SbsValue::Text(url)) = &value
+                && (url.starts_with("pkg://") || self.direct_resource_names.contains_key(url))
+            {
+                let name = self.resource_binding(url, graph_name).unwrap_or_else(|| url.clone());
+                node.params.insert("fontdata".into(), Value::Text(name));
+                continue;
+            }
 
             if let Some(&(_, mc_name)) = filter.params.iter().find(|(sbs, _)| *sbs == param_name) {
                 let Some(param_def) = def.param(mc_name) else { continue };
@@ -560,12 +648,8 @@ impl<'text> SbsReader<'text, '_> {
 
             match (filter.sbs, param_name, value) {
                 ("bitmap", "bitmapresourcepath", Some(SbsValue::Text(url))) | ("svg", "vectorresourcepath", Some(SbsValue::Text(url))) => {
-                    let (path, _) = self.resolve_reference(&url);
-                    match self.resource_names.get(&path) {
-                        Some(name) => {
-                            node.params.insert("resource".into(), Value::Text(name.clone()));
-                        }
-                        None => self.warnings.add(format!("graph `{graph_name}`: Node uses resource `{path}`, which is not in the package")),
+                    if let Some(name) = self.resource_binding(&url, graph_name) {
+                        node.params.insert("resource".into(), Value::Text(name));
                     }
                 }
                 ("grayscaleconversion", "channelsweights", Some(weights)) => {
@@ -577,6 +661,35 @@ impl<'text> SbsReader<'text, '_> {
                 _ => self.warnings.add(format!("`{}`: SBS parameter `{param_name}` is not supported yet and was ignored", filter.def)),
             }
         }
+    }
+
+    pub(super) fn resource_name(&self, url: &str) -> Option<&String> {
+        if let Some(name) = self.direct_resource_names.get(url) {
+            return Some(name);
+        }
+        let dependency_uid = url.split_once('?').and_then(|(_, query)| query.split('&').find_map(|part| part.strip_prefix("dependency=")));
+        if dependency_uid.is_some_and(|uid| !self.dependencies.contains_key(uid)) {
+            return None;
+        }
+        let (path, dependency) = self.resolve_reference(url);
+        match dependency.filter(|file| file != SELF_DEPENDENCY) {
+            Some(file) => self.external_resource_names.get(&(file, path)),
+            None => self.resource_names.get(&path),
+        }
+    }
+
+    fn resource_binding(&mut self, url: &str, graph_name: &str) -> Option<String> {
+        if let Some(name) = self.resource_name(url) {
+            return Some(name.clone());
+        }
+        let dependency_uid = url.split_once('?').and_then(|(_, query)| query.split('&').find_map(|part| part.strip_prefix("dependency=")));
+        if let Some(uid) = dependency_uid.filter(|uid| !self.dependencies.contains_key(*uid)) {
+            self.warnings.add(format!("graph `{graph_name}`: resource reference has unknown dependency `{uid}`"));
+        } else {
+            let (path, _) = self.resolve_reference(url);
+            self.warnings.add(format!("graph `{graph_name}`: Node uses resource `{path}`, which is not in the package"));
+        }
+        None
     }
 }
 pub(super) fn unique_name(taken: &[String], base: &str) -> String {
@@ -591,12 +704,13 @@ pub(super) fn push_node<'g>(graph: &'g mut Graph, def: &str, pos: [f32; 2]) -> (
     let index = graph.nodes.len() - 1;
     (id, index, graph.nodes.last_mut())
 }
-pub(super) fn read_graph_outputs(element: XmlNode) -> HashMap<String, (String, u32)> {
+pub(super) fn read_graph_outputs(element: XmlNode) -> HashMap<String, (String, u32, u32)> {
     let mut outputs = HashMap::new();
     for output in child_element(element, "graphOutputs").into_iter().flat_map(|o| children_named(o, "graphoutput")) {
         let identifier = child_value(output, "identifier").unwrap_or("output").to_string();
         let usage = component_usage::read(output);
-        outputs.insert(child_value(output, "uid").unwrap_or("").to_string(), (identifier, usage));
+        let channels = child_value(output, "channels").and_then(|value| value.parse().ok()).unwrap_or(1);
+        outputs.insert(child_value(output, "uid").unwrap_or("").to_string(), (identifier, usage, channels));
     }
     outputs
 }

@@ -144,13 +144,15 @@ impl SbsWriter {
         out.push_str("</compNodes><baseParameters>");
         out.push_str(&param_xml("randomseed", &Value::Int(graph.seed)).unwrap_or_default());
         let base = materialcraft_core::BaseParameters {
+            format: graph.format,
+            format_mode: materialcraft_core::ParameterInheritance::Absolute,
             pixel_ratio: graph.pixel_ratio,
             pixel_ratio_mode: graph.pixel_ratio_mode,
             tiling: graph.tiling,
             tiling_mode: graph.tiling_mode,
             ..Default::default()
         };
-        out.push_str(&super::base_parameters::base_params_xml(&base, self).map_err(FormatError::Io)?);
+        out.push_str(&super::base_parameters::base_params_xml(&base, self, false).map_err(FormatError::Io)?);
         out.push_str("</baseParameters>");
 
         write_canvas_items(out, graph, self);
@@ -235,6 +237,7 @@ impl SbsWriter {
         out.push_str("</graphOutputs>");
         output_uids
     }
+
     pub(super) fn write_implementation(
         &mut self,
         out: &mut String,
@@ -243,7 +246,8 @@ impl SbsWriter {
         ids: NodeIdentifiers,
         package: &Package,
     ) -> Result<()> {
-        let base = base_params_xml(&node.base, self).map_err(FormatError::Io)?;
+        // The reader assigns a native default when a processor omits format
+        let base = base_params_xml(&node.base, self, node.def == "pixel_processor").map_err(FormatError::Io)?;
 
         match node.def.as_str() {
             "output" => {
@@ -295,6 +299,7 @@ impl SbsWriter {
                 if package.is_empty() {
                     return Err(FormatError::Io(format!("missing package reference for `{name}`")));
                 }
+
                 let dependency = self.external_package_uid(&package);
                 let path = text_param(node, "sbs_path", &name);
                 let _ = write!(out, "<compInstance><path v=\"pkg:///{}?dependency={dependency}\"/>{raw_params}", xml_escape(&path));
@@ -323,13 +328,23 @@ impl SbsWriter {
                             );
                             continue;
                         }
-                        out.push_str(&param_xml(sbs_name, value).unwrap_or_default());
+
+                        if filter.sbs == "text"
+                            && *sbs_name == "fontdata"
+                            && let Value::Text(name) = value
+                            && let Some(resource) = package.resource(name)
+                        {
+                            let reference = Value::Text(format!("pkg:///{}?dependency={}", resource.sbs_path(), ids.self_uid));
+                            out.push_str(&param_xml(sbs_name, &reference).unwrap_or_default());
+                        } else {
+                            out.push_str(&param_xml(sbs_name, value).unwrap_or_default());
+                        }
                     }
                     out.push_str(&special_filter_params_xml(filter.sbs, &value_of, ids.self_uid, package));
                     out.push_str("</parameters>");
                     for parameter in ["curve", "gradient"] {
                         if let Some(value) = value_of(parameter) {
-                            out.push_str(&super::parameter_array::write(value, self));
+                            out.push_str(&super::parameter_array::write(value, value_of("color_mode").and_then(Value::as_bool).unwrap_or(true), self));
                         }
                     }
                     if let Some(Value::PatternGraph(graph)) = value_of("pattern") {
@@ -340,6 +355,7 @@ impl SbsWriter {
                 _ => return Err(FormatError::Io(format!("`{def}` has no native primitive mapping; its SBS graph is required"))),
             },
         }
+
         Ok(())
     }
 }

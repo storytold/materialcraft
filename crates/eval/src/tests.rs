@@ -68,6 +68,40 @@ fn processor_tiling_variable_tracks_both_axes_and_invalidates_cached_values() {
 }
 
 #[test]
+fn base_parameter_assignments_reach_pixel_functions_without_leaking_to_other_nodes() {
+    use materialcraft_core::{BaseParameter, FunctionGraph};
+    let mut init = FunctionGraph::default();
+    let value = init.add_constant(Value::Float(0.375));
+    let assign = init.add("set", &[value], Some(Value::Text("prepared_value".into())));
+    let size = init.add_constant(Value::Int2([0; 2]));
+    init.output = Some(init.add("sequence", &[assign, size], None));
+    let mut function = FunctionGraph::default();
+    function.output = Some(function.add("get_float1", &[], Some(Value::Text("prepared_value".into()))));
+    let mut graph = Graph::new("Parameter scope");
+    graph.size = [4; 2];
+    graph.format = materialcraft_core::OutputFormat::F32;
+    let initialized = graph.add_node("pixel_processor", [0.0; 2]);
+    let isolated = graph.add_node("pixel_processor", [100.0; 2]);
+    for id in [initialized, isolated] {
+        graph.node_mut(id).unwrap().params.insert("function".into(), Value::Function(Box::new(function.clone())));
+        graph.node_mut(id).unwrap().params.insert("color_mode".into(), Value::Bool(false));
+    }
+    graph.node_mut(initialized).unwrap().base.functions.insert(BaseParameter::OutputSize, init);
+    let mut package = Package::new("Parameter scope");
+    package.graphs.push(graph);
+    let cache = Mutex::new(Cache::default());
+    for expected in [0.375, 0.625] {
+        package.graphs[0].node_mut(initialized).unwrap().base.functions.get_mut(&BaseParameter::OutputSize).unwrap().nodes[0].value =
+            Some(Value::Float(expected));
+        let cooked = cook(&package, 0, &Options::new(&no_res), &cache);
+        assert_eq!(cooked.nodes[&initialized].error, None);
+        assert!(!cooked.nodes[&initialized].cached);
+        assert!((cooked.image(initialized, 0).unwrap().mean()[0] - expected).abs() < 1e-6);
+        assert!(cooked.nodes[&isolated].error.as_deref().unwrap().contains("undefined variable `prepared_value`"));
+    }
+}
+
+#[test]
 fn hostile_param_is_clamped_before_cooking() {
     let (mut p, noise, _, _) = sample();
     let blur = p.graphs[0].add_node("directional_blur", [150.0, 100.0]);
@@ -388,6 +422,7 @@ fn linear_input_images_and_bitmap_nodes_request_data_reads() {
     let mut p = Package::new("p");
     let mut g = Graph::new("g");
     g.size = [4, 4];
+    g.format = materialcraft_core::OutputFormat::F32;
     let i = g.add_node("input_color", [0.0, 0.0]);
     g.node_mut(i).unwrap().params.insert("identifier".into(), Value::Text("n".into()));
     let b = g.add_node("bitmap", [0.0, 100.0]);
@@ -508,7 +543,7 @@ fn cooked_parameters_retain_values_without_processor_graph_copies() {
 }
 
 #[test]
-fn enabled_generators_use_parent_size_and_inherit_other_input_base_parameters() {
+fn enabled_generators_use_parent_size_and_seed_with_input_image_properties() {
     use materialcraft_core::{BaseParameter, FunctionGraph, OutputFormat, ParameterInheritance, SizeMode, ValueType};
 
     for definition in ["svg", "fx_map"] {
@@ -550,7 +585,7 @@ fn enabled_generators_use_parent_size_and_inherit_other_input_base_parameters() 
             assert_eq!(result.error, None, "{definition}");
             assert_eq!(result.base.size, [64, 32], "{definition}, dynamic: {dynamic}");
             assert_eq!(cooked.image(generator, 0).map(|image| (image.w, image.h)), Some((16, 8)));
-            assert_eq!(result.base.seed, 17);
+            assert_eq!(result.base.seed, 0);
             assert_eq!(result.base.format, OutputFormat::F32);
             assert_eq!(result.base.tiling, [false, true]);
             assert_eq!(result.base.pixel_ratio, 1);
@@ -569,5 +604,52 @@ fn enabled_generators_use_parent_size_and_inherit_other_input_base_parameters() 
             assert_eq!(cooked.nodes[&generator].base.size, cooked.nodes[&background].base.size);
             assert_eq!(cooked.image(generator, 0).map(|image| (image.w, image.h)), Some((8, 16)));
         }
+    }
+}
+
+#[test]
+fn variables_set_by_a_base_parameter_function_reach_the_nodes_other_functions() {
+    use materialcraft_core::{BaseParameter, FunctionGraph};
+
+    let mut size = FunctionGraph::default();
+    let grid = size.add_constant(Value::Int(2));
+    let store = size.add("set", &[grid], Some(Value::Text("grid".into())));
+    let unchanged = size.add_constant(Value::Int2([0, 0]));
+    size.output = Some(size.add("sequence", &[store, unchanged], None));
+
+    let mut roughness = FunctionGraph::default();
+    let read = roughness.add("get_integer1", &[], Some(Value::Text("grid".into())));
+    roughness.output = Some(roughness.add("tofloat", &[read], None));
+
+    let mut graph = Graph::new("Shared variables");
+    let generator = graph.add_node("fx_map", [0.0; 2]);
+    let node = graph.node_mut(generator).unwrap();
+    node.base.functions.insert(BaseParameter::OutputSize, size);
+    node.functions.insert("roughness".into(), roughness);
+    let mut package = Package::new("Shared variables");
+    package.graphs.push(graph);
+
+    let cooked = cook(&package, 0, &Options::new(&no_res), &Mutex::new(Cache::default()));
+    let result = &cooked.nodes[&generator];
+    assert_eq!(result.error, None);
+    assert_eq!(result.parameters.get("roughness"), Some(&Value::Float(2.0)));
+}
+
+#[test]
+fn a_color_parameter_function_may_return_a_gray_level_or_an_rgb_triple() {
+    use materialcraft_core::FunctionGraph;
+
+    for (value, expected) in [(Value::Float(0.25), [0.25, 0.25, 0.25, 1.0]), (Value::Float3([0.1, 0.2, 0.3]), [0.1, 0.2, 0.3, 1.0])] {
+        let mut graph = Graph::new("Color function");
+        let uniform = graph.add_node("uniform", [0.0; 2]);
+        graph.node_mut(uniform).unwrap().functions.insert("color".into(), FunctionGraph::constant(value));
+        let mut package = Package::new("Color function");
+        package.graphs.push(graph);
+
+        let cooked = cook(&package, 0, &Options::new(&no_res), &Mutex::new(Cache::default()));
+        let result = &cooked.nodes[&uniform];
+
+        assert_eq!(result.error, None);
+        assert_eq!(result.parameters.get("color").and_then(Value::as_vec4), Some(expected));
     }
 }

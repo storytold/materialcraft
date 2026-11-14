@@ -54,6 +54,50 @@ fn evaluate(graph: &FunctionGraph) -> Value {
 }
 
 #[test]
+fn function_expansion_allows_several_bounded_bodies_but_still_caps_total_work() {
+    let mut body = FunctionGraph::constant(Value::Float(1.0));
+    let mut output = body.output.unwrap();
+    for _ in 0..2099 {
+        output = body.add("abs", &[output], None);
+    }
+    body.output = Some(output);
+    let mut source = Graph::new("Body");
+    source.function = Some(body);
+    let mut package = Package::new("Expansion");
+    package.graphs.push(source);
+    let caller = |count: usize| {
+        let mut graph = FunctionGraph::default();
+        let mut output = None;
+        for _ in 0..count {
+            let id = graph.add("instance", &[], None);
+            graph.nodes.iter_mut().find(|node| node.id == id).unwrap().instance = Some(GraphInstance {
+                label: String::new(),
+                package: String::new(),
+                graph: "Body".into(),
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                defaults: BTreeMap::new(),
+            });
+            output = Some(output.map_or(id, |previous| graph.add("add", &[previous, id], None)));
+        }
+        graph.output = output;
+        graph
+    };
+    let mut allowed = caller(3);
+    function::resolve_instances(&mut allowed, &package, &BTreeMap::new());
+    assert_eq!(evaluate(&allowed), Value::Float(3.0));
+    let mut oversized = caller(64);
+    function::resolve_instances(&mut oversized, &package, &BTreeMap::new());
+    assert!(function::compile(&oversized, 0).err().unwrap().contains("limit"));
+    // Compiling a pre-resolved tree must enforce its own budget too.
+    let source = allowed.nodes.iter().find_map(|node| node.source.clone()).unwrap();
+    for node in oversized.nodes.iter_mut().filter(|node| node.instance.is_some()) {
+        node.source = Some(source.clone());
+    }
+    assert!(function::compile(&oversized, 0).err().unwrap().contains("limit"));
+}
+
+#[test]
 fn redundant_legacy_function_connectors_preserve_wires_without_repeating_evaluation() {
     let mut package = source();
     let mut graph = Graph::new("Caller");
@@ -141,7 +185,9 @@ fn processor_calls_recook_when_source_changes_and_round_trip_without_copying_sou
     let target_path = directory.join("target.sbs");
     execute(&mut session, "file.saveAs", &json!({"path": source_path})).unwrap();
     let mut target_package = Package::new("Processors");
-    target_package.graphs.push(Graph::new("Processors"));
+    let mut processor_graph = Graph::new("Processors");
+    processor_graph.format = materialcraft_engine::core::OutputFormat::F32;
+    target_package.graphs.push(processor_graph);
     file_cmds::open_bytes(&mut session, &formats::sbs::write_sbs(&target_package).unwrap(), Some(target_path.to_string_lossy().into())).unwrap();
     let document = session.document_id;
     let mut processors = Vec::new();
@@ -207,7 +253,7 @@ fn function_calls_reject_wrong_canvas_cycles_and_outputless_sources() {
 }
 
 #[test]
-fn calls_isolate_variables_and_evaluate_arguments_once() {
+fn calls_evaluate_arguments_once_and_share_the_variables_they_set() {
     let mut package = source();
     let mut source = FunctionGraph::default();
     let input = source.add("get_float1", &[], Some(Value::Text("amount".into())));
@@ -234,7 +280,19 @@ fn calls_isolate_variables_and_evaluate_arguments_once() {
     let total = caller.add("add", &[call, get], None);
     caller.output = Some(caller.add("sequence", &[init, total], None));
     function::resolve_instances(&mut caller, &package, &BTreeMap::new());
-    assert_eq!(evaluate(&caller), Value::Float(6.0));
+    // The Get node ran once, before the argument's Set: 1; the call doubles its argument 2
+    assert_eq!(evaluate(&caller), Value::Float(5.0));
+
+    // A Get node that runs after the call reads what the called graph set, as the library's size helpers rely on
+    let after = caller.add("get_float1", &[], Some(Value::Text("private".into())));
+    let read_after = caller.add("sequence", &[call, after], None);
+    caller.output = Some(caller.add("sequence", &[init, read_after], None));
+    assert_eq!(evaluate(&caller), Value::Float(99.0));
+
+    // A separate Get after the call sees the assignment while the call result stays cached.
+    let total = caller.add("add", &[call, after], None);
+    caller.output = Some(caller.add("sequence", &[init, total], None));
+    assert_eq!(evaluate(&caller), Value::Float(103.0));
 }
 
 #[test]
