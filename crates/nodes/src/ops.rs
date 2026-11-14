@@ -215,7 +215,9 @@ pub fn rgb_to_hsl(c: [f32; 4]) -> [f32; 3] {
         return [0.0, 0.0, l];
     }
     let d = mx - mn;
-    let s = if l > 0.5 { d / (2.0 - mx - mn) } else { d / (mx + mn) };
+    // HDR values can make the denominator zero or negative; saturation is capped at 1 there
+    let den = if l > 0.5 { 2.0 - mx - mn } else { mx + mn };
+    let s = if den <= 1e-7 { 1.0 } else { (d / den).min(1.0) };
     let h = if mx == r {
         (g - b) / d + if g < b { 6.0 } else { 0.0 }
     } else if mx == g {
