@@ -89,3 +89,42 @@ fn closing_one_package_only_prompts_for_that_packages_edits() {
     assert_eq!(app.session.document_id, third);
     assert_eq!(app.session.open_packages().len(), 1);
 }
+
+#[test]
+fn hebrew_unsaved_prompt_isolates_mixed_direction_document_names() {
+    crate::i18n::set_language("he");
+    let title = crate::unsaved::save_changes_prompt("פרויקט_Studio-42.sbs");
+    assert!(title.contains("\u{2068}פרויקט_Studio-42.sbs\u{2069}"), "{title}");
+    assert!(title.starts_with("לשמור שינויים בקובץ"));
+    crate::i18n::set_language("en");
+    let english = crate::unsaved::save_changes_prompt("פרויקט_Studio-42.sbs");
+    assert!(!english.contains('\u{2068}'));
+    assert!(english.starts_with("Save changes to"));
+}
+
+#[test]
+fn hebrew_unsaved_dialog_mirrors_save_discard_cancel_buttons() {
+    use egui_kittest::kittest::{By, Queryable};
+    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+    app.session.modified = true;
+    app.ui.windows.unsaved = Some(crate::unsaved::Guarded::Quit);
+    crate::i18n::set_language("he");
+    let mut harness = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(960.0, 480.0))
+        .allow_missing_glyphs()
+        .build_ui_state(|ui, app: &mut crate::MaterialCraftApp| crate::unsaved::show(app, ui.ctx()), app);
+    harness.run_steps(3);
+    let x = |harness: &egui_kittest::Harness<'_, crate::MaterialCraftApp>, label: &str| {
+        harness.get(By::new().role(egui::accesskit::Role::Button).label(label)).rect().center().x
+    };
+    let save = x(&harness, "שמירה");
+    let discard = x(&harness, "לא לשמור");
+    let cancel = x(&harness, "ביטול");
+    assert!(save > discard && discard > cancel, "RTL actions: save={save}, discard={discard}, cancel={cancel}");
+    crate::i18n::set_language("en");
+    harness.run_steps(3);
+    let save = x(&harness, "Save");
+    let discard = x(&harness, "Discard");
+    let cancel = x(&harness, "Cancel");
+    assert!(save < discard && discard < cancel, "LTR actions: save={save}, discard={discard}, cancel={cancel}");
+}

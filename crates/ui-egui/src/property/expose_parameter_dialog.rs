@@ -14,6 +14,31 @@ pub(crate) struct ExposeParameterDialog {
     focus_identifier: bool,
 }
 
+/// Keep the close control opposite the title while respecting the writing direction.
+/// The layout is injected instead of changing process-global language state in tests.
+fn modal_header(ui: &mut Ui, rtl: bool, title: impl FnOnce(&mut Ui), close: impl FnOnce(&mut Ui)) {
+    let leading = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+    let trailing = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+    ui.with_layout(leading, |ui| {
+        title(ui);
+        ui.with_layout(trailing, close);
+    });
+}
+
+/// Native Hebrew places the primary action on the right and Cancel to its left.
+/// English retains the previous order (Cancel to the right of OK).
+fn modal_actions(ui: &mut Ui, rtl: bool, confirm: impl FnOnce(&mut Ui), cancel: impl FnOnce(&mut Ui)) {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        if rtl {
+            confirm(ui);
+            cancel(ui);
+        } else {
+            cancel(ui);
+            confirm(ui);
+        }
+    });
+}
+
 impl ExposeParameterDialog {
     pub(super) fn open(app: &mut MaterialCraftApp, node: NodeId, parameter: &str, label: &str, value: Option<&Value>) {
         let Some(draft) = app.run("graph.exposed.prepare", json!({"label": label, "default": value, "bind": {"node": node, "param": parameter}})) else {
@@ -43,12 +68,17 @@ impl ExposeParameterDialog {
         let mut cancel = false;
         let response = egui::Modal::new(egui::Id::unique("expose-parameter")).show(context, |ui| {
             ui.set_width(620.0_f32.min((context.content_rect().width() - 48.0).max(240.0)));
-            ui.horizontal(|ui| {
-                ui.heading(tr("Expose Parameter"));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let rtl = crate::i18n::is_rtl();
+            modal_header(
+                ui,
+                rtl,
+                |ui| {
+                    ui.heading(tr("Expose Parameter"));
+                },
+                |ui| {
                     cancel |= crate::widgets::icon_button(ui, egui_phosphor::regular::X, tr("Close expose parameter"), false, 20.0).clicked();
-                });
-            });
+                },
+            );
             ui.separator();
             egui::ScrollArea::vertical().max_height((context.content_rect().height() - 160.0).max(160.0)).show(ui, |ui| {
                 dialog.fields(app, ui);
@@ -60,10 +90,16 @@ impl ExposeParameterDialog {
                 ui.colored_label(Tokens::get(context).danger, tr(error));
             }
             ui.separator();
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                cancel |= ui.add_sized([100.0, 28.0], egui::Button::new(tr("Cancel"))).clicked();
-                confirm = ui.add_enabled(validation.is_none(), egui::Button::new(tr("OK")).min_size(egui::vec2(100.0, 28.0))).clicked();
-            });
+            modal_actions(
+                ui,
+                rtl,
+                |ui| {
+                    confirm = ui.add_enabled(validation.is_none(), egui::Button::new(tr("OK")).min_size(egui::vec2(100.0, 28.0))).clicked();
+                },
+                |ui| {
+                    cancel |= ui.add_sized([100.0, 28.0], egui::Button::new(tr("Cancel"))).clicked();
+                },
+            );
         });
         if cancel || response.should_close() {
             return;
@@ -127,7 +163,7 @@ impl ExposeParameterDialog {
             ui.horizontal(|ui| {
                 ui.add_enabled(
                     false,
-                    egui::Button::new(ValueType::of(&self.input.default).map_or("Value", ValueType::label)).min_size(egui::vec2(160.0, 24.0)),
+                    egui::Button::new(tr(ValueType::of(&self.input.default).map_or("Value", ValueType::label))).min_size(egui::vec2(160.0, 24.0)),
                 );
                 let selected = self.input.editor();
                 let response = egui::ComboBox::from_id_salt("expose-editor").selected_text(tr(selected.label())).width(200.0).show_ui(ui, |ui| {
@@ -213,4 +249,40 @@ fn text(ui: &mut Ui, label: &str, value: &mut String) -> egui::Response {
     let response = ui.add(egui::TextEdit::singleline(value).desired_width(ui.available_width()));
     crate::widgets::name(&response, egui::Role::TextInput, label);
     response
+}
+
+#[cfg(test)]
+mod rtl_layout_tests {
+    use super::{modal_actions, modal_header};
+
+    /// Actual egui rectangles, without modifying the process-global language.
+    #[test]
+    fn exposed_parameter_modal_mirrors_header_and_buttons_for_hebrew() {
+        fn positions(rtl: bool) -> (f32, f32, f32, f32) {
+            use std::cell::Cell;
+            let ctx = egui::Context::default();
+            let title_x = Cell::new(f32::NAN);
+            let close_x = Cell::new(f32::NAN);
+            let confirm_x = Cell::new(f32::NAN);
+            let cancel_x = Cell::new(f32::NAN);
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 280.0))), ..Default::default() };
+            let mut output = ctx.run_ui(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    modal_header(ui, rtl, |ui| title_x.set(ui.label("Expose Parameter").rect.center().x), |ui| close_x.set(ui.button("X").rect.center().x));
+                    modal_actions(ui, rtl, |ui| confirm_x.set(ui.button("OK").rect.center().x), |ui| cancel_x.set(ui.button("Cancel").rect.center().x));
+                });
+            });
+            output.textures_delta.clear();
+            (title_x.get(), close_x.get(), confirm_x.get(), cancel_x.get())
+        }
+
+        let (title_en, close_en, ok_en, cancel_en) = positions(false);
+        assert!(title_en < close_en, "English header must keep title left and close right: {title_en}, {close_en}");
+        assert!(ok_en < cancel_en, "English buttons must keep OK left of Cancel: {ok_en}, {cancel_en}");
+
+        let (title_he, close_he, ok_he, cancel_he) = positions(true);
+        assert!(title_he > close_he, "Hebrew header must put title right and close left: {title_he}, {close_he}");
+        assert!(ok_he > cancel_he, "Hebrew primary action must be to the right: {ok_he}, {cancel_he}");
+        assert!(title_he.is_finite() && close_he.is_finite() && ok_he.is_finite() && cancel_he.is_finite());
+    }
 }

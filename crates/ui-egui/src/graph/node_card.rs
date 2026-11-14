@@ -50,7 +50,15 @@ pub(crate) fn paint(painter: &Painter, bounds: Rect, zoom: f32, label: &str, col
     painter.rect_filled(header, CornerRadius { nw: radius, ne: radius, sw: 0, se: 0 }, color);
     let font = FontId::proportional((10.5 * zoom).clamp(6.0, 16.0));
     let title = crate::widgets::elided(painter, label, font.size, Color32::WHITE, header.width() - 8.0);
-    painter.galley(header.left_center() + vec2(4.0, -title.size().y * 0.5), title, Color32::WHITE);
+    let origin = header_label_origin(header, title.size(), crate::i18n::is_rtl());
+    painter.galley(origin, title, Color32::WHITE);
+}
+
+/// Place the graph-node title at the locale's reading edge without changing
+/// input/output port geometry (which represents wiring direction).
+fn header_label_origin(header: Rect, label_size: egui::Vec2, rtl: bool) -> Pos2 {
+    let x = if rtl { header.right() - 4.0 - label_size.x } else { header.left() + 4.0 };
+    pos2(x, header.center().y - label_size.y * 0.5)
 }
 
 pub(crate) fn outline(painter: &Painter, bounds: Rect, zoom: f32, stroke: Stroke) {
@@ -59,4 +67,23 @@ pub(crate) fn outline(painter: &Painter, bounds: Rect, zoom: f32, stroke: Stroke
 
 pub(crate) fn paint_dot(painter: &Painter, bounds: Rect, color: Color32) {
     painter.circle(bounds.center(), bounds.width() * 0.5, Color32::from_gray(0x50), Stroke::new(1.5, color));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_title_uses_hebrew_reading_edge_without_reversing_port_wiring() {
+        let node = Rect::from_min_size(pos2(10.0, 20.0), vec2(140.0, 80.0));
+        let title = header(node, 1.0);
+        let label = vec2(32.0, 12.0);
+        let ltr = header_label_origin(title, label, false);
+        let rtl = header_label_origin(title, label, true);
+        assert_eq!(ltr.x, 14.0);
+        assert_eq!(rtl.x, 114.0);
+        assert_eq!(ltr.y, rtl.y);
+        assert_eq!(port(node, 0, 1, false, false).x, node.left());
+        assert_eq!(port(node, 0, 1, true, false).x, node.right());
+    }
 }

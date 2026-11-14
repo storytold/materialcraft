@@ -27,6 +27,11 @@ const SIZES: [u32; 7] = [0, 256, 512, 1024, 2048, 4096, 8192];
 /// File name patterns the Pattern menu offers
 const PATTERNS: [&str; 3] = ["$(graph)_$(identifier)", "$(identifier)", "$(graph)_$(usage)"];
 
+/// Put the leading export control on the right in Hebrew while leaving English LTR.
+fn with_export_row<R>(ui: &mut Ui, rtl: bool, add_contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    if rtl { ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), add_contents) } else { ui.horizontal(add_contents) }
+}
+
 /// What the window's buttons asked for this frame
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
@@ -83,7 +88,7 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
 }
 
 fn tabs(ui: &mut Ui, current: &mut ExportTab) {
-    ui.horizontal(|ui| {
+    with_export_row(ui, crate::i18n::is_rtl(), |ui| {
         for tab in ExportTab::ALL {
             let button = ui.selectable_label(*current == tab, tr(tab.label()));
             crate::widgets::name(&button, egui::Role::Tab, tab.label());
@@ -103,7 +108,7 @@ fn from_graph(app: &mut MaterialCraftApp, ui: &mut Ui, settings: &mut ExportSett
     all_or_none(ui, settings, graph.as_slice());
 
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
+    with_export_row(ui, crate::i18n::is_rtl(), |ui| {
         let automatic = ui.checkbox(&mut settings.automatic, tr("Automatic export when outputs change"));
         crate::widgets::name(&automatic, egui::Role::CheckBox, "Automatic export when outputs change");
         if settings.automatic {
@@ -122,7 +127,7 @@ fn batch(app: &mut MaterialCraftApp, ui: &mut Ui, settings: &mut ExportSettings)
 
     ui.add_space(4.0);
     let size = &mut settings.batch;
-    ui.horizontal(|ui| {
+    with_export_row(ui, crate::i18n::is_rtl(), |ui| {
         ui.label(RichText::new(format!("{}:", tr("Output size"))).color(Tokens::get(ui.ctx()).text_dim));
         let (mut width, mut height) = (size.width, size.height);
         size_menu(ui, "Output width", 110.0, &mut width);
@@ -183,7 +188,7 @@ fn image_options(app: &mut MaterialCraftApp, ui: &mut Ui, settings: &mut ExportS
         ui.end_row();
 
         form_label(ui, tr("Pattern"));
-        ui.horizontal(|ui| {
+        with_export_row(ui, crate::i18n::is_rtl(), |ui| {
             let field = ui.add(egui::TextEdit::singleline(&mut settings.pattern).desired_width(width - 34.0));
             crate::widgets::name(&field, egui::Role::TextInput, "Pattern");
             ui.menu_button(icon::CARET_DOWN, |ui| {
@@ -225,7 +230,7 @@ pub(super) fn dropdown(ui: &mut Ui, name: &str, width: f32, selected: impl Into<
 /// A path field with a button that asks for the path; true when the button was clicked
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) fn path_field(ui: &mut Ui, path: &mut String, width: f32) -> bool {
-    ui.horizontal(|ui| {
+    with_export_row(ui, crate::i18n::is_rtl(), |ui| {
         let field = ui.add(egui::TextEdit::singleline(path).desired_width(width - 34.0));
         crate::widgets::name(&field, egui::Role::TextInput, "Destination");
         crate::widgets::icon_button(ui, icon::FOLDER_OPEN, tr("Choose..."), false, 22.0).clicked()
@@ -241,7 +246,7 @@ fn preview_file(settings: &ExportSettings, graph: &Graph) -> Option<String> {
 }
 
 fn all_or_none(ui: &mut Ui, settings: &mut ExportSettings, graphs: &[Graph]) {
-    ui.horizontal(|ui| {
+    with_export_row(ui, crate::i18n::is_rtl(), |ui| {
         for (label, include) in [("All", true), ("None", false)] {
             if ui.add(egui::Button::new(tr(label)).min_size(vec2(100.0, 0.0))).clicked() {
                 for graph in graphs {
@@ -270,7 +275,7 @@ fn footer(ui: &mut Ui, tab: ExportTab) -> Option<Action> {
     };
     let width = (ui.available_width() - 16.0) / 3.0;
     let mut action = None;
-    ui.horizontal(|ui| {
+    with_export_row(ui, crate::i18n::is_rtl(), |ui| {
         if ui.add(crate::widgets::primary_button(ui, tr(export_label)).min_size(vec2(width, 26.0))).clicked() {
             action = Some(Action::Export);
         }
@@ -354,5 +359,38 @@ fn export_images(app: &mut MaterialCraftApp, settings: &ExportSettings, graphs: 
         }
         app.toast(format!("{} {files} {}", tr("Exported"), tr("files")), false);
         true
+    }
+}
+
+#[cfg(test)]
+mod export_row_rtl_tests {
+    use super::with_export_row;
+
+    #[test]
+    fn export_controls_follow_leading_edge_in_hebrew_and_preserve_english_order() {
+        fn positions(rtl: bool) -> (f32, f32) {
+            use std::cell::Cell;
+
+            let ctx = egui::Context::default();
+            let leading_x = Cell::new(f32::NAN);
+            let trailing_x = Cell::new(f32::NAN);
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 180.0))), ..Default::default() };
+            let mut output = ctx.run_ui(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    with_export_row(ui, rtl, |ui| {
+                        leading_x.set(ui.button("Export").rect.center().x);
+                        trailing_x.set(ui.button("Close").rect.center().x);
+                    });
+                });
+            });
+            output.textures_delta.clear();
+            (leading_x.get(), trailing_x.get())
+        }
+
+        let (export_en, close_en) = positions(false);
+        let (export_he, close_he) = positions(true);
+        assert!(export_en.is_finite() && close_en.is_finite() && export_he.is_finite() && close_he.is_finite());
+        assert!(export_en < close_en, "English must keep Export before Close from left to right");
+        assert!(export_he > close_he, "Hebrew must put Export right of Close");
     }
 }

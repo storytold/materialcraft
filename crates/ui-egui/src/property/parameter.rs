@@ -14,6 +14,11 @@ fn typed(value: &Value) -> JsonValue {
     serde_json::to_value(value).unwrap_or(JsonValue::Null)
 }
 
+/// Keep the parameter label on the leading side of the current language.
+fn with_parameter_row<R>(ui: &mut Ui, rtl: bool, add_contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    if rtl { ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), add_contents) } else { ui.horizontal(add_contents) }
+}
+
 /// The literal editor inside a parameter control
 pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, parameter: &ParameterDefinition, current: Value) {
     let tokens = Tokens::get(ui.ctx());
@@ -78,9 +83,11 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
             }
         }
         Value::Color(color) => {
-            ui.horizontal(|ui| {
+            let rtl = crate::i18n::is_rtl();
+            with_parameter_row(ui, rtl, |ui| {
                 ui.label(RichText::new(tr(parameter.label)).color(tokens.text));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let trailing = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+                ui.with_layout(trailing, |ui| {
                     let mut rgb = [color[0], color[1], color[2]];
                     if crate::widgets::color_swatch(ui, &format!("{}-{}", node.0, parameter.id), &mut rgb, 90.0) {
                         set(app, node, parameter.id, json!([rgb[0], rgb[1], rgb[2], color[3]]));
@@ -112,7 +119,7 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
             }
         }
         Value::Text(text) => {
-            ui.horizontal(|ui| {
+            with_parameter_row(ui, crate::i18n::is_rtl(), |ui| {
                 ui.label(RichText::new(tr(parameter.label)).color(tokens.text));
                 let mut draft = text.clone();
                 let response = ui.add(egui::TextEdit::singleline(&mut draft).desired_width(ui.available_width()));
@@ -140,6 +147,57 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
         Value::Function(function) => {
             ui.label(RichText::new(tr(parameter.label)).color(tokens.text));
             crate::windows::function_summary(app, ui, node, parameter.id, &function);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn rects(rtl: bool) -> (f32, f32) {
+        let ctx = egui::Context::default();
+        let mut centers = None;
+        let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0))), ..Default::default() };
+        let mut output = ctx.run_ui(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.set_width(360.0);
+                with_parameter_row(ui, rtl, |ui| {
+                    let label = ui.label("Color").rect;
+                    let trailing = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+                    let swatch = ui.with_layout(trailing, |ui| ui.button("Color swatch")).inner.rect;
+                    centers = Some((label.center().x, swatch.center().x));
+                });
+            });
+        });
+        output.textures_delta.clear();
+        centers.expect("row was laid out")
+    }
+    #[test]
+    fn parameter_color_row_mirrors_physical_label_and_swatch() {
+        let (ltr_label, ltr_swatch) = rects(false);
+        assert!(ltr_label < ltr_swatch, "LTR label should be to the left: {ltr_label} vs {ltr_swatch}");
+        let (rtl_label, rtl_swatch) = rects(true);
+        assert!(rtl_label > rtl_swatch, "Hebrew label should be to the right: {rtl_label} vs {rtl_swatch}");
+    }
+    #[test]
+    fn parameter_text_row_mirrors_label_and_input() {
+        for rtl in [false, true] {
+            let ctx = egui::Context::default();
+            let mut centers = None;
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.set_width(360.0);
+                    with_parameter_row(ui, rtl, |ui| {
+                        let label = ui.label("Text").rect;
+                        let mut text = String::from("demo");
+                        let edit = ui.add(egui::TextEdit::singleline(&mut text).desired_width(ui.available_width())).rect;
+                        centers = Some((label.center().x, edit.center().x));
+                    });
+                });
+            });
+            output.textures_delta.clear();
+            let (label, edit) = centers.expect("layout");
+            assert_eq!(label > edit, rtl, "Text editor row must flip physical ordering for rtl={rtl}: {label}, {edit}");
         }
     }
 }

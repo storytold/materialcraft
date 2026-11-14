@@ -125,108 +125,116 @@ pub fn scene_label(app: &MaterialCraftApp) -> String {
     SCENES.iter().find(|(s, _)| s == id).map_or(id.as_str(), |(_, l)| l).to_string()
 }
 
+/// The menu bar itself defaults to LTR even when the app language is Hebrew.
+/// Override that inner layout so the first menu is anchored on the right in RTL.
+fn with_view3d_menu_direction<R>(ui: &mut Ui, rtl: bool, content: impl FnOnce(&mut Ui) -> R) -> R {
+    if rtl { ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), content).inner } else { content(ui) }
+}
+
 fn menus(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let tk = Tokens::get(ui.ctx());
     egui::Frame::NONE.fill(tk.panel).inner_margin(egui::Margin::symmetric(4, 1)).show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button(tr("Material"), |ui| {
-                let sources = app.session.material_preview.sources(&app.session.pkg);
-                for channel in materialcraft_engine::core::MaterialChannel::ALL {
-                    let source = sources.get(&channel);
-                    let label = source
-                        .and_then(|source| {
-                            let graph = app.session.pkg.graphs.get(source.graph)?;
-                            let node = graph.node(source.node).ok()?;
-                            Some(format!("{} / {}", graph.name, crate::graph::node_label(node)))
-                        })
-                        .unwrap_or_else(|| tr("Unassigned").to_string());
-                    ui.label(format!("{}: {label}", tr(channel.label())));
-                }
-                ui.separator();
-                if ui.button(tr("Clear material assignments")).clicked() {
-                    app.run("view.3d.clear", json!({}));
-                    ui.close();
-                }
-            });
-            ui.menu_button(tr("Scene"), |ui| {
-                for (id, label) in SCENES {
-                    if ui.selectable_label(app.session.view3d.scene == *id, tr(label)).clicked() {
-                        app.run("view.3d", json!({"scene": id}));
+            with_view3d_menu_direction(ui, crate::i18n::is_rtl(), |ui| {
+                ui.menu_button(tr("Material"), |ui| {
+                    let sources = app.session.material_preview.sources(&app.session.pkg);
+                    for channel in materialcraft_engine::core::MaterialChannel::ALL {
+                        let source = sources.get(&channel);
+                        let label = source
+                            .and_then(|source| {
+                                let graph = app.session.pkg.graphs.get(source.graph)?;
+                                let node = graph.node(source.node).ok()?;
+                                Some(format!("{} / {}", graph.name, crate::graph::node_label(node)))
+                            })
+                            .unwrap_or_else(|| tr("Unassigned").to_string());
+                        ui.label(format!("{}: {label}", tr(channel.label())));
+                    }
+                    ui.separator();
+                    if ui.button(tr("Clear material assignments")).clicked() {
+                        app.run("view.3d.clear", json!({}));
                         ui.close();
                     }
-                }
-                ui.separator();
-                if ui.button(tr("Load mesh...")).clicked() {
-                    crate::web_files::load_mesh(app, ui.ctx());
-                    ui.close();
-                }
-                if app.session.custom_mesh.is_some() && ui.selectable_label(app.session.view3d.scene == "custom", scene_label_custom(app)).clicked() {
-                    app.run("view.3d", json!({"scene": "custom"}));
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button(tr("Reset scene")).clicked() {
-                    app.run("view.3d.reset", json!({}));
-                    ui.close();
-                }
-            });
-            ui.menu_button(tr("Camera"), |ui| {
-                for (label, yaw, pitch) in [("Default", 35.0, 25.0), ("Front", 0.0, 0.0), ("Top", 0.0, 89.0), ("Side", 90.0, 0.0)] {
-                    if ui.button(tr(label)).clicked() {
-                        app.run("view.3d", json!({"yaw": yaw, "pitch": pitch, "distance": 3.2, "target": [0.0, 0.0, 0.0]}));
+                });
+                ui.menu_button(tr("Scene"), |ui| {
+                    for (id, label) in SCENES {
+                        if ui.selectable_label(app.session.view3d.scene == *id, tr(label)).clicked() {
+                            app.run("view.3d", json!({"scene": id}));
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button(tr("Load mesh...")).clicked() {
+                        crate::web_files::load_mesh(app, ui.ctx());
                         ui.close();
                     }
-                }
-            });
-            ui.menu_button(tr("Environment"), |ui| {
-                for (id, label) in ENVIRONMENTS {
-                    if ui.selectable_label(app.session.view3d.environment == *id, tr(label)).clicked() {
-                        app.run("view.3d", json!({"environment": id}));
+                    if app.session.custom_mesh.is_some() && ui.selectable_label(app.session.view3d.scene == "custom", scene_label_custom(app)).clicked() {
+                        app.run("view.3d", json!({"scene": "custom"}));
                         ui.close();
                     }
-                }
-                ui.separator();
-                let mut rot = app.session.view3d.env_rotation;
-                if crate::widgets::slider(ui, tr("Rotation"), &mut rot, 0.0..=360.0, 0).changed() {
-                    app.run("view.3d", json!({"envRotation": rot}));
-                }
-                let mut exp = app.session.view3d.exposure;
-                if crate::widgets::slider(ui, tr("Exposure"), &mut exp, -4.0..=4.0, 2).changed() {
-                    app.run("view.3d", json!({"exposure": exp}));
-                }
-            });
-            ui.menu_button(tr("Display"), |ui| {
-                crate::preview_resolution::show(app, ui);
-                ui.separator();
-                let mut flip = app.session.view3d.normal_y_flip;
-                if ui.checkbox(&mut flip, tr("Flip normal map Y (DirectX)")).changed() {
-                    app.run("view.3d", json!({"normalYFlip": flip}));
-                }
-                ui.separator();
-                ui.checkbox(&mut app.view3d.show_env, tr("Environment background"));
-                ui.separator();
-                let mut t = app.session.view3d.transparency;
-                if ui.checkbox(&mut t, tr("Transparency (alpha)")).changed() {
-                    app.run("view.3d", json!({"transparency": t}));
-                }
-                let mut a = app.session.view3d.alpha_view;
-                if ui.checkbox(&mut a, tr("Show alpha channel")).changed() {
-                    app.run("view.3d", json!({"alphaView": a}));
-                }
-            });
-            ui.menu_button(tr("Renderer"), |ui| {
-                let mut depth_percent = app.session.view3d.height_scale * 100.0;
-                if crate::widgets::slider(ui, tr("Height depth (% of the mesh size)"), &mut depth_percent, 0.0..=20.0, 1).changed() {
-                    app.run("view.3d", json!({"heightScale": depth_percent / 100.0}));
-                }
-                let mut level = app.session.view3d.height_level;
-                if crate::widgets::slider(ui, tr("Height level (0 = rises out of the surface)"), &mut level, 0.0..=1.0, 2).changed() {
-                    app.run("view.3d", json!({"heightLevel": level}));
-                }
-                let mut t = app.session.view3d.tiling;
-                if crate::widgets::slider(ui, tr("Tiling"), &mut t, 0.25..=8.0, 2).changed() {
-                    app.run("view.3d", json!({"tiling": t}));
-                }
+                    ui.separator();
+                    if ui.button(tr("Reset scene")).clicked() {
+                        app.run("view.3d.reset", json!({}));
+                        ui.close();
+                    }
+                });
+                ui.menu_button(tr("Camera"), |ui| {
+                    for (label, yaw, pitch) in [("Default", 35.0, 25.0), ("Front", 0.0, 0.0), ("Top", 0.0, 89.0), ("Side", 90.0, 0.0)] {
+                        if ui.button(tr(label)).clicked() {
+                            app.run("view.3d", json!({"yaw": yaw, "pitch": pitch, "distance": 3.2, "target": [0.0, 0.0, 0.0]}));
+                            ui.close();
+                        }
+                    }
+                });
+                ui.menu_button(tr("Environment"), |ui| {
+                    for (id, label) in ENVIRONMENTS {
+                        if ui.selectable_label(app.session.view3d.environment == *id, tr(label)).clicked() {
+                            app.run("view.3d", json!({"environment": id}));
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    let mut rot = app.session.view3d.env_rotation;
+                    if crate::widgets::slider(ui, tr("Rotation"), &mut rot, 0.0..=360.0, 0).changed() {
+                        app.run("view.3d", json!({"envRotation": rot}));
+                    }
+                    let mut exp = app.session.view3d.exposure;
+                    if crate::widgets::slider(ui, tr("Exposure"), &mut exp, -4.0..=4.0, 2).changed() {
+                        app.run("view.3d", json!({"exposure": exp}));
+                    }
+                });
+                ui.menu_button(tr("Display"), |ui| {
+                    crate::preview_resolution::show(app, ui);
+                    ui.separator();
+                    let mut flip = app.session.view3d.normal_y_flip;
+                    if ui.checkbox(&mut flip, tr("Flip normal map Y (DirectX)")).changed() {
+                        app.run("view.3d", json!({"normalYFlip": flip}));
+                    }
+                    ui.separator();
+                    ui.checkbox(&mut app.view3d.show_env, tr("Environment background"));
+                    ui.separator();
+                    let mut t = app.session.view3d.transparency;
+                    if ui.checkbox(&mut t, tr("Transparency (alpha)")).changed() {
+                        app.run("view.3d", json!({"transparency": t}));
+                    }
+                    let mut a = app.session.view3d.alpha_view;
+                    if ui.checkbox(&mut a, tr("Show alpha channel")).changed() {
+                        app.run("view.3d", json!({"alphaView": a}));
+                    }
+                });
+                ui.menu_button(tr("Renderer"), |ui| {
+                    let mut depth_percent = app.session.view3d.height_scale * 100.0;
+                    if crate::widgets::slider(ui, tr("Height depth (% of the mesh size)"), &mut depth_percent, 0.0..=20.0, 1).changed() {
+                        app.run("view.3d", json!({"heightScale": depth_percent / 100.0}));
+                    }
+                    let mut level = app.session.view3d.height_level;
+                    if crate::widgets::slider(ui, tr("Height level (0 = rises out of the surface)"), &mut level, 0.0..=1.0, 2).changed() {
+                        app.run("view.3d", json!({"heightLevel": level}));
+                    }
+                    let mut t = app.session.view3d.tiling;
+                    if crate::widgets::slider(ui, tr("Tiling"), &mut t, 0.25..=8.0, 2).changed() {
+                        app.run("view.3d", json!({"tiling": t}));
+                    }
+                });
             });
         });
     });
@@ -689,5 +697,38 @@ mod move_level_tests {
         assert_eq!(next_move_level(3, 80.0), 2);
         assert_eq!(next_move_level(0, 500.0), 0, "a very slow machine stays at one ray at half size");
         assert_eq!(next_move_level(9, 5.0), 3, "a stale level is clamped");
+    }
+}
+
+#[cfg(test)]
+mod hebrew_view3d_menu_layout_tests {
+    use super::with_view3d_menu_direction;
+
+    fn menu_centers(rtl: bool) -> (f32, f32) {
+        let ctx = egui::Context::default();
+        let mut centers = None;
+        let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 600.0))), ..Default::default() };
+        let mut output = ctx.run_ui(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
+                    with_view3d_menu_direction(ui, rtl, |ui| {
+                        let first = ui.button("Material").rect.center().x;
+                        let next = ui.button("Scene").rect.center().x;
+                        centers = Some((first, next));
+                    });
+                });
+            });
+        });
+        output.textures_delta.clear();
+        centers.expect("two real egui menu hitboxes")
+    }
+
+    #[test]
+    fn hebrew_menu_mirrors_hitboxes_while_english_stays_ltr() {
+        let (en_first, en_second) = menu_centers(false);
+        let (he_first, he_second) = menu_centers(true);
+        assert!(en_first < en_second, "English menu order changed: {en_first} / {en_second}");
+        assert!(he_first > he_second, "Hebrew menu not mirrored: {he_first} / {he_second}");
+        assert!(he_first > en_first + 200.0, "Hebrew menu not anchored at right edge");
     }
 }

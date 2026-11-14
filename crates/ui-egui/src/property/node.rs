@@ -1,6 +1,6 @@
 use super::{input::input_editor, parameter::param_row, section};
 use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
-use egui::{Rect, RichText, Ui, vec2};
+use egui::{RichText, Ui, vec2};
 use egui_phosphor::regular as icon;
 use materialcraft_engine::core::{BaseParameter, ExposedParameter, ParameterInheritance, Value};
 use materialcraft_engine::nodes::ParameterDescriptor;
@@ -10,12 +10,17 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft
     let tokens = Tokens::get(ui.ctx());
     let definition = materialcraft_engine::nodes::find(&node.def);
 
-    // Header: label (renamable) and description
-    ui.horizontal(|ui| {
-        ui.painter().rect_filled(Rect::from_min_size(ui.cursor().min + vec2(0.0, 2.0), vec2(4.0, 16.0)), 1.0, crate::graph::header_color(&node.def));
+    // Keep the editable name and its color accent at the Hebrew reading edge.
+    // Reserve the accent's own space so it cannot overlap the input in either direction.
+    let rtl = crate::i18n::is_rtl();
+    ui.with_layout(node_header_layout(rtl), |ui| {
+        let (accent_rect, _) = ui.allocate_exact_size(vec2(4.0, 16.0), egui::Sense::hover());
+        ui.painter().rect_filled(accent_rect.translate(vec2(0.0, 2.0)), 1.0, crate::graph::header_color(&node.def));
         ui.add_space(8.0);
         let mut label = if node.label.is_empty() { crate::graph::node_label(node) } else { node.label.clone() };
-        let response = ui.add(egui::TextEdit::singleline(&mut label).desired_width(ui.available_width() - 4.0).font(egui::TextStyle::Heading));
+        let editor = egui::TextEdit::singleline(&mut label).desired_width((ui.available_width() - 4.0).max(20.0)).font(egui::TextStyle::Heading);
+        let editor = if rtl { editor.align(egui::Align2::RIGHT_CENTER) } else { editor };
+        let response = ui.add(editor);
         crate::widgets::name(&response, egui::Role::TextInput, "Node label");
         if response.changed() {
             app.run("graph.node.rename", json!({"id": node.id.0, "label": label}));
@@ -73,6 +78,11 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft
             }
         }
     });
+}
+
+/// Choose the Native inspector node editor's reading order without changing its command ID.
+fn node_header_layout(rtl: bool) -> egui::Layout {
+    if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) }
 }
 
 fn base_params(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft_engine::core::Node) {
@@ -195,6 +205,12 @@ mod tests {
         kittest::{By, Queryable},
     };
     use materialcraft_engine::core::NodeId;
+
+    #[test]
+    fn node_header_uses_the_locale_reading_direction() {
+        assert_eq!(node_header_layout(false).main_dir(), egui::Direction::LeftToRight);
+        assert_eq!(node_header_layout(true).main_dir(), egui::Direction::RightToLeft);
+    }
 
     #[test]
     fn instance_properties_show_current_source_values_and_local_overrides() {
