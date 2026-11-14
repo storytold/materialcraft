@@ -89,7 +89,8 @@ impl Image {
 
     /// Generate from normalized coordinates (pixel centers, 0..1).
     pub fn generate_uv(w: u32, h: u32, kind: Kind, f: impl Fn(f32, f32) -> [f32; 4] + Sync) -> Image {
-        let (iw, ih) = (1.0 / w.max(1) as f32, 1.0 / h.max(1) as f32);
+        let (w, h) = clamp_size(w, h);
+        let (iw, ih) = (1.0 / w as f32, 1.0 / h as f32);
         Image::generate(w, h, kind, |x, y| f((x as f32 + 0.5) * iw, (y as f32 + 0.5) * ih))
     }
 
@@ -328,6 +329,14 @@ pub fn split_resource_key(key: &str) -> (&str, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generate_uv_covers_full_range_when_clamped() {
+        let img = Image::generate_uv(16384, 1, Kind::Gray, |u, _| [u, 0.0, 0.0, 0.0]);
+        assert_eq!(img.w, MAX_SIDE);
+        let last = img.data[img.w as usize - 1];
+        assert!(last > 0.99, "last pixel u = {last}");
+    }
 
     #[test]
     fn sample_survives_huge_coordinates() {
