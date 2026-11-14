@@ -3,7 +3,7 @@
 //! none) generated UVs.
 
 use materialcraft_geom::Mesh;
-use materialcraft_geom::glam::{Vec2, Vec3};
+use materialcraft_geom::glam::{Mat4, Vec2, Vec3};
 
 use crate::{FormatError, Result};
 
@@ -180,9 +180,10 @@ fn gltf(bytes: &[u8]) -> Result<Mesh> {
     let mut uvs = Vec::new();
     let mut indices = Vec::new();
     let mut all_normals = true;
+    let world = world_matrices(&doc);
     for node in doc.nodes() {
         let Some(mesh) = node.mesh() else { continue };
-        let m = materialcraft_geom::glam::Mat4::from_cols_array_2d(&node.transform().matrix());
+        let Some(&m) = world.get(node.index()).and_then(Option::as_ref) else { continue };
         for prim in mesh.primitives() {
             if prim.mode() != gltf::mesh::Mode::Triangles {
                 continue;
@@ -232,6 +233,34 @@ fn gltf(bytes: &[u8]) -> Result<Mesh> {
     }
     let normals = (all_normals && normals.len() == positions.len()).then_some(normals);
     finish(positions, normals, uvs, indices)
+}
+
+/// World matrix of every node, indexed by node index: each node's local transform composed with
+/// those of its ancestors. Walks down from the nodes no other node lists as a child, with an
+/// explicit stack, and visits each node at most once, so cycles or shared children in a hostile
+/// file cannot loop or duplicate geometry. Nodes reached only through a cycle stay `None`.
+fn world_matrices(doc: &gltf::Document) -> Vec<Option<Mat4>> {
+    let count = doc.nodes().len();
+    let mut is_child = vec![false; count];
+    for node in doc.nodes() {
+        for child in node.children() {
+            if let Some(c) = is_child.get_mut(child.index()) {
+                *c = true;
+            }
+        }
+    }
+    let mut world: Vec<Option<Mat4>> = vec![None; count];
+    let mut stack: Vec<(gltf::Node, Mat4)> = doc.nodes().filter(|n| !is_child.get(n.index()).copied().unwrap_or(false)).map(|n| (n, Mat4::IDENTITY)).collect();
+    while let Some((node, parent)) = stack.pop() {
+        let Some(slot) = world.get_mut(node.index()) else { continue };
+        if slot.is_some() {
+            continue;
+        }
+        let m = parent * Mat4::from_cols_array_2d(&node.transform().matrix());
+        *slot = Some(m);
+        stack.extend(node.children().map(|c| (c, m)));
+    }
+    world
 }
 
 /// Box-projected UVs: each vertex takes the plane of its normal's largest axis.
@@ -421,6 +450,19 @@ mod tests {
         assert!(load_mesh("x.glb", b"glTF garbage").is_err());
         assert!(load_mesh("x.fbx", b"").is_err());
         assert!(load_mesh("x.obj", b"v 0 0 0\nf 1 2 3\n").is_err());
+    }
+
+    #[test]
+    fn nested_node_inherits_parent_transform() {
+        let json = String::from_utf8(gltf_json(QUAD, None, &[0, 1, 2, 0, 2, 3])).unwrap();
+        let json = json
+            .replace(r#""scenes":[{"nodes":[0]}]"#, r#""scenes":[{"nodes":[0,1]}]"#)
+            .replace(r#""nodes":[{"mesh":0}]"#, r#""nodes":[{"mesh":0},{"translation":[100,0,0],"children":[2]},{"mesh":0}]"#);
+        let m = load_mesh("x.gltf", json.as_bytes()).unwrap();
+        assert_eq!(m.triangle_count(), 4);
+        let (lo, hi) = m.bounds();
+        let e = hi - lo;
+        assert!(e.x > 10.0 * e.y, "extent {e:?}");
     }
 
     #[test]
