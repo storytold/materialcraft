@@ -2,7 +2,7 @@ use super::embedded::{base64_engine, decode_embedded, encode_embedded};
 use super::read::{is_sbs, read_sbs};
 use super::write::write_sbs;
 use base64::Engine as _;
-use materialcraft_core::{Frame, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, Package, Resource, ResourceBytes, SizeMode, Value, missing_ports};
+use materialcraft_core::{Frame, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, OutputFormat, Package, Resource, ResourceBytes, SizeMode, Value, missing_ports};
 
 fn no_linked_files(_: &str) -> Option<Vec<u8>> {
     None
@@ -400,4 +400,28 @@ fn input_usage_defaults_and_unknown_metadata_stay_unclassified() {
             assert_eq!(node.params.get("usage"), Some(&Value::Enum(ComponentUsage::ANY_INDEX)));
         }
     }
+}
+
+#[test]
+fn graph_output_format_survives_a_round_trip() {
+    for format in [OutputFormat::U8, OutputFormat::U16, OutputFormat::F16, OutputFormat::F32] {
+        let mut pkg = Package::new("Formats");
+        let mut graph = Graph::new("Wall");
+        graph.format = format;
+        pkg.graphs.push(graph);
+        let back = read_sbs(&write_sbs(&pkg).unwrap(), "formats.sbs", &no_linked_files).unwrap();
+        assert_eq!(back.pkg.graphs[0].format, format);
+    }
+}
+
+#[test]
+fn graph_without_a_saved_format_loads_as_16_bit() {
+    let mut pkg = Package::new("Formats");
+    pkg.graphs.push(Graph::new("Wall"));
+    let text = String::from_utf8(write_sbs(&pkg).unwrap()).unwrap();
+    let start = text.find("<baseParameters>").unwrap() + "<baseParameters>".len();
+    let end = text.find("</baseParameters>").unwrap();
+    let stripped = format!("{}{}", &text[..start], &text[end..]);
+    let back = read_sbs(stripped.as_bytes(), "formats.sbs", &no_linked_files).unwrap();
+    assert_eq!(back.pkg.graphs[0].format, OutputFormat::U16);
 }
