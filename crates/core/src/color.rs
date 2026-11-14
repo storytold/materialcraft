@@ -3,10 +3,7 @@ pub fn parse_color(j: &serde_json::Value) -> Option<[f32; 4]> {
     use serde_json::Value as J;
     match j {
         J::Array(a) if a.len() >= 3 => {
-            let v: Vec<f32> = a.iter().take(4).filter_map(|x| x.as_f64().map(|x| x as f32)).filter(|x| x.is_finite()).collect();
-            if v.len() < 3 {
-                return None;
-            }
+            let v: Vec<f32> = a.iter().take(4).map(|x| x.as_f64().map(|x| x as f32).filter(|x| x.is_finite())).collect::<Option<_>>()?;
             Some([v[0], v[1], v[2], v.get(3).copied().unwrap_or(1.0)])
         }
         J::Number(n) => n.as_f64().map(|v| v as f32).filter(|v| v.is_finite()).map(|v| [v, v, v, 1.0]),
@@ -31,4 +28,19 @@ pub fn srgb_to_linear(v: f32) -> f32 {
 /// sRGB transfer function, linear → encoded
 pub fn linear_to_srgb(v: f32) -> f32 {
     if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.max(0.0).powf(1.0 / 2.4) - 0.055 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_color;
+    use serde_json::json;
+
+    #[test]
+    fn invalid_array_element_rejects_colour() {
+        assert_eq!(parse_color(&json!([1.0, null, 0.5, 0.25])), None);
+        assert_eq!(parse_color(&json!([1.0, "x", 0.5])), None);
+        assert_eq!(parse_color(&json!([1.0, 0.5, 0.25, null])), None);
+        assert_eq!(parse_color(&json!([1.0, 0.5, 0.25])), Some([1.0, 0.5, 0.25, 1.0]));
+        assert_eq!(parse_color(&json!([1.0, 0.5, 0.25, 0.5])), Some([1.0, 0.5, 0.25, 0.5]));
+    }
 }
