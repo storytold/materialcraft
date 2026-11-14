@@ -71,7 +71,11 @@ pub mod wire_cmds;
 pub mod wire_swap;
 
 pub use commands::{CommandSpec, command_specs, execute, find};
-pub use session::{CameraPrefs, Session, View2d, View3d, WARNING_PREFIX};
+pub use session::{CameraPrefs, Session, View3d, WARNING_PREFIX};
+mod histogram_channel;
+mod view2d;
+pub use histogram_channel::HistogramChannel;
+pub use view2d::View2d;
 mod clip;
 mod color_space;
 mod connection_commands;

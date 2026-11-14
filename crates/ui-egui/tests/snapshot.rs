@@ -31,6 +31,9 @@ mod menu;
 #[path = "snapshot/node_search.rs"]
 mod node_search;
 
+#[path = "snapshot/view2d.rs"]
+mod view2d;
+
 use std::time::Duration;
 
 use egui::vec2;

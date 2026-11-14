@@ -14,3 +14,4 @@ mod resolution;
 mod search;
 mod slider_round_values;
 mod unsaved_changes;
+mod view2d;

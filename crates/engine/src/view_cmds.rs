@@ -23,7 +23,15 @@ pub const ENVIRONMENTS: &[(&str, &str)] = &[("studio", "Studio"), ("sunset", "Su
 
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        cmd!("view.2d", "View output in 2D view", [], None, "{node?, port?, tiled?, channel? (rgba|r|g|b|a), histogram?}", has_graph, view2d),
+        cmd!(
+            "view.2d",
+            "View output in 2D view",
+            [],
+            None,
+            "{node?, port?, channel? (rgba|r|g|b|a), tiled? (repeat the image across the view), checkerboard? (behind transparent pixels), premultiplied? (colors already multiplied by alpha), srgb? (values are sRGB encoded; false shows them as linear), physicalSize? (proportions of the graph's physical size), maintainZoom? (keep the zoom when the image size changes), uv? (overlay the 3D mesh's UV layout), information? (pixel readout panel), sampler? ([x, y] in 0..1 from the top-left corner, or null), histogram?, histogramChannel? (luminance|red|green|blue|rgb|alpha), histogramBits? (8|16|32, 0 follows the image), histogramSqrt?, histogramSelection? ([low, high] in 0..1, or null), background? (image file path drawn behind transparent pixels, or null)}",
+            has_graph,
+            view2d
+        ),
         cmd!(
             "view.3d",
             "3D view settings",
@@ -60,30 +68,18 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
     ]
 }
 
-fn view2d(s: &mut Session, p: &J) -> Result<J> {
-    // Validate the channel before applying any part of the request.
-    let channel = strp(p, "channel");
-    if channel.is_some_and(|c| !["rgba", "r", "g", "b", "a"].contains(&c)) {
-        return Err(bad("view.2d", "`channel` is rgba, r, g, b or a"));
-    }
-    if let Some(n) = u64p(p, "node") {
-        s.graph()?.node(NodeId(n)).map_err(|_| bad("view.2d", format!("no node {n}")))?;
-        s.view2d.node = Some(NodeId(n));
-        s.view2d.port = 0;
-    }
-    if let Some(port) = u64p(p, "port") {
-        s.view2d.port = port as usize;
-    }
-    if let Some(t) = boolp(p, "tiled") {
-        s.view2d.tiled = t;
-    }
-    if let Some(h) = boolp(p, "histogram") {
-        s.view2d.histogram = h;
-    }
-    if let Some(c) = channel {
-        s.view2d.channel = c.into();
-    }
-    Ok(serde_json::to_value(&s.view2d).unwrap_or(J::Null))
+fn view2d(session: &mut Session, params: &J) -> Result<J> {
+    let node = match u64p(params, "node") {
+        Some(id) => {
+            session.graph()?.node(NodeId(id)).map_err(|_| bad("view.2d", format!("no node {id}")))?;
+            Some(NodeId(id))
+        }
+        None => None,
+    };
+
+    // The settings are replaced as a whole, so a rejected parameter leaves all of them unchanged
+    session.view2d = session.view2d.updated(node, params)?;
+    Ok(serde_json::to_value(&session.view2d).unwrap_or(J::Null))
 }
 
 fn view3d(s: &mut Session, p: &J) -> Result<J> {

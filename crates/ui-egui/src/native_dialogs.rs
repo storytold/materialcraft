@@ -30,6 +30,8 @@ pub(crate) enum Then {
         document: u64,
     },
     SaveImage(Box<Image>),
+    /// The image file the 2D view draws behind transparent pixels
+    BackgroundImage,
     /// The parameters `graph.input.bind` runs with, before the path
     BindInput(Value, GraphRef),
 }
@@ -155,6 +157,9 @@ fn chosen(app: &mut MaterialCraftApp, then: Then, path: &std::path::Path) {
             }
         }
         Then::SaveImage(image) => save_image(app, &image, path),
+        Then::BackgroundImage => {
+            app.run("view.2d", json!({"background": picked}));
+        }
         Then::BindInput(mut parameters, target) => {
             if GraphRef::active(app) != target {
                 not_applied(app);

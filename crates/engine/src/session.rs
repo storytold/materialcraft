@@ -10,7 +10,7 @@ use materialcraft_image::Image;
 use serde::{Deserialize, Serialize};
 
 use crate::snapshot::Snapshot;
-use crate::{AnnotationSelection, Clip, EngineError, Result};
+use crate::{AnnotationSelection, Clip, EngineError, Result, View2d};
 
 /// The 3D view's scene and look.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -96,20 +96,6 @@ impl CameraPrefs {
         let limit = self.sanitized().pan_limit;
         t.map(|v| if v.is_finite() { v.clamp(-limit, limit) } else { 0.0 })
     }
-}
-
-/// What the 2D view shows.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct View2d {
-    pub node: Option<NodeId>,
-    pub port: usize,
-    /// Repeat the image 3×3 to check tiling.
-    pub tiled: bool,
-    /// `rgba`, `r`, `g`, `b`, `a`.
-    pub channel: String,
-    /// Overlay the luminance/channel histogram.
-    pub histogram: bool,
 }
 
 /// The prefix of warning lines in [`Session::log`].
@@ -199,7 +185,7 @@ impl Session {
             selection: Vec::new(),
             annotation_selection: None,
             annotation_target: Default::default(),
-            view2d: View2d { channel: "rgba".into(), ..View2d::default() },
+            view2d: View2d::default(),
             view3d: View3d::default(),
             preview_size: Some(512),
             camera: CameraPrefs::default(),
