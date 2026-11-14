@@ -13,7 +13,8 @@ output and a value output.
 
 Use the library or Space search to add primitives and drag between ports to connect them.
 Space, Tab or a double-click on empty canvas opens the node search in graphs and Function canvases
-alike; a Function canvas lists the operations it takes, then the library's functions. Drop a wire
+alike; a Function canvas lists the operations it takes, then the library's functions. With nothing typed,
+the search lists the up to 8 nodes you picked most recently first, newest first. Drop a wire
 from an output or an input on empty canvas to search for a node that connects to it. The graph
 toolbar's second row adds every atomic node with one click; in a Function canvas it adds the common
 function nodes, wired from the selected node when it has an input.
