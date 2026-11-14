@@ -22,6 +22,19 @@ fn first_escape_clears_the_text_and_second_closes_the_popup() {
     assert!(popup_open(&h), "the first Escape must keep the popup open");
     assert!(super::label_position(&h, "Bitmap").is_some(), "the full list is back");
 
+    // The box keeps focus: the next keystrokes land in it, not in the graph
+    h.event(Event::Text("grad".into()));
+    h.step();
+    h.run_steps(3);
+    assert!(super::label_position(&h, "Bitmap").is_none(), "typing after Escape filters the list again");
+    assert!(h.get_by_label("Search nodes").is_focused(), "the search box keeps focus");
+    super::save_snapshot(&mut h, "escape-retyped");
+
+    h.key_press(Key::Escape);
+    h.step();
+    h.run_steps(3);
+    assert!(popup_open(&h), "clearing the retyped text keeps the popup open");
+
     h.key_press(Key::Escape);
     h.step();
     h.run_steps(3);
@@ -50,4 +63,12 @@ fn escape_in_the_library_filter_clears_it() {
     super::save_snapshot(&mut h, "library-cleared");
 
     assert_eq!(h.state().ui.library_search, "");
+    assert!(h.get_by_label("Search the library").is_focused(), "the library filter keeps focus");
+
+    // The next keystrokes go into the same field
+    h.event(Event::Text("grad".into()));
+    h.step();
+    h.run_steps(3);
+    assert_eq!(h.state().ui.library_search, "grad");
+    super::save_snapshot(&mut h, "library-retyped");
 }
