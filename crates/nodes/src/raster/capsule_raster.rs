@@ -23,7 +23,8 @@ impl CapsuleRaster {
             }
             let span = |start: f32, end: f32, cell: f32| {
                 let first = ((start.min(end) - reach) / cell).floor() as i64;
-                (first, (((start.max(end) + reach) / cell).floor() as i64).min(first + grid_side as i64 - 1))
+                let last = ((start.max(end) + reach) / cell).floor() as i64;
+                if tile { (first, last.min(first + grid_side as i64 - 1)) } else { (first.max(0), last.min(grid_side as i64 - 1)) }
             };
 
             let ((x0, x1), (y0, y1)) = (span(segment.start[0], segment.end[0], cell_size[0]), span(segment.start[1], segment.end[1], cell_size[1]));
@@ -58,5 +59,17 @@ impl CapsuleRaster {
             best = best.max((self.radius - d + 0.5).clamp(0.0, 1.0) * segment.weight);
         }
         best
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_offimage_segment_nontiled_covers_right_part() {
+        let segment = CapsuleSegment { start: [-100.0, 128.0], end: [1000.0, 128.0], weight: 1.0 };
+        let raster = CapsuleRaster::new(vec![segment], 2.0, 256, 256, false);
+        assert!(raster.coverage(240.5, 128.5) > 0.9);
     }
 }
