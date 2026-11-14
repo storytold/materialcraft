@@ -37,7 +37,27 @@ impl crate::Session {
     }
 }
 
+/// Reads one document-relative path for an automation session (the Workspace roots), or says why not.
+pub type ExternalRead<'a> = &'a dyn Fn(&str) -> std::result::Result<Vec<u8>, String>;
+
+/// Resources of the package at `path`, read through `read` only: plain relative names below the document's folder.
+pub fn confined_linked<'a>(path: &str, read: ExternalRead<'a>) -> impl Fn(&str) -> Option<Vec<u8>> + 'a {
+    let folder = path.replace('\\', "/").rsplit_once('/').map(|(folder, _)| format!("{folder}/")).unwrap_or_default();
+    move |relative: &str| {
+        let relative = relative.trim().replace('\\', "/");
+        let plain = !relative.is_empty() && !relative.contains(':') && !relative.starts_with('/');
+        let inside = relative.split('/').all(|part| !part.is_empty() && part != "." && part != "..");
+        (plain && inside).then(|| read(&format!("{folder}{relative}")).ok()).flatten()
+    }
+}
+
 pub(crate) fn load(package: &mut Package) -> Vec<String> {
+    load_with(package, None)
+}
+
+/// Resolve `.sbs` dependencies. Interactive opens (`external` is `None`) follow any path the document names, as
+/// Substance packages do; automation passes `external` so dependencies outside its Workspace roots are not read.
+pub(crate) fn load_with(package: &mut Package, external: Option<ExternalRead>) -> Vec<String> {
     use std::{collections::BTreeSet, sync::Arc};
     let references = |package: &Package| {
         package
@@ -68,11 +88,17 @@ pub(crate) fn load(package: &mut Package) -> Vec<String> {
                 warnings.extend(read.warnings);
                 return Ok(read.pkg);
             }
+            if let Some(read) = external {
+                let bytes = read(&path)?;
+                let read = materialcraft_formats::sbs::read_sbs(&bytes, &path, &confined_linked(&path, read)).map_err(|error| error.to_string())?;
+                warnings.extend(read.warnings);
+                return Ok(read.pkg);
+            }
             #[cfg(target_arch = "wasm32")]
             return Err("external file is unavailable in the browser".into());
             #[cfg(not(target_arch = "wasm32"))]
             {
-                let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+                let bytes = materialcraft_formats::read_capped(&path, materialcraft_formats::MAX_FILE).map_err(|error| error.to_string())?;
                 let read = materialcraft_formats::sbs::read_sbs(&bytes, &path, &crate::file_cmds::linked_files(&path)).map_err(|error| error.to_string())?;
                 warnings.extend(read.warnings);
                 Ok(read.pkg)

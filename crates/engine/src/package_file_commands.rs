@@ -55,7 +55,7 @@ fn read_package(path: &str) -> Result<Vec<u8>> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        std::fs::read(path).map_err(|error| bad("file.reload", error.to_string()))
+        materialcraft_formats::read_capped(path, materialcraft_formats::MAX_FILE).map_err(|error| bad("file.reload", error.to_string()))
     }
     #[cfg(target_arch = "wasm32")]
     Err(bad("file.reload", "reopen local browser files with the file picker"))

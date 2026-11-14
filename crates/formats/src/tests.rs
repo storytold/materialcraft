@@ -50,3 +50,62 @@ fn decode_matches_previous_values() {
     let want = srgb_to_linear(128.0 / 255.0);
     assert!((img.get(1, 1, false)[0] - want).abs() < 1e-4);
 }
+
+#[test]
+fn safe_file_name_blocks_windows_device_names() {
+    for (name, want) in [
+        ("CON", "_CON"),
+        ("nul.png", "_nul.png"),
+        ("com1", "_com1"),
+        ("LPT9.txt", "_LPT9.txt"),
+        ("aux. ", "_aux"),
+        ("con.", "_con"),
+        ("COM0", "COM0"),
+        ("console", "console"),
+    ] {
+        assert_eq!(safe_file_name(name), want, "{name}");
+    }
+    assert_eq!(safe_file_name("name. . "), "name");
+    assert_eq!(safe_file_name("...").as_str(), "resource");
+    assert_eq!(safe_file_name(&"a".repeat(5000)).len(), 100);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn read_capped_bounds_size_and_kind() {
+    let dir = std::env::temp_dir().join(format!("mc-read-capped-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("f.bin");
+    std::fs::write(&file, b"12345").unwrap();
+    assert_eq!(read_capped(&file, 5).unwrap(), b"12345");
+    assert_eq!(read_capped(&file, u64::MAX).unwrap(), b"12345", "an unbounded cap must not overflow");
+    assert!(read_capped(&file, 4).is_err());
+    assert!(read_capped(&dir, 100).is_err(), "directories are not regular files");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn project_archive_entry_count_is_bounded() {
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for i in 0..100_001 {
+        zip.start_file(format!("f{i}"), stored).unwrap();
+    }
+    let bytes = zip.finish().unwrap().into_inner();
+    let error = project::read(&bytes, "x").unwrap_err().to_string();
+    assert!(error.contains("too many entries"), "{error}");
+}
+
+#[test]
+fn a_long_name_keeps_its_extension_and_stays_distinct() {
+    let long = format!("{}.png", "a".repeat(120));
+    let cut = safe_file_name(&long);
+    assert!(cut.ends_with(".png") && cut.chars().count() <= 100, "{cut}");
+    assert_eq!(cut, safe_file_name(&long), "stable");
+    // two names sharing their first 100 characters stay apart
+    let (a, b) = (safe_file_name(&format!("{}x.png", "p".repeat(100))), safe_file_name(&format!("{}y.png", "p".repeat(100))));
+    assert_ne!(a, b);
+    assert!(a.ends_with(".png") && b.ends_with(".png"));
+    // a reserved name is still prefixed, and a short name is untouched
+    assert_eq!(safe_file_name("ok.png"), "ok.png");
+}

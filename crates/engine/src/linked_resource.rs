@@ -32,7 +32,7 @@ pub fn reader(path: &str) -> impl Fn(&str) -> Option<Vec<u8>> + use<> {
                 return None;
             }
 
-            std::fs::read(file).ok()
+            materialcraft_formats::read_capped(file, materialcraft_formats::MAX_FILE).ok()
         }
         #[cfg(target_arch = "wasm32")]
         None

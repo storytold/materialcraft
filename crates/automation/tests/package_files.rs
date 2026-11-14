@@ -85,3 +85,54 @@ fn both_formats_save_and_reopen_using_separate_workspace_capabilities() {
     drop(app);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+fn calls(dependency: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?><package><identifier v="Main"/><dependencies><dependency><filename v="{dependency}"/><uid v="7"/></dependency></dependencies><content><graph><identifier v="G"/>
+        <compNodes><compNode><uid v="1"/><GUILayout><gpos v="0 0 0"/></GUILayout><compOutputs><compOutput><uid v="11"/><comptype v="2"/></compOutput></compOutputs>
+        <compImplementation><compInstance><path v="pkg:///dep_graph?dependency=7"/><parameters/>
+        <outputBridgings><outputBridging><uid v="11"/><identifier v="out"/></outputBridging></outputBridgings></compInstance></compImplementation></compNode></compNodes></graph></content></package>"#
+    )
+}
+
+#[test]
+fn headless_opens_do_not_follow_dependencies_outside_the_workspace() {
+    let base = std::env::temp_dir().join(format!("materialcraft-headless-deps-{}", std::process::id()));
+    let (root, outside) = (base.join("root"), base.join("outside"));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let dep = materialcraft_engine::formats::sbs::write_sbs(&Package::new("Dep")).unwrap();
+    std::fs::write(outside.join("dep.sbs"), &dep).unwrap();
+    std::fs::write(root.join("inside.sbs"), &dep).unwrap();
+    let absolute = outside.join("dep.sbs").to_string_lossy().into_owned();
+    std::fs::write(root.join("hostile.sbs"), calls(&absolute)).unwrap();
+    std::fs::write(root.join("up.sbs"), calls("../outside/dep.sbs")).unwrap();
+    std::fs::write(root.join("fine.sbs"), calls("inside.sbs")).unwrap();
+
+    let open = |name: &str| {
+        let workspace = AuthorizedWorkspace::new(Some(&root), Some(&root)).unwrap();
+        let mut app = Headless::new(Session::new(Package::new("Empty")), Filesystem::Workspace(workspace));
+        app.open(name).unwrap();
+        app.session
+    };
+    for hostile in ["hostile.sbs", "up.sbs"] {
+        let session = open(hostile);
+        assert!(!session.pkg.dependencies.keys().any(|key| key.contains("dep.sbs")), "{hostile} followed a path outside the workspace");
+        assert!(session.load_warnings.iter().any(|w| w.contains("Could not resolve")), "{:?}", session.load_warnings);
+    }
+    // A dependency inside the workspace still loads.
+    let fine = open("fine.sbs");
+    assert!(
+        fine.pkg.dependencies.keys().any(|key| key.ends_with("inside.sbs")),
+        "{:?} {:?}",
+        fine.pkg.dependencies.keys().collect::<Vec<_>>(),
+        fine.load_warnings
+    );
+
+    // A trusted (interactive-equivalent) session keeps following the document's own paths.
+    let mut trusted = Headless::new(Session::new(Package::new("Empty")), Filesystem::TrustedLocal);
+    trusted.open(&root.join("hostile.sbs").to_string_lossy()).unwrap();
+    assert!(trusted.session.pkg.dependencies.keys().any(|key| key.contains("dep.sbs")));
+
+    std::fs::remove_dir_all(base).unwrap();
+}

@@ -168,7 +168,7 @@ fn view3d(s: &mut Session, p: &J) -> Result<J> {
 #[cfg(not(target_arch = "wasm32"))]
 fn load_mesh(s: &mut Session, p: &J) -> Result<J> {
     let path = strp(p, "path").ok_or_else(|| bad("view.3d.loadMesh", "`path` is required"))?;
-    let bytes = std::fs::read(path).map_err(|e| bad("view.3d.loadMesh", format!("{path}: {e}")))?;
+    let bytes = materialcraft_formats::read_capped(path, materialcraft_formats::MAX_FILE).map_err(|e| bad("view.3d.loadMesh", format!("{path}: {e}")))?;
     let name = std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path).to_string();
     s.load_mesh_bytes(&name, &bytes)?;
     let tris = s.custom_mesh.as_ref().map_or(0, |(_, m)| m.triangle_count());

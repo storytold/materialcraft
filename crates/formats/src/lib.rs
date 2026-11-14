@@ -15,9 +15,9 @@ mod guard;
 mod image;
 
 pub use depth::Depth;
-#[cfg(not(target_arch = "wasm32"))]
-pub use file::write_atomic;
 pub use file::{output_name, safe_file_name};
+#[cfg(not(target_arch = "wasm32"))]
+pub use file::{read_capped, write_atomic};
 pub use format_error::FormatError;
 pub(crate) use guard::guard;
 pub use image::{decode, encode};
@@ -25,6 +25,8 @@ pub use image::{decode, encode};
 pub type Result<T> = std::result::Result<T, FormatError>;
 pub(crate) const MAX_JSON: u64 = 64 << 20;
 pub(crate) const MAX_RESOURCE: u64 = 256 << 20;
+/// Largest file the apps read whole from disk: a bound on memory, far above any real document, image or mesh
+pub const MAX_FILE: u64 = 1 << 30;
 pub const EXPORT_FORMATS: &[(&str, &str)] =
     &[("png", "PNG"), ("jpg", "JPEG"), ("tga", "TGA"), ("bmp", "BMP"), ("webp", "WEBP"), ("exr", "OpenEXR"), ("hdr", "Radiance HDR")];
 pub const VECTOR_EXTENSIONS: &[&str] = &["svg"];

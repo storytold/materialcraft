@@ -162,7 +162,7 @@ fn export_material(s: &mut Session, p: &J) -> Result<J> {
     let (gi, mut o) = material_request(s, CMD, p)?;
     for (id, file) in p.get("inputs").and_then(J::as_object).into_iter().flatten() {
         let file = file.as_str().ok_or_else(|| bad(CMD, format!("inputs.{id} must be an image path")))?;
-        let bytes = std::fs::read(file).map_err(|e| bad(CMD, format!("{file}: {e}")))?;
+        let bytes = materialcraft_formats::read_capped(file, materialcraft_formats::MAX_FILE).map_err(|e| bad(CMD, format!("{file}: {e}")))?;
         o.inputs.insert(id.clone(), materialcraft_formats::decode(&bytes, !srgb_usage(id))?);
     }
     let bytes = material_bytes(s, gi, &o)?;
@@ -238,7 +238,7 @@ fn bind(s: &mut Session, p: &J) -> Result<J> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn read_image_file(cmd: &str, path: &str) -> Result<(String, Vec<u8>)> {
-    let bytes = std::fs::read(path).map_err(|e| bad(cmd, format!("{path}: {e}")))?;
+    let bytes = materialcraft_formats::read_capped(path, materialcraft_formats::MAX_FILE).map_err(|e| bad(cmd, format!("{path}: {e}")))?;
     materialcraft_formats::decode(&bytes, false)?;
     let name = std::path::Path::new(path).file_name().and_then(|f| f.to_str()).unwrap_or("input.png").to_string();
     Ok((name, bytes))

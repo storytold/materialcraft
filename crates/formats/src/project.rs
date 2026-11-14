@@ -4,7 +4,7 @@
 mod project_files;
 pub use project_files::ProjectFiles;
 
-use crate::{FormatError, Result, sbs};
+use crate::{FormatError, MAX_FILE, MAX_RESOURCE, Result, sbs};
 use materialcraft_core::{Package, Value};
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(not(target_arch = "wasm32"))]
@@ -74,8 +74,16 @@ fn resolve(owner: &str, reference: &str) -> Result<String> {
     Ok(components.join("/"))
 }
 
+/// Most entries a project archive may hold
+const MAX_ENTRIES: usize = 100_000;
+
 pub fn read(bytes: &[u8], identity: &str) -> Result<sbs::SbsRead> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|error| bad(error.to_string()))?;
+    if zip.len() > MAX_ENTRIES {
+        return Err(bad("Archive has too many entries"));
+    }
+
+    let mut total = 0u64;
     let mut files = BTreeMap::new();
     let mut seen = BTreeSet::new();
     for index in 0..zip.len() {
@@ -95,8 +103,13 @@ pub fn read(bytes: &[u8], identity: &str) -> Result<sbs::SbsRead> {
             continue;
         }
 
+        // The declared size is untrusted, so the bound is on the bytes actually inflated
         let mut content = Vec::new();
-        entry.read_to_end(&mut content).map_err(|error| bad(error.to_string()))?;
+        (&mut entry).take(MAX_RESOURCE.min(MAX_FILE - total) + 1).read_to_end(&mut content).map_err(|error| bad(error.to_string()))?;
+        total += content.len() as u64;
+        if content.len() as u64 > MAX_RESOURCE || total > MAX_FILE {
+            return Err(bad(format!("Archive entry `{name}` is too large")));
+        }
         files.insert(name, content);
     }
     let roots: Vec<_> = files.keys().filter(|name| !name.contains('/') && name.to_ascii_lowercase().ends_with(".sbs")).cloned().collect();
