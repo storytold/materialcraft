@@ -209,6 +209,81 @@ fn set_param(session: &mut Session, parameters: &J) -> Result<J> {
     })
 }
 
+/// Largest relative size offset, as a power of two (the x1/4096 to x4096 range of the Output size control)
+const MAX_RELATIVE_SIZE_OFFSET: i32 = 12;
+
+/// Power of two nearest to a pixel count, as the log2 an absolute size stores
+fn log2_pixels(pixels: u32) -> f64 {
+    f64::from(pixels.max(1)).log2().round()
+}
+
+/// The `size` field means a log2 offset in the relative modes but a log2 resolution in the absolute
+/// mode, so changing between them must convert it or the node jumps to 16 px (stale offset read as a
+/// resolution) or to 8192 px (stale resolution read as an offset). Either way the node keeps the
+/// resolution it has now (rounded to a power of two, clamped to the allowed range); switching
+/// between the two relative modes keeps the offset. The current resolution comes from a cook of the
+/// open graph, which is run first when the last one is out of date or belongs to another graph.
+/// The input size used for the relative modes is that of the wired primary input (parent size
+/// for generators and unwired nodes), and parameter functions are not converted.
+fn size_after_mode_change(session: &mut Session, id: NodeId, to: materialcraft_core::ParameterInheritance) -> Result<[i32; 2]> {
+    use materialcraft_core::{MAX_SIZE_LOG2, MIN_SIZE_LOG2, ParameterInheritance, SizeMode};
+    let node = session.graph()?.node(id)?;
+    let size = node.base.size;
+    let from_absolute = node.base.size_mode == SizeMode::Absolute;
+    let to_absolute = to == ParameterInheritance::Absolute;
+    if from_absolute == to_absolute {
+        return Ok(size);
+    }
+
+    if session.dirty || session.cooked_graph != Some(session.graph) {
+        session.cook();
+    }
+
+    let graph = session.graph()?;
+    let node = graph.node(id)?;
+    let parent = graph.size_px();
+    let current = match session.cooked.nodes.get(&id) {
+        Some(result) => result.base.size,
+        None => {
+            let (width, height) = materialcraft_eval::node_size(graph, None, node, None, None);
+            [width, height]
+        }
+    };
+    if to_absolute {
+        return Ok(current.map(|pixels| log2_pixels(pixels).clamp(f64::from(MIN_SIZE_LOG2), f64::from(MAX_SIZE_LOG2)) as i32));
+    }
+
+    let definition = materialcraft_nodes::find(&node.def);
+    let inherited = if to == ParameterInheritance::RelativeToInput && !definition.is_some_and(|definition| definition.generator) {
+        let primary = definition.and_then(|definition| definition.primary_input);
+        graph
+            .connections
+            .iter()
+            .filter(|connection| connection.to == id && primary.is_none_or(|primary| connection.to_port == primary))
+            .find_map(|connection| session.cooked.nodes.get(&connection.from))
+            .map_or(parent, |result| result.base.size)
+    } else {
+        parent
+    };
+    let mut offset = [0; 2];
+    for axis in 0..2 {
+        let steps = log2_pixels(current[axis]) - log2_pixels(inherited[axis]);
+        offset[axis] = steps.clamp(f64::from(-MAX_RELATIVE_SIZE_OFFSET), f64::from(MAX_RELATIVE_SIZE_OFFSET)) as i32;
+    }
+
+    Ok(offset)
+}
+
+/// The inheritance a legacy size mode stands for
+fn inheritance_of(mode: SizeMode) -> materialcraft_core::ParameterInheritance {
+    use materialcraft_core::ParameterInheritance;
+    match mode {
+        SizeMode::Absolute => ParameterInheritance::Absolute,
+        SizeMode::RelativeToInput => ParameterInheritance::RelativeToInput,
+        SizeMode::RelativeToParent => ParameterInheritance::RelativeToParent,
+    }
+}
+
 fn base(session: &mut Session, parameters: &J) -> Result<J> {
     let id = node_param(session, "graph.node.base", parameters, "id")?;
     if let Some(identifier) = strp(parameters, "param") {
@@ -223,6 +298,9 @@ fn base(session: &mut Session, parameters: &J) -> Result<J> {
         }
         if let Some(inheritance) = parameters.get("inheritance") {
             let inheritance = serde_json::from_value(inheritance.clone()).map_err(|error| bad("graph.node.base", format!("invalid inheritance: {error}")))?;
+            if parameter == materialcraft_core::BaseParameter::OutputSize && parameters.get("value").is_none() {
+                base.size = size_after_mode_change(session, id, inheritance)?;
+            }
             parameter.set_inheritance(&mut base, inheritance);
         }
 
@@ -277,8 +355,15 @@ fn base(session: &mut Session, parameters: &J) -> Result<J> {
         return Err(bad("graph.node.base", "pixelRatio must be 0 or 1"));
     }
 
+    let converted_size = match mode {
+        Some(mode) if size.is_none() => Some(size_after_mode_change(session, id, inheritance_of(mode))?),
+        _ => None,
+    };
     session.edit_merged(&format!("base:{}", id.0), "Set base parameters", |session| {
         let base = &mut session.graph_mut()?.node_mut(id)?.base;
+        if let Some(converted) = converted_size {
+            base.size = converted;
+        }
         if let Some(size_mode) = mode {
             base.size_mode = size_mode;
         }

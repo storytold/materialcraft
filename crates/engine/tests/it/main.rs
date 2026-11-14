@@ -21,6 +21,7 @@ mod linked_instances;
 mod linked_resources;
 mod material_preview;
 mod node_library;
+mod node_size;
 mod normal_maps;
 mod open_documents;
 mod optimization_perf;
