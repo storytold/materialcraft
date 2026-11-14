@@ -11,8 +11,8 @@ pub fn parse_color(j: &serde_json::Value) -> Option<[f32; 4]> {
         }
         J::Number(n) => n.as_f64().map(|v| v as f32).filter(|v| v.is_finite()).map(|v| [v, v, v, 1.0]),
         J::String(s) => {
-            let s = s.trim_start_matches('#');
-            if s.len() != 6 && s.len() != 8 {
+            let s = s.strip_prefix('#').unwrap_or(s);
+            if (s.len() != 6 && s.len() != 8) || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return None;
             }
             let c = |i: usize| u8::from_str_radix(s.get(i..i + 2)?, 16).ok().map(|v| v as f32 / 255.0);
@@ -31,4 +31,20 @@ pub fn srgb_to_linear(v: f32) -> f32 {
 /// sRGB transfer function, linear → encoded
 pub fn linear_to_srgb(v: f32) -> f32 {
     if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.max(0.0).powf(1.0 / 2.4) - 0.055 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plus_signs_are_not_hex() {
+        assert_eq!(parse_color(&serde_json::json!("#+1+2+3")), None);
+    }
+
+    #[test]
+    fn double_hash_is_not_hex() {
+        assert_eq!(parse_color(&serde_json::json!("##ff0000")), None);
+        assert_eq!(parse_color(&serde_json::json!("#ff0000")), Some([1.0, 0.0, 0.0, 1.0]));
+    }
 }
