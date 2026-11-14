@@ -9,7 +9,14 @@ pub fn decode(bytes: &[u8], linear: bool) -> Result<Image> {
         return guard(|| crate::dds_image::decode(bytes, linear), || FormatError::Image("DDS decoder failed".into()));
     }
 
-    if std::str::from_utf8(bytes.get(..bytes.len().min(4096)).unwrap_or_default()).is_ok_and(|text| text.contains("<svg")) {
+    let head = &bytes[..bytes.len().min(4096)];
+    let head = match std::str::from_utf8(head) {
+        Ok(text) => Some(text),
+        // a character cut off by the 4096-byte window is fine; anything else is not text
+        Err(e) if e.error_len().is_none() => std::str::from_utf8(&head[..e.valid_up_to()]).ok(),
+        Err(_) => None,
+    };
+    if head.is_some_and(|text| text.contains("<svg")) {
         return guard(|| crate::svg::decode(bytes), || FormatError::Image("SVG decoder failed".into()));
     }
 
