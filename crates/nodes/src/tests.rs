@@ -119,3 +119,19 @@ fn dynamic_gradient_preserves_the_gradient_image_type() {
         assert_eq!(result[0].get(0, 0, false), gradient.get(0, 0, false));
     }
 }
+
+#[test]
+fn hsl_full_desaturation_keeps_hdr_pixels_finite() {
+    let definition = find("hsl").unwrap();
+    let mut overrides = BTreeMap::new();
+    overrides.insert("saturation".to_string(), Value::Float(0.0));
+    let params = resolve_params(definition, &overrides);
+    let no_res = |_: &str| None;
+    let vars = BTreeMap::new();
+    let inputs = [Some(Image::filled(4, 4, Kind::Color, [2.0, 0.0, 0.0, 1.0]))];
+    let ctx = CookContext { w: 4, h: 4, seed: 7, tile: true, inputs: &inputs, params: &params, resource: &no_res, vars: &vars };
+    let out = (definition.cook)(&ctx).unwrap();
+    let p = out[0].get(0, 0, false);
+    assert!(p.iter().all(|v| v.is_finite()), "{p:?}");
+    assert!((p[0] - p[1]).abs() < 1e-5 && (p[1] - p[2]).abs() < 1e-5, "{p:?}");
+}
