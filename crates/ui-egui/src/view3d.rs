@@ -177,6 +177,12 @@ fn menus(app: &mut MaterialCraftApp, ui: &mut Ui) {
                         ui.close();
                     }
                 }
+                ui.separator();
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.add_enabled(app.view3d.shown.is_some(), egui::Button::new(tr("Save image..."))).clicked() {
+                    save_image(app);
+                    ui.close();
+                }
             });
             ui.menu_button(tr("Environment"), |ui| {
                 for (id, label) in ENVIRONMENTS {
@@ -616,6 +622,31 @@ fn show_frame(app: &mut MaterialCraftApp, ctx: &egui::Context, frame: Frame, key
     st.tex_size = Some(size);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn save_image(app: &mut MaterialCraftApp) {
+    let Some((w, h, px)) = app.view3d.shown.clone() else { return };
+    let name = materialcraft_engine::formats::safe_file_name(&app.session.pkg.name);
+    let dialog =
+        craft_dialogs::FileDialog::save().file_name(format!("{name}-3d.png")).filter("PNG", &["png"]).filter("OpenEXR", &["exr"]).filter("TGA", &["tga"]);
+    crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::SaveImage(Box::new(frame_image(w, h, &px))));
+}
+
+/// The frame's display pixels as a linear color image (what Save image writes).
+#[cfg(any(not(target_arch = "wasm32"), test))]
+pub(crate) fn frame_image(w: u32, h: u32, px: &[u8]) -> materialcraft_engine::image::Image {
+    use materialcraft_engine::image::{Image, Kind, srgb_to_linear};
+    Image::generate(w, h, Kind::Color, |x, y| {
+        let i = (y as usize * w as usize + x as usize) * 4;
+        let channel = |offset: usize| px.get(i + offset).map_or(0, |value| *value);
+        [
+            srgb_to_linear(f32::from(channel(0)) / 255.0),
+            srgb_to_linear(f32::from(channel(1)) / 255.0),
+            srgb_to_linear(f32::from(channel(2)) / 255.0),
+            f32::from(channel(3)) / 255.0,
+        ]
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -660,6 +691,19 @@ mod tests {
         assert!(app.view3d.relief_job.is_none());
         assert!(!app.view3d.busy());
         assert!(Arc::ptr_eq(&app.view3d.displaced.as_ref().unwrap().1, &base), "outdated geometry replaced the current scene");
+    }
+
+    #[test]
+    fn a_saved_frame_is_a_linear_color_image() {
+        let px = [255u8, 0, 0, 255, 0, 128, 0, 128];
+        let image = frame_image(2, 1, &px);
+        assert_eq!((image.w, image.h), (2, 1));
+        assert!(!image.is_gray());
+        let red = image.get(0, 0, false);
+        assert!((red[0] - 1.0).abs() < 1e-6 && red[1] == 0.0 && (red[3] - 1.0).abs() < 1e-6, "{red:?}");
+        let green = image.get(1, 0, false);
+        assert!(green[0] == 0.0 && (green[1] - 0.215_86).abs() < 1e-3 && (green[3] - 128.0 / 255.0).abs() < 1e-6, "{green:?}");
+        assert_eq!(frame_image(2, 2, &[]).get(0, 0, false), [0.0, 0.0, 0.0, 0.0], "short input stays safe");
     }
 
     #[test]
