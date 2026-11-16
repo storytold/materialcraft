@@ -1,6 +1,6 @@
 //! Traditional Chinese UI text: (English key, translation). Keys are the English strings passed to `zh-TW`.
 
-pub const TABLE: &[(&szh-TW, &szh-TW)] = &[
+pub const TABLE: &[(&str, &str)] = &[
     ("$pos", "$pos"),
     ("$size", "$size"),
     ("(checker)", "（棋盤格）"),
