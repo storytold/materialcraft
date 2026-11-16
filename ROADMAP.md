@@ -20,6 +20,7 @@ rendering parity and arbitrary SBS round trips have not been established.
 
 | Date | What landed |
 |---|---|
+| 2026-11-15 | SBS resources and independent `.mcraft` packages; Explorer resource and SBS folder attributes; parameter-owned function graphs and function-instance fixes; shared UI crates; in-app update checks with v0.4.0 and v0.4.1 releases; Flatpak update fixes; Library UI, graph annotation and processor sampling fixes; native package and SBS loads read the whole file before size and parser limits apply; automation reads bounded at read time with atomic writes; CI aligned with TextureCraft |
 | 2026-11-08 | Explorer folder hierarchy and package/folder/graph context menus, native SBS empty folders and resource paths, undoable copy/move/rename/remove, and package reload/save-copy actions |
 | 2026-11-08 | Portable `sbs://` function instances in the Library, preserved package folders and missing references, and a converted library retaining all 171 supplied function bodies (2,334 nodes); external runtime equivalence and redistribution rights remain unverified |
 | 2026-11-02 | Cross-app materials: `.mcmat` portable materials, Send to TextureCraft, input-node preview images (mesh maps from TextureCraft), live re-cooks from TextureCraft through the CLI |

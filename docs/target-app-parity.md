@@ -17,6 +17,7 @@ Explorer now preserves native SBS folder hierarchies and provides package, folde
 menus for creation, copying, pasting, renaming, removal and package file actions. Moving items within
 a package and removing folder subtrees support undo; empty folders survive saves.
 
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (SBS resources and independent `.mcraft` packages, parameter-owned function graphs, shared UI crates, in-app updates with v0.4.0 and v0.4.1, Flatpak fixes and bounded package/SBS reads; the historical assessment below was not re-measured) · **Target:** the professional node-based material workflow (desktop app; the web app is assessed later)
 > **Last reviewed:** 2026-11-02 · **Last updated:** 2026-11-02 · **Change:** minor (Files 60% → 70%: portable materials for TextureCraft) · **Target:** the professional node-based material workflow (desktop app; the web app is assessed later)
 
 **Overall: ≈ 67%** of a material artist's daily workflow works end to end (engine + UI +
