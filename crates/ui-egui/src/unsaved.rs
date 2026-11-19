@@ -139,6 +139,12 @@ pub fn handle_close(app: &mut MaterialCraftApp, ctx: &Context) {
     }
 }
 
+/// Keep file names with mixed Hebrew/Latin and extensions in their own bidi run.
+fn save_changes_prompt(name: &str) -> String {
+    let safe_name = if crate::i18n::is_rtl() { format!("\u{2068}{name}\u{2069}") } else { name.to_owned() };
+    format!("{} \"{}\"?", tr("Save changes to"), safe_name)
+}
+
 /// The Save / Discard / Cancel dialog, while an action is held
 pub fn show(app: &mut MaterialCraftApp, ctx: &Context) {
     if app.ui.windows.unsaved.is_none() {
@@ -159,10 +165,10 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &Context) {
         .pivot(Align2::CENTER_CENTER)
         .default_pos(ctx.content_rect().center())
         .show(ctx, |ui| {
-            ui.label(RichText::new(format!("{} \"{}\"?", tr("Save changes to"), app.session.pkg.name)).strong());
+            ui.label(RichText::new(save_changes_prompt(&app.session.pkg.name)).strong());
             ui.label(tr("Your changes will be lost if you don't save them."));
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
+            let mut draw_choices = |ui: &mut egui::Ui| {
                 if ui.button(tr("Save")).clicked() {
                     choice = Some(Choice::Save);
                 }
@@ -172,7 +178,12 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &Context) {
                 if ui.button(tr("Cancel")).clicked() {
                     choice = Some(Choice::Cancel);
                 }
-            });
+            };
+            if crate::i18n::is_rtl() {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), &mut draw_choices);
+            } else {
+                ui.horizontal(&mut draw_choices);
+            }
         });
     if choice.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         choice = Some(Choice::Cancel);

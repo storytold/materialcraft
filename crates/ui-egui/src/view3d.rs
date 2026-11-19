@@ -113,6 +113,42 @@ fn save_default(app: &mut MaterialCraftApp) {
     }
 }
 
+/// Split the scene browser and rendered viewport along the current reading edge.
+/// The scene itself is never mirrored, only the surrounding panel geometry.
+fn view3d_scene_regions(below: Rect, bar_top: f32, browser_width: f32, rtl: bool) -> (Rect, Rect) {
+    let split = if rtl { below.right() - browser_width } else { below.left() + browser_width };
+    if rtl {
+        (Rect::from_min_max(pos2(split, below.top()), pos2(below.right(), bar_top)), Rect::from_min_max(pos2(below.left(), below.top()), pos2(split, bar_top)))
+    } else {
+        (Rect::from_min_max(pos2(below.left(), below.top()), pos2(split, bar_top)), Rect::from_min_max(pos2(split, below.top()), pos2(below.right(), bar_top)))
+    }
+}
+
+#[cfg(test)]
+mod hebrew_scene_browser_layout_tests {
+    use super::*;
+
+    #[test]
+    fn scene_browser_mirrors_while_picture_keeps_its_full_remaining_width() {
+        let bounds = Rect::from_min_size(pos2(20.0, 30.0), vec2(500.0, 300.0));
+        for width in [0.0, 48.0, 176.0] {
+            let (en_browser, en_picture) = view3d_scene_regions(bounds, 310.0, width, false);
+            let (he_browser, he_picture) = view3d_scene_regions(bounds, 310.0, width, true);
+            assert_eq!(en_browser.left(), bounds.left());
+            assert_eq!(en_browser.right(), en_picture.left());
+            assert_eq!(he_picture.right(), he_browser.left());
+            assert_eq!(he_browser.right(), bounds.right());
+            for (browser, picture) in [(en_browser, en_picture), (he_browser, he_picture)] {
+                assert_eq!(browser.width(), width);
+                assert_eq!(picture.width(), bounds.width() - width);
+                assert_eq!(browser.top(), bounds.top());
+                assert_eq!(picture.top(), bounds.top());
+                assert_eq!(picture.bottom(), 310.0);
+            }
+        }
+    }
+}
+
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let panel = ui.max_rect();
     menus::show(app, ui);
@@ -124,14 +160,13 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let bar_top = (below.bottom() - DISPLAY_BAR_HEIGHT).max(below.top() + MIN_PICTURE_HEIGHT.min(below.height()));
     let browser_width = if app.view3d.scene_browser { scene_browser::WIDTH.min(below.width() - MIN_PICTURE_WIDTH).max(0.0) } else { 0.0 };
 
+    let (browser, picture) = view3d_scene_regions(below, bar_top, browser_width, crate::i18n::is_rtl());
     if browser_width > 0.0 {
-        let area = Rect::from_min_max(below.min, pos2(below.left() + browser_width, bar_top));
-        let mut browser_ui = ui.new_child(egui::UiBuilder::new().max_rect(area.shrink2(vec2(4.0, 0.0))));
-        browser_ui.set_clip_rect(area.intersect(ui.clip_rect()));
+        let mut browser_ui = ui.new_child(egui::UiBuilder::new().max_rect(browser.shrink2(vec2(4.0, 0.0))));
+        browser_ui.set_clip_rect(browser.intersect(ui.clip_rect()));
         scene_browser::show(app, &mut browser_ui);
     }
 
-    let picture = Rect::from_min_max(pos2(below.left() + browser_width, below.top()), pos2(below.right(), bar_top));
     let mut picture_ui = ui.new_child(egui::UiBuilder::new().max_rect(picture));
     viewport(app, &mut picture_ui, picture);
 
