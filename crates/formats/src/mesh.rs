@@ -78,11 +78,7 @@ pub fn obj_text(mesh: &Mesh) -> String {
         .collect();
     let shared = craft_mesh::Mesh {
         positions: mesh.positions.iter().map(|p| [f64::from(p.x), f64::from(p.y), f64::from(p.z)]).collect(),
-        normals: if shaded {
-            mesh.normals.iter().map(|n| [f64::from(n.x), f64::from(n.y), f64::from(n.z)]).collect()
-        } else {
-            Vec::new()
-        },
+        normals: if shaded { mesh.normals.iter().map(|n| [f64::from(n.x), f64::from(n.y), f64::from(n.z)]).collect() } else { Vec::new() },
         uv_sets: if textured { vec![mesh.uvs.iter().map(|u| [u.x, u.y]).collect()] } else { Vec::new() },
         parts: vec![craft_mesh::Part { corners, ..craft_mesh::Part::default() }],
         ..craft_mesh::Mesh::default()
