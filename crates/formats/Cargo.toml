@@ -17,7 +17,7 @@ craft-texture = { workspace = true, features = ["dds"] }
 materialcraft-geom = { workspace = true }
 materialcraft-nodes = { workspace = true }
 craft-mesh = { workspace = true }
-image = { workspace = true }
+craft-image-codecs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -37,3 +37,4 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 dds = { workspace = true }
+image = { workspace = true }

@@ -46,6 +46,8 @@ craft-mesh = { version = "0.1.0", git = "https://github.com/storytold/craft-libs
 craft-xml = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
 # Bound SVG parsing and drawing through craft-svg
 craft-svg = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", features = ["tree-render"] }
+# Shared raster image codecs
+craft-image-codecs = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
 # internal
 materialcraft-core = { path = "crates/core" }
 materialcraft-geom = { path = "crates/geom" }

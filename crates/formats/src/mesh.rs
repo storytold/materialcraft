@@ -63,34 +63,32 @@ fn finish(positions: Vec<Vec3>, normals: Option<Vec<Vec3>>, uvs: Vec<Vec2>, indi
 
 /// `mesh` as Wavefront OBJ text: positions, texture coordinates, normals and triangles
 pub fn obj_text(mesh: &Mesh) -> String {
-    use std::fmt::Write;
-
-    let mut text = String::from("# MaterialCraft mesh\n");
-    for position in &mesh.positions {
-        let _ = writeln!(text, "v {} {} {}", position.x, position.y, position.z);
-    }
-    // OBJ counts V up from the bottom; the mesh counts it down from the top
-    for uv in &mesh.uvs {
-        let _ = writeln!(text, "vt {} {}", uv.x, 1.0 - uv.y);
-    }
-    for normal in &mesh.normals {
-        let _ = writeln!(text, "vn {} {} {}", normal.x, normal.y, normal.z);
-    }
-
     let (textured, shaded) = (mesh.uvs.len() == mesh.positions.len(), mesh.normals.len() == mesh.positions.len());
-    let corner = |index: u32| {
-        let number = index + 1;
-        match (textured, shaded) {
-            (true, true) => format!("{number}/{number}/{number}"),
-            (true, false) => format!("{number}/{number}"),
-            (false, true) => format!("{number}//{number}"),
-            (false, false) => number.to_string(),
-        }
+    let corners = mesh
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .flatten()
+        .map(|&index| craft_mesh::Corner {
+            position: index,
+            uv: if textured { index } else { craft_mesh::NONE },
+            normal: if shaded { index } else { craft_mesh::NONE },
+        })
+        .collect();
+    let shared = craft_mesh::Mesh {
+        positions: mesh.positions.iter().map(|p| [f64::from(p.x), f64::from(p.y), f64::from(p.z)]).collect(),
+        normals: if shaded {
+            mesh.normals.iter().map(|n| [f64::from(n.x), f64::from(n.y), f64::from(n.z)]).collect()
+        } else {
+            Vec::new()
+        },
+        uv_sets: if textured { vec![mesh.uvs.iter().map(|u| [u.x, u.y]).collect()] } else { Vec::new() },
+        parts: vec![craft_mesh::Part { corners, ..craft_mesh::Part::default() }],
+        ..craft_mesh::Mesh::default()
     };
-    for triangle in mesh.indices.as_chunks::<3>().0 {
-        let _ = writeln!(text, "f {} {} {}", corner(triangle[0]), corner(triangle[1]), corner(triangle[2]));
-    }
-    text
+    let scene = craft_mesh::Scene::from_meshes(vec![shared], Vec::new());
+    craft_mesh::obj::write(&scene, None, &limits()).unwrap_or_default()
 }
 
 /// Parse a mesh file by extension.

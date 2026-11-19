@@ -1,6 +1,6 @@
 use crate::{Depth, FormatError, Result, guard};
+use craft_image_codecs::{ChannelLayout, CodecError, DecodeOptions, EncodeOptions, Format, Limits as CodecLimits, SampleType};
 use craft_texture::{Image, Kind, Limits, MAX_SIDE, linear_to_srgb, srgb_to_linear};
-use std::io::Cursor;
 
 /// Decode image file bytes into a linear float image (8-bit color is sRGB-decoded; grayscale files stay grayscale)
 pub fn decode(bytes: &[u8], linear: bool) -> Result<Image> {
@@ -15,39 +15,29 @@ pub fn decode(bytes: &[u8], linear: bool) -> Result<Image> {
         return guard(|| crate::svg::decode(bytes), || FormatError::Image("SVG decoder failed".into()));
     }
 
-    let open = || -> Result<image::ImageReader<Cursor<&[u8]>>> {
-        let mut reader = image::ImageReader::new(Cursor::new(bytes)).with_guessed_format().map_err(|e| FormatError::Image(e.to_string()))?;
-        if reader.format().is_none() {
-            reader.set_format(image::ImageFormat::Tga);
-        }
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(MAX_SIDE);
-        limits.max_image_height = Some(MAX_SIDE);
-        limits.max_alloc = Some(MAX_DECODE_BYTES);
-        reader.limits(limits);
-        Ok(reader)
-    };
+    let limits = CodecLimits::new(MAX_SIDE, MAX_SIDE, u64::from(MAX_SIDE) * u64::from(MAX_SIDE), MAX_DECODE_BYTES);
+    let opts = DecodeOptions { limits, keep_orientation: true };
+    let format = craft_image_codecs::detect(bytes).unwrap_or(Format::Tga);
     let failed = || FormatError::Image("the decoder failed on this file".into());
-    let image_error = |e| match e {
-        image::ImageError::Limits(_) => FormatError::Image(format!("image is larger than {MAX_SIDE} pixels")),
+    let codec_error = |e: CodecError| match e {
+        CodecError::LimitExceeded(msg) => FormatError::Image(msg),
         e => FormatError::Image(e.to_string()),
     };
 
-    let (w, h) = guard(|| open()?.into_dimensions().map_err(image_error), failed)?;
+    let decoded = guard(|| craft_image_codecs::decode_as_with(format, bytes, &opts).map_err(codec_error), failed)?;
+    let (w, h) = decoded.dimensions();
     if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE {
         return Err(FormatError::Image(format!("{w}x{h} is outside 1..={MAX_SIDE} pixels")));
     }
 
-    let decoded = guard(|| open()?.decode().map_err(image_error), failed)?;
-    let gray = matches!(decoded.color(), image::ColorType::L8 | image::ColorType::L16 | image::ColorType::La8 | image::ColorType::La16);
-    let float = matches!(decoded.color(), image::ColorType::Rgb32F | image::ColorType::Rgba32F);
-    if gray {
-        let luminance = decoded.into_luma16();
-        let data: Vec<f32> = luminance.pixels().map(|p| p.0[0] as f32 / 65535.0).collect();
+    if decoded.layout().is_gray() {
+        let gray = decoded.converted(ChannelLayout::Gray, SampleType::F32);
+        let data = gray.to_f32_samples().ok_or_else(|| FormatError::Image("bad buffer".into()))?;
         return Image::from_data(w, h, Kind::Gray, data, &Limits::default()).map_err(|e| FormatError::Image(e.to_string()));
     }
 
-    let mut data = decoded.into_rgba32f().into_raw();
+    let float = decoded.sample_type().is_float();
+    let mut data = decoded.to_rgba_f32(&limits).map_err(codec_error)?;
     if !(float || linear) {
         for px in data.as_chunks_mut::<4>().0 {
             for c in px.iter_mut().take(3) {
@@ -81,40 +71,39 @@ pub fn encode(image: &Image, ext: &str, depth: Depth, srgb: bool) -> Result<Vec<
 
     let pixel_count = (w * h) as usize;
     let format = match ext.as_str() {
-        "png" => image::ImageFormat::Png,
-        "jpg" | "jpeg" => image::ImageFormat::Jpeg,
-        "tga" => image::ImageFormat::Tga,
-        "bmp" => image::ImageFormat::Bmp,
-        "webp" => image::ImageFormat::WebP,
-        "exr" => image::ImageFormat::OpenExr,
-        "hdr" => image::ImageFormat::Hdr,
+        "png" => Format::Png,
+        "jpg" | "jpeg" => Format::Jpeg,
+        "tga" => Format::Tga,
+        "bmp" => Format::Bmp,
+        "webp" => Format::WebP,
+        "exr" => Format::OpenExr,
+        "hdr" => Format::Hdr,
         other => return Err(FormatError::Image(format!("unsupported export format `{other}`"))),
     };
 
-    let float_only = matches!(format, image::ImageFormat::OpenExr | image::ImageFormat::Hdr);
-    let sixteen_ok = format == image::ImageFormat::Png;
+    let float_only = matches!(format, Format::OpenExr | Format::Hdr);
+    let sixteen_ok = format == Format::Png;
     let quantize_u8 = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
     let quantize_u16 = |v: f32| (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16;
-    let dynamic_image: image::DynamicImage = if float_only {
+    let codec_image = if float_only {
         let data: Vec<f32> = (0..pixel_count)
             .flat_map(|i| {
                 let p = pixel(i);
                 [p[0], p[1], p[2]]
             })
             .collect();
-        let buffer = image::Rgb32FImage::from_raw(w, h, data).ok_or_else(|| FormatError::Image("bad buffer".into()))?;
-        buffer.into()
+        craft_image_codecs::Image::from_f32(w, h, ChannelLayout::Rgb, &data)
     } else if depth != Depth::U8 && sixteen_ok {
         if color {
             let data: Vec<u16> = (0..pixel_count).flat_map(|i| pixel(i).map(quantize_u16)).collect();
-            image::ImageBuffer::<image::Rgba<u16>, _>::from_raw(w, h, data).ok_or_else(|| FormatError::Image("bad buffer".into()))?.into()
+            craft_image_codecs::Image::from_u16(w, h, ChannelLayout::Rgba, &data)
         } else {
             let data: Vec<u16> = (0..pixel_count).map(|i| quantize_u16(pixel(i)[0])).collect();
-            image::ImageBuffer::<image::Luma<u16>, _>::from_raw(w, h, data).ok_or_else(|| FormatError::Image("bad buffer".into()))?.into()
+            craft_image_codecs::Image::from_u16(w, h, ChannelLayout::Gray, &data)
         }
-    } else if color && !matches!(format, image::ImageFormat::Jpeg) {
+    } else if color && format != Format::Jpeg {
         let data: Vec<u8> = (0..pixel_count).flat_map(|i| pixel(i).map(quantize_u8)).collect();
-        image::RgbaImage::from_raw(w, h, data).ok_or_else(|| FormatError::Image("bad buffer".into()))?.into()
+        craft_image_codecs::Image::from_u8(w, h, ChannelLayout::Rgba, data)
     } else if color {
         let data: Vec<u8> = (0..pixel_count)
             .flat_map(|i| {
@@ -122,15 +111,15 @@ pub fn encode(image: &Image, ext: &str, depth: Depth, srgb: bool) -> Result<Vec<
                 [quantize_u8(p[0]), quantize_u8(p[1]), quantize_u8(p[2])]
             })
             .collect();
-        image::RgbImage::from_raw(w, h, data).ok_or_else(|| FormatError::Image("bad buffer".into()))?.into()
+        craft_image_codecs::Image::from_u8(w, h, ChannelLayout::Rgb, data)
     } else {
         let data: Vec<u8> = (0..pixel_count).map(|i| quantize_u8(pixel(i)[0])).collect();
-        image::GrayImage::from_raw(w, h, data).ok_or_else(|| FormatError::Image("bad buffer".into()))?.into()
-    };
+        craft_image_codecs::Image::from_u8(w, h, ChannelLayout::Gray, data)
+    }
+    .map_err(|e| FormatError::Image(e.to_string()))?;
 
-    let mut output = Cursor::new(Vec::new());
-    dynamic_image.write_to(&mut output, format).map_err(|e| FormatError::Image(e.to_string()))?;
-    Ok(output.into_inner())
+    let opts = EncodeOptions { embed_icc: false, embed_metadata: false, ..EncodeOptions::default() };
+    craft_image_codecs::encode(&codec_image, format, &opts).map_err(|e| FormatError::Image(e.to_string()))
 }
 
 #[cfg(test)]

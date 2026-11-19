@@ -2907,6 +2907,7 @@ dependencies = [
  "base64 0.22.1",
  "craft-atomic",
  "craft-fonts-build",
+ "craft-image-codecs",
  "craft-mcmat",
  "craft-mesh",
  "craft-mime",
