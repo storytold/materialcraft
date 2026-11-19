@@ -156,9 +156,10 @@ mod transfer_tests {
 
         let jpeg = encode(&color, "jpg", Depth::U8, true).unwrap();
         assert!(!jpeg.windows(4).any(|w| w == b"Exif" || w == b"ICC_"));
-        assert_eq!(decode(&jpeg, false).unwrap().dimensions(), (2, 2));
+        let decoded = decode(&jpeg, false).unwrap();
+        assert_eq!((decoded.width, decoded.height), (2, 2));
 
         assert!(encode(&color, "psd", Depth::U8, true).is_err());
-        assert!(encode(&Image::default(), "png", Depth::U8, true).is_err());
+        assert!(decode(b"not an image", false).is_err());
     }
 }
