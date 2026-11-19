@@ -145,4 +145,20 @@ mod transfer_tests {
             }
         }
     }
+
+    #[test]
+    fn raster_encode_preserves_defaults_and_rejects_invalid_inputs() {
+        let color = Image::filled(2, 2, Kind::Color, [0.5, 0.25, 0.75, 1.0]);
+        let png = encode(&color, "png", Depth::U8, true).unwrap();
+        for chunk in [b"iCCP", b"eXIf", b"tEXt", b"iTXt", b"zTXt"] {
+            assert!(!png.windows(4).any(|w| w == chunk), "unexpected PNG metadata chunk {chunk:?}");
+        }
+
+        let jpeg = encode(&color, "jpg", Depth::U8, true).unwrap();
+        assert!(!jpeg.windows(4).any(|w| w == b"Exif" || w == b"ICC_"));
+        assert_eq!(decode(&jpeg, false).unwrap().dimensions(), (2, 2));
+
+        assert!(encode(&color, "psd", Depth::U8, true).is_err());
+        assert!(encode(&Image::default(), "png", Depth::U8, true).is_err());
+    }
 }

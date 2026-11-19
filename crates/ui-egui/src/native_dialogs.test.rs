@@ -355,7 +355,7 @@ fn geometry_dialog_exports_the_mesh_captured_before_a_scene_change() {
     let target = path.clone();
     answer_all(&mut app, move || Answer::Paths(vec![target.clone()]));
 
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), materialcraft_engine::formats::mesh::obj_text(&mesh));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), materialcraft_engine::formats::mesh::obj_text(&mesh).unwrap());
     assert_eq!(std::sync::Arc::strong_count(&mesh), 1, "the answered dialog retained the mesh");
     assert!(app.session.finish_display_handoff().is_none());
     std::fs::remove_file(path).unwrap();
@@ -375,7 +375,7 @@ fn export_dialogs_keep_native_non_utf8_destinations() {
             ask(&mut app, FileDialog::save(), Then::ExportGeometry(mesh.clone()));
             let target = path.clone();
             answer_all(&mut app, move || Answer::Paths(vec![target.clone()]));
-            assert_eq!(std::fs::read_to_string(&path).unwrap(), materialcraft_engine::formats::mesh::obj_text(&mesh));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), materialcraft_engine::formats::mesh::obj_text(&mesh).unwrap());
         } else {
             ask(&mut app, FileDialog::save(), Then::SaveRender(Box::new((1, 1, std::sync::Arc::new(vec![5, 19, 77, 255])))));
             let target = path.clone();

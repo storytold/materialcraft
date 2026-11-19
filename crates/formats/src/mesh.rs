@@ -62,7 +62,7 @@ fn finish(positions: Vec<Vec3>, normals: Option<Vec<Vec3>>, uvs: Vec<Vec2>, indi
 }
 
 /// `mesh` as Wavefront OBJ text: positions, texture coordinates, normals and triangles
-pub fn obj_text(mesh: &Mesh) -> String {
+pub fn obj_text(mesh: &Mesh) -> Result<String> {
     let (textured, shaded) = (mesh.uvs.len() == mesh.positions.len(), mesh.normals.len() == mesh.positions.len());
     let corners = mesh
         .indices
@@ -84,7 +84,7 @@ pub fn obj_text(mesh: &Mesh) -> String {
         ..craft_mesh::Mesh::default()
     };
     let scene = craft_mesh::Scene::from_meshes(vec![shared], Vec::new());
-    craft_mesh::obj::write(&scene, None, &limits()).unwrap_or_default()
+    craft_mesh::obj::write(&scene, None, &limits()).map_err(|e| read_error("OBJ", e))
 }
 
 /// Parse a mesh file by extension.
@@ -257,7 +257,7 @@ mod tests {
     fn a_mesh_written_as_obj_loads_back_as_it_was() {
         let mesh = materialcraft_geom::primitives::torus(1.0, 0.35, 12, 6);
 
-        let loaded = load_mesh("torus.obj", obj_text(&mesh).as_bytes()).unwrap();
+        let loaded = load_mesh("torus.obj", obj_text(&mesh).unwrap().as_bytes()).unwrap();
 
         assert_eq!((loaded.triangle_count(), loaded.vertex_count()), (mesh.triangle_count(), mesh.vertex_count()));
 
@@ -589,5 +589,37 @@ mod tests {
     fn vertex_bound_allows_three_vertices_per_triangle() {
         assert!(check_vertex_bound(0, 3 * MAX_TRIANGLES).is_ok());
         assert!(check_vertex_bound(0, 3 * MAX_TRIANGLES + 1).is_err());
+    }
+
+    #[test]
+    fn obj_text_preserves_material_and_attribute_parity() {
+        let positions = vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)];
+        let normals = vec![Vec3::Z; 3];
+        let uvs = vec![Vec2::new(0.0, 0.25), Vec2::new(1.0, 0.25), Vec2::new(0.0, 0.75)];
+        let mesh = Mesh::from_parts(positions.clone(), Some(normals.clone()), uvs, vec![0, 1, 2], "material").unwrap();
+        let text = obj_text(&mesh).unwrap();
+
+        assert!(!text.contains("mtllib") && !text.contains("usemtl"));
+        assert!(!text.contains("\no ") && !text.contains("\ng ") && !text.contains("\ns "));
+        assert!(text.contains("vt 0 0.75\n"), "OBJ flips v: {text}");
+        assert!(text.contains("f 1/1/1 2/2/2 3/3/3\n"), "{text}");
+
+        let without_uvs = Mesh { positions: positions.clone(), normals, indices: vec![0, 1, 2], ..Mesh::default() };
+        let no_uv_text = obj_text(&without_uvs).unwrap();
+        assert!(!no_uv_text.contains("vt "));
+        assert!(no_uv_text.contains("f 1//1 2//2 3//3\n"), "{no_uv_text}");
+
+        let positions_only = Mesh { positions, indices: vec![0, 1, 2], ..Mesh::default() };
+        let pos_only_text = obj_text(&positions_only).unwrap();
+        assert!(!pos_only_text.contains("vt ") && !pos_only_text.contains("vn "));
+        assert!(pos_only_text.contains("f 1 2 3\n"), "{pos_only_text}");
+    }
+
+    #[test]
+    fn obj_text_propagates_shared_writer_refusals() {
+        assert!(obj_text(&Mesh::default()).is_err());
+
+        let invalid = Mesh { positions: vec![Vec3::ZERO, Vec3::X, Vec3::Y], indices: vec![0, 1, 99], ..Mesh::default() };
+        assert!(obj_text(&invalid).is_err());
     }
 }
