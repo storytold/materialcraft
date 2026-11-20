@@ -44,6 +44,8 @@ craft-mime = { git = "https://github.com/storytold/craft-libs", rev = "453b0da78
 craft-mesh = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", default-features = false, features = ["obj", "gltf"] }
 # Shared XML escaping and bounded XML parsing; SBS model and serialization policy stay app-local
 craft-xml = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
+# Shared SBS package/schema parsing, sniffing, embedded codec, and envelope writing (storytold/craft-libs#2496)
+craft-sbs = { version = "0.1.0", git = "https://github.com/dylanmtaylor/craft-libs", rev = "2f22a39b6428385b0573708c15baa90186fb1544" }
 # Shared bounded ZIP archive reader and deterministic writer (storytold/craft-libs#2411)
 craft-zip = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "512a1b8e8b59a7b325e7f69f6131aa8628470288" }
 # Bound SVG parsing and drawing through craft-svg
@@ -82,7 +84,7 @@ rmcp = { version = "3.5", default-features = false, features = ["server", "macro
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync", "net", "io-util", "time"] }
 schemars = "1"
 base64 = "0.22"
-roxmltree = "0.20"
+roxmltree = "0.21"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 cap-std = "4"
 getrandom = "0.3"

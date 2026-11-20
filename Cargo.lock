@@ -840,6 +840,11 @@ dependencies = [
 [[package]]
 name = "craft-codepage"
 version = "0.1.0"
+source = "git+https://github.com/dylanmtaylor/craft-libs?rev=2f22a39b6428385b0573708c15baa90186fb1544#2f22a39b6428385b0573708c15baa90186fb1544"
+
+[[package]]
+name = "craft-codepage"
+version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
 
 [[package]]
@@ -941,7 +946,7 @@ name = "craft-materialx"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
 dependencies = [
- "craft-xml",
+ "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc)",
  "thiserror 2.0.21",
 ]
 
@@ -992,10 +997,20 @@ dependencies = [
 [[package]]
 name = "craft-mime"
 version = "0.1.0"
+source = "git+https://github.com/dylanmtaylor/craft-libs?rev=2f22a39b6428385b0573708c15baa90186fb1544#2f22a39b6428385b0573708c15baa90186fb1544"
+dependencies = [
+ "chrono",
+ "craft-codepage 0.1.0 (git+https://github.com/dylanmtaylor/craft-libs?rev=2f22a39b6428385b0573708c15baa90186fb1544)",
+ "encoding_rs",
+]
+
+[[package]]
+name = "craft-mime"
+version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
 dependencies = [
  "chrono",
- "craft-codepage",
+ "craft-codepage 0.1.0 (git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc)",
  "encoding_rs",
 ]
 
@@ -1021,18 +1036,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-sbs"
+version = "0.1.0"
+source = "git+https://github.com/dylanmtaylor/craft-libs?rev=2f22a39b6428385b0573708c15baa90186fb1544#2f22a39b6428385b0573708c15baa90186fb1544"
+dependencies = [
+ "base64 0.23.1",
+ "craft-mime 0.1.0 (git+https://github.com/dylanmtaylor/craft-libs?rev=2f22a39b6428385b0573708c15baa90186fb1544)",
+ "craft-xml 0.1.0 (git+https://github.com/dylanmtaylor/craft-libs?rev=2f22a39b6428385b0573708c15baa90186fb1544)",
+ "flate2",
+ "roxmltree",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "craft-svg"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
 dependencies = [
  "craft-image-codecs",
- "craft-xml",
+ "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc)",
  "data-url",
  "flate2",
  "kurbo",
  "quick-xml 0.41.0",
  "resvg",
- "roxmltree 0.21.2",
+ "roxmltree",
  "thiserror 2.0.21",
  "usvg",
  "vectorcraft-geom",
@@ -1116,6 +1144,16 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "wayland-client",
+]
+
+[[package]]
+name = "craft-xml"
+version = "0.1.0"
+source = "git+https://github.com/dylanmtaylor/craft-libs?rev=2f22a39b6428385b0573708c15baa90186fb1544#2f22a39b6428385b0573708c15baa90186fb1544"
+dependencies = [
+ "quick-xml 0.41.0",
+ "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2920,10 +2958,11 @@ dependencies = [
  "craft-image-codecs",
  "craft-mcmat",
  "craft-mesh",
- "craft-mime",
+ "craft-mime 0.1.0 (git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc)",
+ "craft-sbs",
  "craft-svg",
  "craft-texture",
- "craft-xml",
+ "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc)",
  "craft-zip 0.1.0 (git+https://github.com/storytold/craft-libs?rev=512a1b8e8b59a7b325e7f69f6131aa8628470288)",
  "dds",
  "flate2",
@@ -2931,7 +2970,7 @@ dependencies = [
  "materialcraft-core",
  "materialcraft-geom",
  "materialcraft-nodes",
- "roxmltree 0.20.0",
+ "roxmltree",
  "serde",
  "serde_json",
  "sha2",
@@ -4273,12 +4312,6 @@ dependencies = [
 
 [[package]]
 name = "roxmltree"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
-
-[[package]]
-name = "roxmltree"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9da7f59328b09405b181fee1018925fad50f157afb43c0c0f5c522c256dd5907"
@@ -5275,7 +5308,7 @@ dependencies = [
  "kurbo",
  "log",
  "pico-args",
- "roxmltree 0.21.2",
+ "roxmltree",
  "simplecss",
  "siphasher",
  "skrifa",
