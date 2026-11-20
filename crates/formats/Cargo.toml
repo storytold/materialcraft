@@ -9,7 +9,6 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-craft-mime = { workspace = true }
 craft-xml = { workspace = true }
 craft-sbs = { workspace = true }
 craft-zip = { workspace = true }
@@ -23,7 +22,6 @@ craft-image-codecs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-zip = { workspace = true }
 roxmltree = { workspace = true }
 flate2 = { workspace = true }
 base64 = { workspace = true }
@@ -40,3 +38,4 @@ sha2 = { workspace = true }
 [dev-dependencies]
 dds = { workspace = true }
 image = { workspace = true }
+zip = { workspace = true }

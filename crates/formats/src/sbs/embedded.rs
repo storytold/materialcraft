@@ -15,7 +15,7 @@ pub(super) fn encode_embedded(bytes: &[u8]) -> Result<String> {
 }
 
 #[cfg(test)]
-fn base64_engine() -> base64::engine::GeneralPurpose {
+pub(super) fn base64_engine() -> base64::engine::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
 }
 
