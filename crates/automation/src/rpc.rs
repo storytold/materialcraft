@@ -359,6 +359,41 @@ mod tests {
     }
 
     #[test]
+    fn material_export_rejects_inputs_outside_workspace() {
+        let (inside, outside, h) = workspace_session(std::path::Path::new("mat-inputs-escape"), true);
+        // Declare the curvature input in the graph so the test reaches the path authorization check
+        call(&h, "command.run", json!({"id": "graph.node.add", "params": {"def": "input_grayscale", "params": {"identifier": "curvature"}}})).unwrap();
+        // Write a valid PNG outside the workspace
+        let png = base64::engine::general_purpose::STANDARD
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+            .unwrap();
+        std::fs::write(outside.join("secret.png"), &png).unwrap();
+        let abs = outside.join("secret.png").display().to_string();
+        for p in ["../outside/secret.png", "a/../../outside/secret.png", "/tmp/secret.png", "a\\b.png", abs.as_str()] {
+            let e = call(&h, "material.export", json!({"path": "m.mcmat", "size": 16, "inputs": {"curvature": p}}));
+            assert!(e.is_err(), "accepted input {p:?}");
+            let err = e.unwrap_err();
+            assert!(err.contains("not granted") || err.contains("rejected") || err.contains("outside"), "wrong error for {p:?}: {err}");
+        }
+        assert_eq!(std::fs::read_dir(&inside).unwrap().count(), 0, "failed exports leave nothing behind");
+    }
+
+    #[test]
+    fn material_export_rejects_oversized_inputs() {
+        let (inside, _, h) = workspace_session(std::path::Path::new("mat-oversized"), true);
+        call(&h, "command.run", json!({"id": "graph.node.add", "params": {"def": "input_grayscale", "params": {"identifier": "curvature"}}})).unwrap();
+        let png = base64::engine::general_purpose::STANDARD
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+            .unwrap();
+        let mut huge = png;
+        huge.extend(std::iter::repeat_n(0u8, 32 << 20));
+        std::fs::write(inside.join("huge.png"), &huge).unwrap();
+        let r = call(&h, "material.export", json!({"path": "out.mcmat", "size": 16, "inputs": {"curvature": "huge.png"}}));
+        assert!(r.is_err(), "oversized in-root input must be rejected: {r:?}");
+        assert!(!inside.join("out.mcmat").exists(), "failed export must leave no output file");
+    }
+
+    #[test]
     fn tcp_requires_the_token() {
         use std::io::{BufRead, BufReader};
         let h = Arc::new(session());

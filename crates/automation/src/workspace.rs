@@ -5,9 +5,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use cap_std::ambient_authority;
+#[cfg(unix)]
+use cap_std::fs::OpenOptionsExt;
 use cap_std::fs::{Dir, OpenOptions};
 use serde_json::Value;
 
+use crate::budgets::MAX_INPUT_ENCODED_BYTES;
 use crate::{AutomationError, bad};
 
 /// Upper bound for one automation read, so a hostile path cannot force a multi-gigabyte allocation.
@@ -84,7 +87,7 @@ impl AuthorizedWorkspace {
         self.read(&relative.to_str()?.replace('\\', "/")).ok()
     }
 
-    /// Read one regular file below the read root
+    /// Read one regular file below the read root (general read, up to 2 GiB)
     pub fn read(&self, path: &str) -> Result<Vec<u8>, AutomationError> {
         let rel = relative_path(path)?;
         let root = self.read.as_ref().ok_or_else(|| denied("read"))?;
@@ -93,15 +96,44 @@ impl AuthorizedWorkspace {
         if !metadata.is_file() {
             return Err(bad(format!("not a regular file: `{path}`")));
         }
-
         if metadata.len() > MAX_READ_BYTES {
             return Err(bad(format!("file too large: `{path}` is {} bytes (limit {MAX_READ_BYTES})", metadata.len())));
         }
-
         let mut bytes = Vec::new();
         file.take(MAX_READ_BYTES + 1).read_to_end(&mut bytes).map_err(|e| file_error("read", path, e))?;
         if bytes.len() as u64 > MAX_READ_BYTES {
             return Err(bad(format!("file too large: `{path}` exceeds the {MAX_READ_BYTES}-byte limit")));
+        }
+        Ok(bytes)
+    }
+
+    /// Read an image input file for material export, enforcing the 16 MiB encoded-input cap.
+    /// The file is opened with `O_NONBLOCK` on Unix so a FIFO or other special file in the
+    /// read root cannot block the open (and the RPC loop holding the Headless mutex) until a
+    /// writer appears; the metadata check below then rejects anything that is not a regular file.
+    /// This limits the stream to the encoded cap plus one byte and checks the returned length.
+    pub fn read_input_image(&self, path: &str) -> Result<Vec<u8>, AutomationError> {
+        let rel = relative_path(path)?;
+        let root = self.read.as_ref().ok_or_else(|| denied("read"))?;
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        options.custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32);
+        let file = root.open_with(&rel, &options).map_err(|e| file_error("read", path, e))?;
+        let metadata = file.metadata().map_err(|e| file_error("read", path, e))?;
+        if !metadata.is_file() {
+            return Err(bad(format!("not a regular file: `{path}`")));
+        }
+        if metadata.len() > MAX_INPUT_ENCODED_BYTES as u64 {
+            return Err(bad(format!("input file `{path}` is {} bytes, over the {MAX_INPUT_ENCODED_BYTES}-byte limit", metadata.len())));
+        }
+        if metadata.len() > MAX_READ_BYTES {
+            return Err(bad(format!("file too large: `{path}` is {} bytes (limit {MAX_READ_BYTES})", metadata.len())));
+        }
+        let mut bytes = Vec::new();
+        file.take(MAX_INPUT_ENCODED_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|e| file_error("read", path, e))?;
+        if bytes.len() as u64 > MAX_INPUT_ENCODED_BYTES as u64 {
+            return Err(bad(format!("input file `{path}` exceeds the {MAX_INPUT_ENCODED_BYTES}-byte limit")));
         }
 
         Ok(bytes)
