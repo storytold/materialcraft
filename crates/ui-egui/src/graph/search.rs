@@ -37,6 +37,11 @@ pub(super) fn matches(text: &str) -> Vec<&'static materialcraft_engine::nodes::N
     v
 }
 
+/// The "shown / all" line under the search box (numbers only, so it needs no translation).
+pub(super) fn result_count(shown: usize, total: usize) -> String {
+    format!("{shown} / {total}")
+}
+
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
     let blocked = crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked();
     let Some(s) = app.graph.search.as_mut() else { return };
@@ -67,9 +72,15 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
                 }
             });
             // Feeding an input needs a node with an output
+            let feeds_input = s.connect_to.is_some();
             let mut list = matches(&s.text);
-            if s.connect_to.is_some() {
+            if feeds_input {
                 list.retain(|definition| !definition.outputs.is_empty());
+            }
+            if !s.text.trim().is_empty() {
+                // Same filter as the list, so "shown / all" compares like with like
+                let total = matches("").into_iter().filter(|definition| !feeds_input || !definition.outputs.is_empty()).count();
+                ui.label(egui::RichText::new(result_count(list.len(), total)).size(10.0).color(tk.text_dim));
             }
             let (up, down, enter, esc) = ui.input(|i| {
                 let pressed = |key| !blocked && i.key_pressed(key);
@@ -128,3 +139,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
         app.graph.search = None;
     }
 }
+
+#[cfg(test)]
+#[path = "search.test.rs"]
+mod tests;
