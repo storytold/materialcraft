@@ -586,6 +586,19 @@ mod tests {
     }
 
     #[test]
+    fn nested_node_inherits_parent_transform() {
+        let json = String::from_utf8(gltf_json(QUAD, None, &[0, 1, 2, 0, 2, 3])).unwrap();
+        let json = json
+            .replace(r#""scenes":[{"nodes":[0]}]"#, r#""scenes":[{"nodes":[0,1]}]"#)
+            .replace(r#""nodes":[{"mesh":0}]"#, r#""nodes":[{"mesh":0},{"translation":[100,0,0],"children":[2]},{"mesh":0}]"#);
+        let m = load_mesh("x.gltf", json.as_bytes()).unwrap();
+        assert_eq!(m.triangle_count(), 4);
+        let (lo, hi) = m.bounds();
+        let e = hi - lo;
+        assert!(e.x > 10.0 * e.y, "extent {e:?}");
+    }
+
+    #[test]
     fn vertex_bound_allows_three_vertices_per_triangle() {
         assert!(check_vertex_bound(0, 3 * MAX_TRIANGLES).is_ok());
         assert!(check_vertex_bound(0, 3 * MAX_TRIANGLES + 1).is_err());
