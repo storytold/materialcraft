@@ -25,7 +25,7 @@ fn bottom_library_drags_functions_into_function_and_processor_canvases() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     for kind in ["function", "pixel_processor", "value_processor"] {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         app.run("file.new", json!({"kind": if kind == "function" { "function" } else { "material" }, "name": "Library instance"})).unwrap();
         let owner = if kind == "function" { None } else { Some(NodeId(app.run("graph.node.add", json!({"def": kind})).unwrap()["id"].as_u64().unwrap())) };
         app.ui.library_search = "sbs://functions.sbs#Functions/Math/Pi".into();
@@ -126,7 +126,7 @@ fn bottom_library_drags_functions_into_function_and_processor_canvases() {
 fn bundled_even_count_opens_as_an_editable_arithmetic_tree() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.open", json!({"path": "sbs://functions.sbs"})).unwrap();
     app.run("graph.open", json!({"graph": "Functions/Math/Parity/EvenCount"})).unwrap();
     app.ui.library_search = "EvenCount".into();
@@ -149,7 +149,7 @@ fn samplers_drag_into_both_processor_canvases() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     for definition in ["pixel_processor", "value_processor"] {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         let owner = NodeId(app.run("graph.node.add", json!({"def": definition})).unwrap()["id"].as_u64().unwrap());
         app.ui.library_search = "Sample".into();
         app.ui.prefs.snap_to_grid = false;

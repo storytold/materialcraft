@@ -333,7 +333,7 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
             for entry in chunk {
                 let size = if as_list { vec2(ui.available_width(), 26.0) } else { tile };
                 let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-                crate::widgets::name(&response, egui::Role::ListItem, &entry.label);
+                crate::widgets::name(&response, egui::Role::ListItem, tr(&entry.label));
                 let takes = target.takes(entry);
                 let selected = app.ui.library_selected.as_deref() == Some(entry.id.as_str());
                 if selected {
@@ -351,10 +351,10 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
                 let color = if entry.warning.is_some() { WARNING } else { tokens.text };
                 let color = color.gamma_multiply(if takes { 1.0 } else { 0.55 });
                 if as_list {
-                    let galley = crate::widgets::elided(ui.painter(), entry.label.clone(), 11.5, color, rect.width() - 34.0);
+                    let galley = crate::widgets::elided(ui.painter(), tr(&entry.label).to_string(), 11.5, color, rect.width() - 34.0);
                     ui.painter().galley(rect.left_center() + vec2(30.0, -galley.size().y * 0.5), galley, color);
                 } else {
-                    let galley = ui.painter().layout(entry.label.clone(), egui::FontId::proportional(10.5), color, tile.x - 4.0);
+                    let galley = ui.painter().layout(tr(&entry.label).to_string(), egui::FontId::proportional(10.5), color, tile.x - 4.0);
                     let pos = egui::pos2(rect.center().x - galley.size().x * 0.5, image.bottom() + 3.0);
                     ui.painter().with_clip_rect(rect).galley(pos, galley, color);
                 }
@@ -368,9 +368,9 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
                     );
                 }
 
-                let mut tip = format!("{}\n{}", entry.label, tr(&entry.category));
+                let mut tip = format!("{}\n{}", tr(&entry.label), tr(&entry.category));
                 if !entry.description.is_empty() {
-                    tip.push_str(&format!("\n\n{}", entry.description));
+                    tip.push_str(&format!("\n\n{}", tr(&entry.description)));
                 }
                 if let Some(reason) = target.refusal(entry).or_else(|| entry.warning.clone()) {
                     tip.push_str(&format!("\n\n{reason}"));

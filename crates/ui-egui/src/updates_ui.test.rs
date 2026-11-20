@@ -17,7 +17,7 @@ fn no_pins() -> std::path::PathBuf {
 }
 
 fn app() -> MaterialCraftApp {
-    let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(sample_session(), UiState::english());
     app.updates_rt.updater = Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins());
 
     app

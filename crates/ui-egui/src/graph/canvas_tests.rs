@@ -88,7 +88,7 @@ fn clicking_the_shown_node_keeps_its_port() {
 
 #[test]
 fn clicked_wires_swap_with_x_and_delete_together() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
     app.run("file.new", json!({"template": "empty"}));
     let id = |v: Option<serde_json::Value>| v.and_then(|v| v["id"].as_u64()).unwrap();
     let a = id(app.run("graph.node.add", json!({"def": "uniform", "at": [0, -150]})));
@@ -151,7 +151,7 @@ fn clicked_wires_swap_with_x_and_delete_together() {
 fn node_search_shortcuts_wait_for_the_update_prompt() {
     for key in [egui::Key::Space, egui::Key::Tab] {
         let ctx = egui::Context::default();
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         crate::updates_ui::open_prompt_for_test(&mut app);
         let mut draw = |ui: &mut Ui| show(&mut app, ui);
         ctx.run_ui(egui::RawInput::default(), &mut draw).textures_delta.clear();
@@ -172,7 +172,7 @@ fn node_search_shortcuts_respect_hover_and_keyboard_focus() {
     for key in [egui::Key::Space, egui::Key::Tab] {
         for (hovered, editing) in [(true, false), (false, false), (true, true)] {
             let ctx = egui::Context::default();
-            let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+            let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
             let mut text = String::new();
             let mut draw = |ui: &mut Ui| {
                 if editing {

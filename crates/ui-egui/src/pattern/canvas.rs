@@ -140,7 +140,7 @@ fn paint(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) ->
             );
         }
         let node_response = ui.interact(bounds, response.id.with(("node", node.id)), Sense::hover());
-        crate::widgets::name(&node_response, egui::Role::Button, node.kind.label());
+        crate::widgets::name(&node_response, egui::Role::Button, crate::i18n::tr(node.kind.label()));
 
         for slot in std::iter::once(None).chain((0..node.children.len()).map(Some)) {
             let position = geometry::port(bounds, slot, node.children.len());

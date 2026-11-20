@@ -80,7 +80,7 @@ mod tests {
     use crate::{MaterialCraftApp, state::UiState};
 
     fn harness(block: impl FnOnce(&mut MaterialCraftApp)) -> egui_kittest::Harness<'static, MaterialCraftApp> {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
         block(&mut app);
         let mut fonts_installed = false;
         let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(800.0, 100.0)).build_ui_state(

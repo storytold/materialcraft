@@ -2,12 +2,14 @@ use egui::Ui;
 use materialcraft_engine::core::{ExposedParameter, ParameterEditor, Value};
 use serde_json::{Value as JsonValue, json};
 
+use crate::i18n::tr;
+
 /// The editor for one exposed input's value; returns the new value as JSON when it changed
 pub(super) fn input_editor(ui: &mut Ui, exposed: &materialcraft_engine::core::ExposedParameter, current: &Value) -> Option<JsonValue> {
-    let label = if exposed.label.is_empty() { exposed.id.as_str() } else { exposed.label.as_str() };
+    let label = if exposed.label.is_empty() { exposed.id.as_str() } else { tr(&exposed.label) };
     let response = ui.vertical(|ui| edit(ui, exposed, current, label));
     if !exposed.description.is_empty() {
-        response.response.on_hover_text(&exposed.description);
+        response.response.on_hover_text(tr(&exposed.description));
     }
 
     response.inner
@@ -43,9 +45,9 @@ fn edit(ui: &mut Ui, exposed: &ExposedParameter, current: &Value, label: &str) -
         Value::Bool(mut value) => ui.checkbox(&mut value, label).changed().then(|| json!(value)),
         Value::Enum(selected) => {
             let mut changed = None;
-            crate::widgets::combo(ui, label, exposed.options.get(selected as usize).cloned().unwrap_or_default(), |ui| {
+            crate::widgets::combo(ui, label, exposed.options.get(selected as usize).map_or("", |option| tr(option)), |ui| {
                 for (index, option) in exposed.options.iter().enumerate() {
-                    if ui.selectable_label(index as u32 == selected, option).clicked() {
+                    if ui.selectable_label(index as u32 == selected, tr(option)).clicked() {
                         changed = Some(json!(index));
                     }
                 }

@@ -11,7 +11,7 @@ fn the_menus_and_their_windows() {
     let Some(directory) = std::env::var_os("MC_SNAPSHOT_DIR").map(std::path::PathBuf::from) else { return };
 
     std::fs::create_dir_all(&directory).unwrap();
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     let mut harness = super::harness(app, 1600.0, 960.0);
     super::settle(&mut harness, 8);
 

@@ -459,7 +459,7 @@ mod tests {
     }
 
     fn app() -> MaterialCraftApp {
-        MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::state::UiState::default())
+        MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::state::UiState::english())
     }
 
     #[test]

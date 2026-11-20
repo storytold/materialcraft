@@ -7,7 +7,7 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 type State = (MaterialCraftApp, Rect);
 
 fn harness(id: &'static str, render: bool) -> Harness<'static, State> {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     app.ui.windows.home = id == "home";
     app.ui.windows.export = id == "export";
     let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0);

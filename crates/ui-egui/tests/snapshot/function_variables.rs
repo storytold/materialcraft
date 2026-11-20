@@ -6,7 +6,7 @@ use materialcraft_engine::core::{FunctionGraph, Value};
 fn get_properties_offer_typed_choices_and_accept_custom_names() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.new", json!({"kind": "function", "name": "Variable choices"})).unwrap();
     let mut function = FunctionGraph::default();
     let float = function.add("get_float1", &[], Some(Value::Text("ITypedThis".into())));

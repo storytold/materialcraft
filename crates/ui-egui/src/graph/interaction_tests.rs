@@ -57,7 +57,7 @@ fn placement_and_dragging_snap_by_default_and_can_be_disabled() {
 
 #[test]
 fn pin_navigation_wraps_and_thumbnail_commands_keep_the_document() {
-    let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
     app.graph.view = egui::Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0));
     let context = egui::Context::default();
     for position in [[100, 200], [700, 400]] {

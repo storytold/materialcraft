@@ -6,7 +6,7 @@ use crate::explorer::ExplorerTarget;
 use crate::{MaterialCraftApp, UiState};
 
 fn app() -> MaterialCraftApp {
-    MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default())
+    MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english())
 }
 
 fn capture(app: &MaterialCraftApp) -> Modality {

@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn floating_panels_stop_while_a_dialog_is_open() {
-        let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         let ctx = egui::Context::default();
         let screen_rect = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(1200.0, 800.0)));
         let frame = |app: &mut crate::MaterialCraftApp| {

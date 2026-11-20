@@ -5,7 +5,7 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 
 fn app() -> MaterialCraftApp {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     let node = app.run("graph.node.add", json!({"def": "uniform", "params": {"color": [0.5, 0.75, 1.0, 1.0]}})).unwrap()["id"].as_u64().unwrap();
     app.run("graph.node.add", json!({"def": "output", "connectFrom": {"node": node}, "params": {"usage": 1}})).unwrap();
     app

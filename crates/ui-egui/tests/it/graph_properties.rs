@@ -18,7 +18,7 @@ fn harness(render: bool) -> Harness<'static, MaterialCraftApp> {
     function.attributes.label = "Readable helper".into();
     function.attributes.author_url = "https://example.org".into();
     package.graphs = vec![Graph::new("Material"), function];
-    let mut app = MaterialCraftApp::headless(Session::new(package), UiState::default());
+    let mut app = MaterialCraftApp::headless(Session::new(package), UiState::english());
     app.run("file.newPackage", json!({"name": "Canvas"})).unwrap();
     app.run("file.new", json!({"template": "empty", "name": "Open_graph"})).unwrap();
     app_harness(app, render)
@@ -144,7 +144,7 @@ fn close_with_focused_graph_text(native_close: bool) {
     let mut function = Graph::new("Helper");
     function.function = Some(FunctionGraph::default());
     package.graphs.push(function);
-    let app = MaterialCraftApp::headless(Session::new(package), UiState::default());
+    let app = MaterialCraftApp::headless(Session::new(package), UiState::english());
     let mut harness = app_harness(app, false);
     select(&mut harness, "Helper");
     type_field(&mut harness, "Label", "Pending label");

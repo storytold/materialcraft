@@ -6,7 +6,7 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 use serde_json::json;
 
 fn harness(preview: u32, render: bool) -> (Harness<'static, MaterialCraftApp>, NodeId) {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.ui.prefs.preview_size = preview;
     app.ui.graph_camera.zoom = 1.0;
     let id = NodeId(app.run("graph.node.add", json!({"def":"uniform"})).unwrap()["id"].as_u64().unwrap());

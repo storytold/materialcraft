@@ -48,7 +48,7 @@ fn the_3d_view_shows_its_settings() {
     let Some(directory) = std::env::var_os("MC_SNAPSHOT_DIR").map(std::path::PathBuf::from) else { return };
 
     std::fs::create_dir_all(&directory).unwrap();
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     let mut harness = super::harness(app, 1600.0, 960.0);
     rendered(&mut harness);
     super::save(&mut harness, &directory, "view3d-plain");

@@ -4,7 +4,7 @@ use serde_json::json;
 
 /// Create a headless material editor for library interactions.
 fn app() -> MaterialCraftApp {
-    MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default())
+    MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english())
 }
 
 /// Collect labels visible under the current library filter.

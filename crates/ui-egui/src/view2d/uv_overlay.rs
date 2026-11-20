@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn reloading_a_mesh_with_new_uvs_rebuilds_the_overlay() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
         let first = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 0 1\nf 1/1 2/2 3/3\n";
         let second = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvt 0.5 0\nvt 0 0.5\nf 1/1 2/2 3/3\n";
 

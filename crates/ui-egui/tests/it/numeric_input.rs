@@ -9,7 +9,7 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 use serde_json::json;
 
 fn harness(render: bool) -> (Harness<'static, MaterialCraftApp>, NodeId) {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     app.run("file.new", json!({"template":"empty"})).unwrap();
     let id = NodeId(app.run("graph.node.add", json!({"def":"transformation"})).unwrap()["id"].as_u64().unwrap());
     app.session.reset_history();
@@ -48,7 +48,7 @@ fn pair(h: &Harness<'static, MaterialCraftApp>, id: NodeId, param: &str) -> [f32
 }
 #[test]
 fn graph_name_typed_across_frames_commits_on_focus_loss() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     app.run("file.new", json!({"template":"empty"})).unwrap();
     app.session.reset_history();
     let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);

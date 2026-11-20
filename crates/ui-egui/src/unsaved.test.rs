@@ -26,7 +26,7 @@ mod unsaved_tests {
 
 #[test]
 fn opening_packages_preserves_the_existing_unsaved_document() {
-    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
     app.session.modified = true;
     let bytes = |name: &str| materialcraft_engine::formats::sbs::write_sbs(&materialcraft_engine::core::Package::new(name)).unwrap();
     crate::web_files::load(&mut app, "first.sbs", bytes("First"), false);
@@ -44,7 +44,7 @@ fn opening_packages_preserves_the_existing_unsaved_document() {
 #[test]
 fn quitting_asks_about_each_modified_package() {
     use crate::unsaved::{Guarded, guard, perform};
-    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
     app.session.modified = true;
     app.run("file.newPackage", serde_json::json!({"name": "Second"})).unwrap();
     app.session.modified = true;
@@ -71,7 +71,7 @@ fn a_pending_action_is_kept_even_if_the_package_was_saved_elsewhere() {
 #[test]
 fn closing_one_package_only_prompts_for_that_packages_edits() {
     use crate::unsaved::{Guarded, guard, perform};
-    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
     app.session.modified = true;
     app.run("file.newPackage", serde_json::json!({"name": "Second"})).unwrap();
     let second = app.session.document_id;

@@ -11,7 +11,7 @@ fn fresh_embedded_graphs_open_only_after_explicit_editing() {
     std::fs::create_dir_all(&directory).unwrap();
 
     for (definition, label) in [("fx_map", "FX-Map"), ("pixel_processor", "Pixel processor"), ("value_processor", "Value processor")] {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         let owner = NodeId(app.run("graph.node.add", json!({"def": definition})).unwrap()["id"].as_u64().unwrap());
         app.ui.frame_all = true;
         let original = app.session.pkg.clone();

@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn reloading_a_custom_mesh_with_the_same_name_invalidates_scene_and_frame() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         let first_mesh = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
         let second_mesh = b"v 0 0 0\nv 2 0 0\nv 0 1 0\nf 1 2 3\n";
         let size = (64, 48);
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn relief_tracks_assigned_height_while_another_graph_is_open() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         app.session.preview_size = Some(16);
         app.session.cook();
         let (scene_key, _) = base_scene(&mut app);
@@ -489,7 +489,7 @@ mod tests {
 
     #[test]
     fn changing_relief_keeps_one_worker_and_discards_stale_geometry() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         app.session.cook();
         let (scene_key, base) = base_scene(&mut app);
         let maps = Maps::from_usages(app.session.material_maps());
@@ -515,7 +515,7 @@ mod tests {
 
     #[test]
     fn a_pending_relief_change_keeps_the_scene_of_the_displayed_frame() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         app.session.preview_size = Some(16);
         app.session.cook();
         let (scene_key, _) = base_scene(&mut app);
@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn replacing_displayed_frames_releases_each_previous_scene() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         app.session.preview_size = Some(16);
         app.session.cook();
         let context = egui::Context::default();
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn a_new_relief_key_releases_the_old_displaced_scene_while_the_worker_is_busy() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         app.session.cook();
         let (scene_key, _) = base_scene(&mut app);
         let maps = Maps::from_usages(app.session.material_maps());
@@ -665,7 +665,7 @@ mod resolution_tests {
 
     #[test]
     fn a_retained_fixed_resolution_frame_keeps_its_uploaded_aspect() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 400.0));
         app.session.view3d.override_resolution = true;
         app.session.view3d.viewport_resolution = false;
@@ -685,7 +685,7 @@ mod resolution_tests {
 
     #[test]
     fn switching_a_helper_on_keeps_the_rendered_frame() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         let key = content_key(&app, (400, 300), (400, 300), None);
 
         app.session.view3d.show_grid = true;

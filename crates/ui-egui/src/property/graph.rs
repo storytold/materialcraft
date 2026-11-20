@@ -97,7 +97,7 @@ fn show_target(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_en
             let label = format!(
                 "{}  {} | {}",
                 icon::SIGN_OUT,
-                materialcraft_engine::core::ComponentUsage::from_index(usage as u32).label,
+                tr(materialcraft_engine::core::ComponentUsage::from_index(usage as u32).label),
                 materialcraft_engine::eval::identifier(node)
             );
             if ui.add(egui::Button::selectable(app.session.view2d.node == Some(node.id), label)).clicked() {
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn picking_an_input_image_asks_for_the_file_and_other_commands_run() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         let nodes = app.session.graph().unwrap().nodes.len();
         run_or_pick(&mut app, "ui.pickInputImage", json!({"identifier": "curvature"}));
         assert_eq!(app.dialogs.queued(), 1);

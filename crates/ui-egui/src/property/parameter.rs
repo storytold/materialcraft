@@ -135,7 +135,7 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
             }
         }
         Value::PatternGraph(graph) => {
-            ui.label(format!("{}: {} nodes", parameter.label, graph.nodes.len()));
+            ui.label(crate::i18n::trf("{label}: {count} nodes", &[("label", &tr(parameter.label)), ("count", &graph.nodes.len())]));
         }
         Value::Function(function) => {
             ui.label(RichText::new(tr(parameter.label)).color(tokens.text));

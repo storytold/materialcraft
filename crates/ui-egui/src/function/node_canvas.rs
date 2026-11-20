@@ -39,7 +39,7 @@ pub(super) fn paint(
     } else {
         category_color(category)
     };
-    node_card::paint(painter, bounds, zoom, label, color);
+    node_card::paint(painter, bounds, zoom, crate::i18n::tr(label), color);
     let body = node_card::body(bounds, zoom);
     if output {
         painter.rect_filled(body, 0.0, OUTPUT_COLOR);

@@ -7,7 +7,7 @@ fn explorer_can_close_the_last_package_and_all_packages() {
     use materialcraft_engine::{Session, core::Package};
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(Session::new(Package::new("Untitled package")), UiState::default());
+    let mut app = MaterialCraftApp::headless(Session::new(Package::new("Untitled package")), UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 4);
@@ -60,7 +60,7 @@ fn explorer_empty_packages_have_no_disclosure() {
     use materialcraft_engine::{Session, core::Package};
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let app = MaterialCraftApp::headless(Session::new(Package::new("Empty package")), UiState::default());
+    let app = MaterialCraftApp::headless(Session::new(Package::new("Empty package")), UiState::english());
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 4);
     let arrow_visible = |harness: &mut egui_kittest::Harness<'static, MaterialCraftApp>| {
@@ -129,7 +129,7 @@ fn explorer_resources_drag_into_the_graph() {
     use materialcraft_engine::{core::Value, file_cmds, formats};
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.newPackage", json!({"name": "Drag resources"})).unwrap();
     app.run("file.new", json!({"template": "empty"})).unwrap();
     app.session.preview_size = Some(16);
@@ -190,7 +190,7 @@ fn explorer_resources_drag_into_the_graph() {
 fn explorer_resources_folder_is_hidden_until_an_asset_is_imported() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut harness = harness(MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default()), 1600.0, 960.0);
+    let mut harness = harness(MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english()), 1600.0, 960.0);
     settle(&mut harness, 4);
     let resources = || By::new().role(Role::TreeItem).label("Resources");
 
@@ -214,7 +214,7 @@ fn explorer_resources_folder_is_hidden_until_an_asset_is_imported() {
 fn explorer_folder_properties_and_saved_package_names() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.session.pkg.name = "Untitled".into();
     app.run("folder.create", json!({"name": "Tools"})).unwrap();
     app.run("folder.create", json!({"parent": "Resources", "name": "Masks"})).unwrap();
@@ -290,7 +290,7 @@ fn explorer_folder_properties_and_saved_package_names() {
 fn explorer_selection_does_not_open_documents_or_graphs() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.session.pkg.name = "Source".into();
     app.run("graph.rename", json!({"name": "Material"})).unwrap();
     let output = app.run("graph.node.add", json!({"def": "output", "params": {"identifier": "result"}})).unwrap()["id"].as_u64().unwrap();
@@ -338,7 +338,7 @@ fn explorer_selection_does_not_open_documents_or_graphs() {
 fn explorer_folder_tree_and_context_menus() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.session.pkg.name = "Explorer menus".into();
     app.run("folder.create", json!({"name": "Tools"})).unwrap();
     app.run("folder.create", json!({"parent": "Tools", "name": "Math"})).unwrap();

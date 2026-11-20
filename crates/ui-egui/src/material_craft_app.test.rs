@@ -8,7 +8,7 @@ mod lib_tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn autosave_leaves_one_snapshot_worker_in_flight() {
-        let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(sample_session(), UiState::english());
         app.session.modified = true;
         let (sender, receiver) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || receiver.recv().unwrap());
@@ -30,7 +30,7 @@ mod lib_tests {
         use crate::function::{FunctionEditor, FunctionTarget};
         use materialcraft_engine::core::{FunctionGraph, NodeId, Value};
 
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         let owner = NodeId(app.run("graph.node.add", json!({"def": "pixel_processor"})).unwrap()["id"].as_u64().unwrap());
         let target = materialcraft_engine::FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
         app.run("graph.function.set", json!({"target": target, "function": FunctionGraph::constant(Value::Float(0.5))})).unwrap();
@@ -52,7 +52,7 @@ mod lib_tests {
     /// A frame which does not draw Explorer clears hover state left by its previous frame.
     #[test]
     fn review_hidden_explorer_drawing_clears_hover() {
-        let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(sample_session(), UiState::english());
         app.fonts_ready = true;
         app.ui.explorer.hovered = true;
         app.ui.dock.close(crate::docking::Panel::Explorer);
@@ -65,7 +65,7 @@ mod lib_tests {
 
     #[test]
     fn run_reports_errors_as_toasts_and_keeps_the_session() {
-        let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(sample_session(), UiState::english());
         assert!(app.run("no.such.command", json!({})).is_none());
         assert!(app.toasts.iter().any(|t| t.error));
         assert!(app.run("graph.node.add", json!({"def": "levels"})).is_some());
@@ -95,12 +95,12 @@ mod close_order_tests {
 
     #[test]
     fn the_quit_hook_runs_after_the_close_guard() {
-        let mut held = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+        let mut held = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
         held.fonts_ready = true;
         held.session.modified = true;
         assert!(close_frame(&mut held), "the guard canceled the close before the hook runs");
 
-        let mut clean = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+        let mut clean = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
         clean.fonts_ready = true;
         clean.session.modified = false;
         assert!(!close_frame(&mut clean), "nothing to hold: the hook sees a close to take over");
@@ -115,7 +115,7 @@ mod unsaved_state_tests {
     fn app(modified: bool) -> MaterialCraftApp {
         let mut s = materialcraft_engine::sample_session();
         s.modified = modified;
-        MaterialCraftApp::headless(s, UiState::default())
+        MaterialCraftApp::headless(s, UiState::english())
     }
 
     #[test]

@@ -334,7 +334,7 @@ mod tests {
     fn app(modified: bool) -> MaterialCraftApp {
         let mut s = materialcraft_engine::sample_session();
         s.modified = modified;
-        MaterialCraftApp::headless(s, crate::state::UiState::default())
+        MaterialCraftApp::headless(s, crate::state::UiState::english())
     }
 
     #[test]

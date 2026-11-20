@@ -23,7 +23,7 @@ mod cook_tests {
     fn stale_background_cook_does_not_overwrite_newer_sync_cook() {
         let mut session = sample_session();
         session.preview_size = Some(64);
-        let mut app = MaterialCraftApp::headless(session, UiState::default());
+        let mut app = MaterialCraftApp::headless(session, UiState::english());
         let ctx = egui::Context::default();
 
         start(&mut app, 0.0); // cook of version A runs in the background
@@ -50,7 +50,7 @@ mod worker_failure_tests {
         let mut session = sample_session();
         session.preview_size = Some(64);
         session.cook();
-        MaterialCraftApp::headless(session, UiState::default())
+        MaterialCraftApp::headless(session, UiState::english())
     }
 
     #[test]
@@ -106,7 +106,7 @@ fn stale_worker_failure_does_not_replace_a_newer_sync_cook() {
     let mut session = materialcraft_engine::sample_session();
     session.preview_size = Some(64);
     session.cook();
-    let mut app = crate::MaterialCraftApp::headless(session, crate::UiState::default());
+    let mut app = crate::MaterialCraftApp::headless(session, crate::UiState::english());
     let (tx, rx) = std::sync::mpsc::channel();
     app.cooker.rx = Some(rx);
     app.cooker.epoch = app.session.cook_epoch.wrapping_sub(1);

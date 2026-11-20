@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use super::Subject;
 use crate::MaterialCraftApp;
-use crate::i18n::tr;
+use crate::i18n::{tr, trc};
 use crate::properties::section;
 use crate::theme::Tokens;
 
@@ -259,9 +259,9 @@ fn material(app: &mut MaterialCraftApp, ui: &mut Ui) {
         }
     });
     if view.shader == Shader::MeshInfo {
-        crate::widgets::combo(ui, tr("Shown on the mesh"), tr(view.mesh_info.label()), |ui| {
+        crate::widgets::combo(ui, tr("Shown on the mesh"), trc("Mesh info", view.mesh_info.label()), |ui| {
             for &shown in MeshInfo::ALL {
-                if ui.selectable_label(view.mesh_info == shown, tr(shown.label())).clicked() {
+                if ui.selectable_label(view.mesh_info == shown, trc("Mesh info", shown.label())).clicked() {
                     set(app, "meshInfo", shown.id());
                 }
             }

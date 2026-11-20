@@ -8,7 +8,7 @@ use materialcraft_ui_egui::{
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn unsaved_dialog_snapshot_and_cancel() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     app.session.modified = true;
     unsaved::guard(&mut app, Guarded::Menu { id: "ui.closeAll".into() });
     let mut h = Harness::builder().with_size(vec2(1600.0, 960.0)).wgpu().build_ui_state(

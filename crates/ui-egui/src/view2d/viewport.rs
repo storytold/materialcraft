@@ -115,7 +115,10 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, shown: Option<&Shown
 /// The size, kind and bit depth of the image, on a dark backing so it reads over any image
 fn size_line(painter: &Painter, rect: Rect, shown: &Shown, color: Color32) {
     let kind = if shown.image.is_gray() { tr("Grayscale") } else { "RGBA" };
-    let line = format!("{} x {} ({kind}, {}bpc)", shown.image.width(), shown.image.height(), shown.bits);
+    let line = crate::i18n::trf(
+        "{width} x {height} ({kind}, {bits}bpc)",
+        &[("width", &shown.image.width()), ("height", &shown.image.height()), ("kind", &kind), ("bits", &shown.bits)],
+    );
     let text = painter.layout_no_wrap(line, egui::FontId::proportional(SIZE_LINE_TEXT), color);
     let corner = rect.left_bottom() + vec2(SIZE_LINE_MARGIN, -SIZE_LINE_MARGIN - text.size().y);
 
@@ -398,7 +401,7 @@ mod tests {
     #[test]
     fn an_empty_view_releases_the_previous_image_and_screenshot() {
         let context = egui::Context::default();
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
         let mut peak_screenshot_bytes = 0;
 
         for index in 0..8 {
@@ -423,7 +426,7 @@ mod tests {
     fn distinct_images_release_the_previous_texture_and_bound_the_screenshot_buffer() {
         let context = egui::Context::default();
         context.begin_pass(egui::RawInput { max_texture_side: Some(1024), ..Default::default() });
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
         let mut previous_texture = None;
         let mut peak_retained_screenshot_bytes = 0;
 

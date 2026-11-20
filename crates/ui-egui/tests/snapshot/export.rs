@@ -6,7 +6,7 @@ use egui::accesskit::Role;
 fn export_window_tabs() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 6);
