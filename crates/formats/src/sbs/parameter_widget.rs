@@ -19,14 +19,20 @@ pub(super) fn read(element: Node<'_, '_>, input: &mut ExposedParameter) {
             "step" => input.step = number.filter(|step| *step > 0.0),
             "valueInterpretation" if text == "color" => color = true,
             "parameters" if name == "dropdownlist" => {
-                let mut parts = text.split(';').skip(1);
+                // Labels are written unescaped, so a non-numeric fragment after a label belongs to it
+                let mut parts = text.split(';').skip(1).peekable();
                 while let (Some(index), Some(label)) = (parts.next(), parts.next()) {
                     // The model's enum values are contiguous; sparse external lists remain numeric
                     if index.parse::<usize>().ok() != Some(input.options.len()) {
                         input.options.clear();
                         break;
                     }
-                    input.options.push(label.into());
+                    let mut label = label.to_string();
+                    while let Some(rest) = parts.next_if(|part| part.parse::<usize>().is_err()) {
+                        label.push(';');
+                        label.push_str(rest);
+                    }
+                    input.options.push(label);
                 }
             }
             _ => {}
@@ -91,4 +97,56 @@ pub(super) fn write(out: &mut String, input: &ExposedParameter) {
 
 fn option(out: &mut String, name: &str, value: &str) {
     let _ = write!(out, "<option><name v=\"{name}\"/><value v=\"{}\"/></option>", xml_escape(value));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn param(options: &[&str]) -> ExposedParameter {
+        ExposedParameter {
+            id: "mode".into(),
+            label: "Mode".into(),
+            group: String::new(),
+            default: Value::Enum(0),
+            description: String::new(),
+            editor: Some(ParameterEditor::Dropdown),
+            clamp: false,
+            step: None,
+            min: 0.0,
+            max: 1.0,
+            options: options.iter().map(|label| (*label).into()).collect(),
+        }
+    }
+
+    fn read_value(value: &str) -> Vec<String> {
+        let xml = format!(
+            r#"<p><defaultWidget><name v="dropdownlist"/><options><option><name v="parameters"/><value v="{value}"/></option></options></defaultWidget></p>"#
+        );
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let mut loaded = param(&[]);
+        loaded.default = Value::Int(0);
+        read(document.root_element(), &mut loaded);
+        loaded.options
+    }
+
+    #[test]
+    fn dropdown_labels_with_semicolons_round_trip() {
+        let labels = ["Fast; low", "Slow", "a\\b", "end;", "x;y;z"];
+        let input = param(&labels);
+        let mut xml = String::from("<p>");
+        write(&mut xml, &input);
+        xml.push_str("</p>");
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let mut loaded = param(&[]);
+        loaded.default = Value::Int(0);
+        read(document.root_element(), &mut loaded);
+        assert_eq!(loaded.options, labels);
+    }
+
+    #[test]
+    fn plain_and_sparse_dropdown_parameters_read_as_before() {
+        assert_eq!(read_value("0;0;A;1;B\\C"), ["A", "B\\C"]);
+        assert!(read_value("0;0;A;5;B").is_empty());
+    }
 }
