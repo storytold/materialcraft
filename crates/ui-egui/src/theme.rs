@@ -285,11 +285,59 @@ pub fn card<R>(ui: &mut egui::Ui, t: &Tokens, margin: egui::Margin, padding: egu
         .inner
 }
 
-/// The app's fonts: egui's defaults and the Phosphor icon font (`fonts::UiFonts` adds CJK).
+/// The app's fonts: egui's defaults, the Phosphor icon font and an installed Thai face
+/// (`fonts::UiFonts` adds CJK).
 pub fn font_definitions() -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+
+    // ไทย: egui's bundled faces have no Thai; an installed Thai face goes last in every family.
+    if let Some(data) = thai_font() {
+        fonts.font_data.insert("system-thai".into(), data);
+        for family in [FontFamily::Proportional, FontFamily::Monospace] {
+            fonts.families.entry(family).or_default().push("system-thai".into());
+        }
+    }
     fonts
+}
+
+/// An installed Thai font, read once (fonts are never bundled; only looked for where the OS or
+/// common packages put them).
+fn thai_font() -> Option<std::sync::Arc<egui::FontData>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        static FOUND: std::sync::OnceLock<Option<std::sync::Arc<egui::FontData>>> = std::sync::OnceLock::new();
+        FOUND
+            .get_or_init(|| {
+                let candidates: Vec<std::path::PathBuf> = if cfg!(target_os = "macos") {
+                    ["/System/Library/Fonts/Supplemental/Thonburi.ttc", "/System/Library/Fonts/Thonburi.ttc"].map(Into::into).to_vec()
+                } else if cfg!(windows) {
+                    // WINDIR rather than a hard-coded C:\Windows: Windows may be installed on another drive.
+                    let windir = std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
+                    let fonts = std::path::PathBuf::from(windir).join("Fonts");
+                    ["LeelawUI.ttf", "leelawad.ttf", "tahoma.ttf"].iter().map(|f| fonts.join(f)).collect()
+                } else {
+                    [
+                        "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf",
+                        "/usr/share/fonts/noto/NotoSansThai-Regular.ttf",
+                        "/usr/share/fonts/google-noto/NotoSansThai-Regular.ttf",
+                        "/usr/share/fonts/truetype/tlwg/Loma.ttf",
+                    ]
+                    .map(Into::into)
+                    .to_vec()
+                };
+                candidates.iter().find_map(|p| {
+                    let meta = std::fs::metadata(p).ok()?;
+                    if !meta.is_file() || meta.len() == 0 || meta.len() > (64 << 20) {
+                        return None;
+                    }
+                    std::fs::read(p).ok().map(|b| std::sync::Arc::new(egui::FontData::from_owned(b)))
+                })
+            })
+            .clone()
+    }
+    #[cfg(target_arch = "wasm32")]
+    None
 }
 
 /// Install the fonts (once, at startup; the app applies the style from its settings).
@@ -405,5 +453,25 @@ mod tests {
         }
         // The views keep their studio grey.
         assert_eq!(Tokens::for_brightness(Brightness::Light).viewport, Tokens::for_brightness(Brightness::Dark).viewport);
+    }
+
+    /// Thai graph, node and file names draw in both families, not as boxes (#169); skipped when
+    /// the system has no Thai font.
+    #[test]
+    fn thai_text_draws_in_every_family_with_a_system_thai_font() {
+        if thai_font().is_none() {
+            eprintln!("skipping: no Thai system font");
+            return;
+        }
+
+        let ctx = egui::Context::default();
+        ctx.set_fonts(font_definitions());
+        let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+
+        for family in [FontFamily::Proportional, FontFamily::Monospace] {
+            let font = FontId::new(12.0, family.clone());
+            assert!(ctx.fonts_mut(|f| f.has_glyphs(&font, "สวัสดีวัสดุ")), "{family:?} has no Thai");
+        }
     }
 }
