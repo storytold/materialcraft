@@ -281,6 +281,7 @@ fn style(ui: &Ui, t: &Tokens) -> DockStyle {
     // Panels arrange in a split tree around the graph; floating title bars only move windows.
     s.new_dock_zones = false;
     s.title_bar_docks = false;
+    s.right_to_left = craft_ui::direction::is_rtl(ui);
     s
 }
 

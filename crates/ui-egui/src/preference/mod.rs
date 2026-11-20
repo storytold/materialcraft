@@ -59,8 +59,16 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
         ui.set_min_size(size);
         let whole = ui.available_rect_before_wrap();
         let bar_top = whole.bottom() - BUTTON_BAR_HEIGHT;
-        let list = egui::Rect::from_min_max(whole.min, egui::pos2(whole.left() + PAGE_LIST_WIDTH.min(size.x * 0.35), bar_top));
-        let page = egui::Rect::from_min_max(egui::pos2(list.right() + 16.0, whole.top()), egui::pos2(whole.right(), bar_top));
+        let list_w = PAGE_LIST_WIDTH.min(size.x * 0.35);
+        let (list, page) = if craft_ui::direction::is_rtl(ui) {
+            let list = egui::Rect::from_min_max(egui::pos2(whole.right() - list_w, whole.top()), egui::pos2(whole.right(), bar_top));
+            let page = egui::Rect::from_min_max(whole.min, egui::pos2(list.left() - 16.0, bar_top));
+            (list, page)
+        } else {
+            let list = egui::Rect::from_min_max(whole.min, egui::pos2(whole.left() + list_w, bar_top));
+            let page = egui::Rect::from_min_max(egui::pos2(list.right() + 16.0, whole.top()), egui::pos2(whole.right(), bar_top));
+            (list, page)
+        };
 
         page_list(app, &mut ui.new_child(egui::UiBuilder::new().max_rect(list)));
 
@@ -78,7 +86,7 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
         });
 
         let bar = egui::Rect::from_min_max(egui::pos2(whole.left(), bar_top), whole.max);
-        let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(bar).layout(egui::Layout::right_to_left(egui::Align::Center)));
+        let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(bar).layout(craft_ui::direction::trailing(ui)));
         for (label, pressed) in [("Apply", PreferenceAction::Apply), ("Cancel", PreferenceAction::Cancel), ("OK", PreferenceAction::Ok)] {
             let button = if pressed == PreferenceAction::Ok { crate::widgets::primary_button(&bar_ui, tr(label)) } else { egui::Button::new(tr(label)) };
             if bar_ui.add_sized([BUTTON_WIDTH.min(bar.width() / 3.0 - 4.0), 28.0], button).clicked() {
@@ -127,7 +135,7 @@ fn page_list(app: &mut MaterialCraftApp, ui: &mut Ui) {
         let row = ui
             .allocate_ui_with_layout(
                 vec2(ui.available_width(), PAGE_ROW_HEIGHT),
-                egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true).with_main_align(egui::Align::LEFT),
+                craft_ui::direction::row(ui).with_main_justify(true).with_main_align(craft_ui::direction::start_align(ui)),
                 |ui| ui.add(button),
             )
             .inner;

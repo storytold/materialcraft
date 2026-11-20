@@ -495,9 +495,14 @@ impl MaterialCraftApp {
         }
         self.last_time = now;
         let style = (self.ui.prefs.brightness, self.ui.prefs.accent);
-        if self.styled != Some(style) {
+        let restyled = self.styled != Some(style);
+        if restyled {
             theme::apply(ctx, style.0, style.1);
             self.styled = Some(style);
+        }
+        let dir = craft_ui::direction::resolve(&self.ui.prefs.language, craft_ui::direction::Setting::Language);
+        if restyled || craft_ui::direction::HasDirection::direction(ctx) != dir {
+            craft_ui::direction::apply(ctx, dir);
         }
 
         let scale = self.ui.prefs.ui_scale.clamp(0.5, 3.0);
