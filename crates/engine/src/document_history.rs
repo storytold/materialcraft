@@ -10,6 +10,7 @@ pub(crate) struct DocumentHistory {
 
 impl DocumentHistory {
     pub(crate) fn record(&mut self, snapshot: Snapshot, key: Option<&str>, limit: usize) {
+        self.mark_saved_state(&snapshot);
         // Retain the state before a gesture, while each edit still has its own rollback snapshot
         if key.is_none() || self.merge_key.as_deref() != key || self.undo.is_empty() {
             self.undo.push(snapshot);
@@ -18,6 +19,15 @@ impl DocumentHistory {
         self.redo.clear();
         self.trim(limit);
         self.merge_key = key.map(str::to_owned);
+    }
+
+    /// A clean incoming state is the one on disk, so every stored state now differs from the file
+    fn mark_saved_state(&mut self, incoming: &Snapshot) {
+        if !incoming.modified {
+            for snapshot in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+                snapshot.modified = true;
+            }
+        }
     }
 
     pub(crate) fn trim(&mut self, limit: usize) {
@@ -43,6 +53,7 @@ impl DocumentHistory {
     }
 
     pub(crate) fn undo(&mut self, mut current: Snapshot, limit: usize) -> Option<Snapshot> {
+        self.mark_saved_state(&current);
         let snapshot = self.undo.pop()?;
         current.label.clone_from(&snapshot.label);
         self.redo.push(current);
@@ -52,6 +63,7 @@ impl DocumentHistory {
     }
 
     pub(crate) fn redo(&mut self, mut current: Snapshot, limit: usize) -> Option<Snapshot> {
+        self.mark_saved_state(&current);
         let snapshot = self.redo.pop()?;
         current.label.clone_from(&snapshot.label);
         self.undo.push(current);
