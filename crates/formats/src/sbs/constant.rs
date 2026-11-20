@@ -1,5 +1,5 @@
 pub use craft_sbs::SBS_EXT;
-pub(super) use craft_sbs::{FIRST_UID, MAX_SBS_BYTES, MAX_XML_NODES, SELF_DEPENDENCY, SNIFF_BYTES};
+pub(super) use craft_sbs::{FIRST_UID, MAX_XML_NODES, SELF_DEPENDENCY};
 
 pub(crate) const MAX_GRAPHS: usize = 4096;
 
