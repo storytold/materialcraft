@@ -1,4 +1,4 @@
-pub(super) use craft_sbs::xml::{child_element, child_value, children_named, format_float, is_parameters_element, parse_floats, parse_ints, xml_escape};
+pub(super) use craft_sbs::xml::{child_element, child_value, children_named, format_float, is_parameters_element, parse_floats, xml_escape};
 
 #[cfg(test)]
 mod shared_escape_tests {
