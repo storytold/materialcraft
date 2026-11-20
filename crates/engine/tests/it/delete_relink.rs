@@ -75,3 +75,25 @@ fn relink_preserves_multi_node_chain_connections_in_either_selection_order() {
         assert_eq!(s.graph().unwrap().input_of(NodeId(output), "input").unwrap().from, NodeId(source));
     }
 }
+
+#[test]
+fn invalid_node_ids_do_not_fall_back_to_the_selection() {
+    let mut s = new_session();
+    let blur = node(&mut s, "blur");
+    run(&mut s, "graph.select", json!({"ids": [blur]}));
+    let before = s.pkg.graphs.clone();
+    for p in [
+        json!({"id": -1}),
+        json!({"id": 1.5}),
+        json!({"id": "x"}),
+        json!({"ids": ["x"]}),
+        json!({"ids": [blur, -1]}),
+        json!({"ids": -1}),
+        json!({"ids": "x"}),
+        json!({"ids": 5}),
+    ] {
+        assert!(execute(&mut s, "edit.delete", &p).is_err(), "{p}");
+        assert_eq!(s.graph().unwrap().nodes.len(), 1, "{p}");
+        assert!(s.pkg.graphs == before, "{p}");
+    }
+}
