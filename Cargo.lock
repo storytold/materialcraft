@@ -840,12 +840,7 @@ dependencies = [
 [[package]]
 name = "craft-codepage"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
-
-[[package]]
-name = "craft-codepage"
-version = "0.1.0"
-source = "git+https://github.com/dylanmtaylor/craft-libs?rev=4ebc7fc736ae96b9a70650bc22439b902eccfcd4#4ebc7fc736ae96b9a70650bc22439b902eccfcd4"
+source = "git+https://github.com/storytold/craft-libs?rev=380a2f79f6a195c090a5372e819cbcda2b703c09#380a2f79f6a195c090a5372e819cbcda2b703c09"
 
 [[package]]
 name = "craft-dds"
@@ -997,20 +992,10 @@ dependencies = [
 [[package]]
 name = "craft-mime"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
+source = "git+https://github.com/storytold/craft-libs?rev=380a2f79f6a195c090a5372e819cbcda2b703c09#380a2f79f6a195c090a5372e819cbcda2b703c09"
 dependencies = [
  "chrono",
- "craft-codepage 0.1.0 (git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc)",
- "encoding_rs",
-]
-
-[[package]]
-name = "craft-mime"
-version = "0.1.0"
-source = "git+https://github.com/dylanmtaylor/craft-libs?rev=4ebc7fc736ae96b9a70650bc22439b902eccfcd4#4ebc7fc736ae96b9a70650bc22439b902eccfcd4"
-dependencies = [
- "chrono",
- "craft-codepage 0.1.0 (git+https://github.com/dylanmtaylor/craft-libs?rev=4ebc7fc736ae96b9a70650bc22439b902eccfcd4)",
+ "craft-codepage",
  "encoding_rs",
 ]
 
@@ -1038,11 +1023,11 @@ dependencies = [
 [[package]]
 name = "craft-sbs"
 version = "0.1.0"
-source = "git+https://github.com/dylanmtaylor/craft-libs?rev=4ebc7fc736ae96b9a70650bc22439b902eccfcd4#4ebc7fc736ae96b9a70650bc22439b902eccfcd4"
+source = "git+https://github.com/storytold/craft-libs?rev=380a2f79f6a195c090a5372e819cbcda2b703c09#380a2f79f6a195c090a5372e819cbcda2b703c09"
 dependencies = [
  "base64 0.23.1",
- "craft-mime 0.1.0 (git+https://github.com/dylanmtaylor/craft-libs?rev=4ebc7fc736ae96b9a70650bc22439b902eccfcd4)",
- "craft-xml 0.1.0 (git+https://github.com/dylanmtaylor/craft-libs?rev=4ebc7fc736ae96b9a70650bc22439b902eccfcd4)",
+ "craft-mime",
+ "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=380a2f79f6a195c090a5372e819cbcda2b703c09)",
  "flate2",
  "roxmltree",
  "thiserror 2.0.21",
@@ -1149,7 +1134,7 @@ dependencies = [
 [[package]]
 name = "craft-xml"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
+source = "git+https://github.com/storytold/craft-libs?rev=380a2f79f6a195c090a5372e819cbcda2b703c09#380a2f79f6a195c090a5372e819cbcda2b703c09"
 dependencies = [
  "quick-xml 0.41.0",
  "serde",
@@ -1159,7 +1144,7 @@ dependencies = [
 [[package]]
 name = "craft-xml"
 version = "0.1.0"
-source = "git+https://github.com/dylanmtaylor/craft-libs?rev=4ebc7fc736ae96b9a70650bc22439b902eccfcd4#4ebc7fc736ae96b9a70650bc22439b902eccfcd4"
+source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
 dependencies = [
  "quick-xml 0.41.0",
  "serde",
@@ -2958,7 +2943,6 @@ dependencies = [
  "craft-image-codecs",
  "craft-mcmat",
  "craft-mesh",
- "craft-mime 0.1.0 (git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc)",
  "craft-sbs",
  "craft-svg",
  "craft-texture",

@@ -45,7 +45,7 @@ craft-mesh = { version = "0.1.0", git = "https://github.com/storytold/craft-libs
 # Shared XML escaping and bounded XML parsing; SBS model and serialization policy stay app-local
 craft-xml = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
 # Shared SBS package/schema parsing, sniffing, embedded codec, and envelope writing (storytold/craft-libs#2496)
-craft-sbs = { version = "0.1.0", git = "https://github.com/dylanmtaylor/craft-libs", rev = "4ebc7fc736ae96b9a70650bc22439b902eccfcd4" }
+craft-sbs = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "380a2f79f6a195c090a5372e819cbcda2b703c09" }
 # Shared bounded ZIP archive reader and deterministic writer (storytold/craft-libs#2411)
 craft-zip = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "512a1b8e8b59a7b325e7f69f6131aa8628470288" }
 # Bound SVG parsing and drawing through craft-svg
