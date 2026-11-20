@@ -155,8 +155,8 @@ cd apps/materialcraft-web && trunk serve                      # web build
 cargo xtask ci                                                # fmt, clippy, tests, layering, wasm
 ```
 
-You need Rust 1.95 or newer. The app opens with an empty graph in a new package; **File ▸ New ▸ Graph...**
-starts from a PBR template or one of the sample materials.
+You need Rust 1.95 or newer. The app opens with an empty graph in a new package. Choose
+**File ▸ New ▸ Atomic sample**, or open `examples/atomic_sample.sbs`, to try the primitive workflow.
 
 ### Use it from Claude Code and other agents
 
