@@ -39,7 +39,11 @@ pub(super) fn read(element: XmlNode<'_, '_>, value: Option<&Value>, type_code: u
 
 fn source_reference(element: XmlNode<'_, '_>, reference: &str) -> Result<(String, String), String> {
     if let Some(reference) = reference.strip_prefix("pkg:///") {
-        let (graph, query) = reference.split_once('?').unwrap_or((reference, ""));
+        let (graph, query) = match reference.rfind("?dependency=") {
+            // The graph name may itself contain '?', so only the last dependency query separates
+            Some(at) => (&reference[..at], &reference[at + 1..]),
+            None => (reference, ""),
+        };
         let dependency = query.split('&').find_map(|part| part.strip_prefix("dependency="));
         let package = dependency
             .map(|uid| {

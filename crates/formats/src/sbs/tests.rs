@@ -228,6 +228,24 @@ fn external_references_and_unknown_filters_survive_saving() {
 }
 
 #[test]
+fn instance_graph_names_with_special_characters_survive_saving() {
+    for name in ["what?", "a&b%c", "q?dependency=x"] {
+        let xml = r#"<?xml version="1.0"?><package><identifier v="P"/><dependencies><dependency><filename v="sbs://noise_fancy.sbs"/><uid v="7"/></dependency></dependencies><content><graph><identifier v="G"/>
+        <compNodes>
+          <compNode><uid v="1"/><GUILayout><gpos v="0 0 0"/></GUILayout><compOutputs><compOutput><uid v="11"/><comptype v="2"/></compOutput></compOutputs>
+            <compImplementation><compInstance><path v="pkg:///fancy_noise?dependency=7"/><parameters/>
+            <outputBridgings><outputBridging><uid v="11"/><identifier v="noise"/></outputBridging></outputBridgings></compInstance></compImplementation></compNode>
+        </compNodes></graph></content></package>"#;
+        let mut read = read_sbs(xml.as_bytes(), "p.sbs", &no_linked_files).unwrap();
+        read.pkg.graphs[0].nodes[0].instance.as_mut().unwrap().graph = name.into();
+        let expected = read.pkg.graphs[0].nodes[0].instance.clone();
+        let text = String::from_utf8(write_sbs(&read.pkg).unwrap()).unwrap();
+        let back = read_sbs(text.as_bytes(), "p.sbs", &no_linked_files).unwrap();
+        assert_eq!(back.pkg.graphs[0].nodes[0].instance, expected, "{name}");
+    }
+}
+
+#[test]
 fn wires_keep_the_last_per_input_and_drop_cycles() {
     let node = |uid: u32, wires: &str| {
         format!(

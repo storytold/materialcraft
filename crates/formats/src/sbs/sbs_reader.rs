@@ -200,7 +200,11 @@ impl<'text> SbsReader<'text, '_> {
     pub(super) fn resolve_reference(&self, url: &str) -> (String, Option<String>) {
         let url = url.trim();
         let rest = url.strip_prefix("pkg:///").or_else(|| url.strip_prefix("pkg://")).unwrap_or(url);
-        let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+        // The graph name may itself contain '?', so prefer the last dependency query as the separator
+        let (path, query) = match rest.rfind("?dependency=") {
+            Some(at) => (&rest[..at], &rest[at + 1..]),
+            None => rest.split_once('?').unwrap_or((rest, "")),
+        };
         let dependency = query.split('&').find_map(|kv| kv.strip_prefix("dependency=")).and_then(|uid| self.dependencies.get(uid).cloned());
         (path.trim_matches('/').to_string(), dependency)
     }
