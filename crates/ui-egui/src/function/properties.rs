@@ -18,6 +18,10 @@ pub(crate) fn title(app: &MaterialCraftApp) -> Option<String> {
     Some(format!("{label} - {}", tr("Properties")))
 }
 
+fn instance_source_label(package: &str) -> String {
+    format!("{}: {}", tr("Source"), if package.is_empty() { tr("This package") } else { package })
+}
+
 pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
     let Some((graph, id)) = current(app) else { return false };
 
@@ -30,7 +34,7 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
     }
 
     if let Some(instance) = &node.instance {
-        ui.label(format!("Source: {}", if instance.package.is_empty() { "This package" } else { &instance.package }));
+        ui.label(instance_source_label(&instance.package));
         ui.label(&instance.graph);
         if let Some(Err(error)) = &node.source {
             ui.colored_label(egui::Color32::from_rgb(255, 90, 180), error);
@@ -64,4 +68,21 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod hebrew_instance_source_tests {
+    use super::instance_source_label;
+
+    #[test]
+    fn function_source_in_active_inspector_localizes_english_and_hebrew_without_changing_package_name() {
+        let before = crate::i18n::current().code.to_string();
+        crate::i18n::set_language("he");
+        assert_eq!(instance_source_label(""), "מקור: החבילה הזו");
+        assert_eq!(instance_source_label("vendor.package"), "מקור: vendor.package");
+        crate::i18n::set_language("en");
+        assert_eq!(instance_source_label(""), "Source: This package");
+        assert_eq!(instance_source_label("vendor.package"), "Source: vendor.package");
+        crate::i18n::set_language(&before);
+    }
 }

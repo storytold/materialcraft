@@ -300,6 +300,7 @@ pub const TABLE: &[(&str, &str)] = &[
     ("Show nodes not in MaterialCraft yet", "הצגת צמתים שעדיין אינם זמינים ב־MaterialCraft"),
     ("Size", "גודל"),
     ("Snap to grid", "הצמדה לרשת"),
+    ("Source", "מקור"),
     ("Source normals", "נורמלים של המקור"),
     ("Specific parameters", "פרמטרים ייחודיים"),
     ("Start export", "התחלת ייצוא"),
