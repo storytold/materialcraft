@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0 -->
+<!-- Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0 -->
 <!-- AppStream metadata (software centres, Flathub). Template: package.sh and the Flatpak
      manifest substitute @VERSION@ and @DATE@ from Cargo.toml and the build date. -->
 <component type="desktop-application">
@@ -7,6 +9,7 @@
   <project_license>MIT OR Apache-2.0</project_license>
   <name>MaterialCraft</name>
   <summary>Design procedural PBR materials with node graphs</summary>
+  <summary xml:lang="ru">Создание процедурных PBR-материалов с помощью графов узлов</summary>
   <developer id="ai.storyteller">
     <name>Learning Machines LLC</name>
   </developer>
@@ -16,11 +19,20 @@
       materials from noises, patterns and filters in a node graph, preview them live in 2D and 3D,
       and export the texture maps for any engine.
     </p>
+    <p xml:lang="ru">
+      MaterialCraft — открытый нативный конструктор материалов на основе узлов: собирайте
+      бесшовные PBR-материалы из шумов, узоров и фильтров в графе узлов, просматривайте их
+      вживую в 2D и 3D и экспортируйте карты текстур для любого движка.
+    </p>
     <ul>
       <li>Hundreds of procedural nodes: noises, patterns, adjustments, blurs, warps, normal and height tools</li>
+      <li xml:lang="ru">Сотни процедурных узлов: шумы, узоры, коррекции, размытия, деформации, инструменты для нормалей и высоты</li>
       <li>Live 2D and 3D previews with physically based shading</li>
+      <li xml:lang="ru">Просмотр в 2D и 3D в реальном времени с физически корректным затенением</li>
       <li>Export base color, normal, roughness, metallic, height and ambient occlusion maps as PNG, EXR, TGA, JPEG or TIFF; save packages as .mcraft</li>
+      <li xml:lang="ru">Экспорт карт базового цвета, нормалей, шероховатости, металличности, высоты и окружающего затенения в PNG, EXR, TGA, JPEG или TIFF; сохранение пакетов в .mcraft</li>
       <li>Every action is a command, scriptable from a CLI, a JSON control channel and an MCP server</li>
+      <li xml:lang="ru">Каждое действие — это команда, которую можно вызывать из CLI, через управляющий канал JSON и сервер MCP</li>
     </ul>
   </description>
   <launchable type="desktop-id">ai.storyteller.materialcraft.desktop</launchable>
@@ -36,11 +48,17 @@
   </categories>
   <keywords>
     <keyword>procedural</keyword>
+    <keyword xml:lang="ru">процедурный</keyword>
     <keyword>material</keyword>
+    <keyword xml:lang="ru">материал</keyword>
     <keyword>node graph</keyword>
+    <keyword xml:lang="ru">граф узлов</keyword>
     <keyword>pbr</keyword>
+    <keyword xml:lang="ru">pbr</keyword>
     <keyword>3d</keyword>
+    <keyword xml:lang="ru">3d</keyword>
     <keyword>mesh</keyword>
+    <keyword xml:lang="ru">сетка</keyword>
   </keywords>
   <branding>
     <color type="primary" scheme_preference="light">#a8e3ef</color>

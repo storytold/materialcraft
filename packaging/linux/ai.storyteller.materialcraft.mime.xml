@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0 -->
+<!-- Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0 -->
 <!-- shared-mime-info definitions for MaterialCraft's package format.
      Installed to /usr/share/mime/packages/ (update-mime-database runs on install). -->
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-materialcraft">
     <comment>MaterialCraft package</comment>
+    <comment xml:lang="ru">Пакет MaterialCraft</comment>
     <sub-class-of type="application/zip"/>
     <icon name="ai.storyteller.materialcraft"/>
     <glob pattern="*.mcraft" weight="60"/>
