@@ -62,7 +62,8 @@ fn dragging_a_node_keeps_the_2d_view() {
     let before = f.app.session.graph().unwrap().node(checker).unwrap().pos;
     let from = f.center(checker);
     let none = egui::Modifiers::NONE;
-    f.run(vec![egui::Event::PointerMoved(from)], none);
+    // A new finger can land on this card with the last pointer position still on a different card.
+    f.run(vec![egui::Event::PointerMoved(f.center(noise))], none);
     f.run(vec![egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: none }], none);
     for step in 1..=8 {
         f.run(vec![egui::Event::PointerMoved(from + vec2(5.0 * step as f32, 0.0))], none);

@@ -5,6 +5,7 @@ use materialcraft_engine::core::NodeId;
 #[derive(Clone, Debug)]
 pub(super) enum GraphDrag {
     Nodes {
+        start: Pos2,
         delta: Vec2,
     },
     Box {

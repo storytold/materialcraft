@@ -77,7 +77,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let index = materialcraft_engine::core::GraphIndex::new(graph);
     let selection: std::collections::BTreeSet<_> = app.session.selection.iter().copied().collect();
     let node_delta = match &app.graph.drag {
-        Some(GraphDrag::Nodes { delta }) => *delta,
+        Some(GraphDrag::Nodes { delta, .. }) => *delta,
         _ => Vec2::ZERO,
     };
 

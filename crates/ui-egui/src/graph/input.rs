@@ -73,7 +73,7 @@ pub(super) fn handle(
                 super::annotation_input::begin_comment(app, *id);
             } else if let Some((id, _)) = nodes.iter().rev().find(|(_, response)| response.rect.contains(position)) {
                 super::node_selection::select(&mut app.session.selection, Some(*id), modifiers);
-                app.graph.drag = Some(GraphDrag::Nodes { delta: Vec2::ZERO });
+                app.graph.drag = Some(GraphDrag::Nodes { start: context.input(|input| input.pointer.press_origin()).unwrap_or(position), delta: Vec2::ZERO });
             } else if let Some(hit) = frames.iter().rev().find(|frame| frame.contains(position)) {
                 super::annotation_input::begin_frame(app, hit.id, hit.grip.contains(position));
             } else {
@@ -88,10 +88,12 @@ pub(super) fn handle(
             let delta = context.input(|input| input.pointer.delta()) / zoom;
             app.ui.graph_camera.pan = [app.ui.graph_camera.pan[0] - delta.x, app.ui.graph_camera.pan[1] - delta.y];
         }
-        Some(GraphDrag::Nodes { delta })
-        | Some(GraphDrag::Frame { delta, .. })
-        | Some(GraphDrag::Comment { delta, .. })
-        | Some(GraphDrag::Pin { delta, .. }) => *delta += motion,
+        Some(GraphDrag::Nodes { start, delta }) => {
+            if let Some(position) = pointer {
+                *delta = (position - *start) / zoom;
+            }
+        }
+        Some(GraphDrag::Frame { delta, .. }) | Some(GraphDrag::Comment { delta, .. }) | Some(GraphDrag::Pin { delta, .. }) => *delta += motion,
         Some(GraphDrag::WirePress { wire, start }) => {
             // Dragged far enough: a reroute dot where the press was, carried by the pointer
             if let Some(position) = pointer
@@ -101,7 +103,7 @@ pub(super) fn handle(
                 let at = camera.to_graph(start);
                 app.graph.drag = None;
                 if app.run("graph.wire.insertDot", json!({"to": wire.0.0, "toPort": wire.1, "at": [at.x, at.y]})).is_some() {
-                    app.graph.drag = Some(GraphDrag::Nodes { delta: (position - start) / zoom });
+                    app.graph.drag = Some(GraphDrag::Nodes { start, delta: (position - start) / zoom });
                 }
             }
         }
@@ -120,7 +122,7 @@ pub(super) fn handle(
             GraphDrag::WirePress { wire, .. } => {
                 super::wire_selection::select(&mut app.graph.selected_wires, &mut app.session.selection, wire, modifiers, false);
             }
-            GraphDrag::Nodes { delta } => {
+            GraphDrag::Nodes { delta, .. } => {
                 if delta.length() > 0.5 {
                     app.run("graph.node.move", json!({"by": [delta.x, delta.y]}));
                 }
