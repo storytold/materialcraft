@@ -1,13 +1,13 @@
 //! Disposable PNG thumbnails. All filesystem work belongs to the existing preview workers.
 
 use std::fs::{self, File};
-use std::io::{self, Cursor, Read};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
-use image::{ImageDecoder, ImageEncoder};
+use craft_image_codecs::{ChannelLayout, DecodeOptions, EncodeOptions, Format, Image, Limits as CodecLimits, SampleType};
 use sha2::{Digest, Sha256};
 
 use super::preview_cache_settings::{PreviewCacheLimits, PreviewCacheSettings, PreviewCacheState};
@@ -102,17 +102,13 @@ impl PreviewDiskCache {
             return None;
         }
 
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(MAX_SIDE);
-        limits.max_image_height = Some(MAX_SIDE);
-        limits.max_alloc = Some(MAX_DECODE_BYTES);
-        let decoder = image::codecs::png::PngDecoder::with_limits(Cursor::new(bytes), limits).ok()?;
-        if decoder.dimensions() != (side, side) || decoder.color_type() != image::ColorType::Rgba8 {
+        let opts =
+            DecodeOptions { limits: CodecLimits::new(MAX_SIDE, MAX_SIDE, u64::from(MAX_SIDE) * u64::from(MAX_SIDE), MAX_DECODE_BYTES), keep_orientation: true };
+        let decoded = craft_image_codecs::decode_as_with(Format::Png, &bytes, &opts).ok()?;
+        if decoded.dimensions() != (side, side) || decoded.layout() != ChannelLayout::Rgba || decoded.sample_type() != SampleType::U8 {
             return None;
         }
-
-        let mut pixels = vec![0; (side * side * 4) as usize];
-        decoder.read_image(&mut pixels).ok()?;
+        let pixels = decoded.into_data();
 
         // Refresh file age at most once per hour to approximate LRU across launches
         if metadata.modified().ok()?.elapsed().is_ok_and(|age| age >= Duration::from_secs(FILE_TOUCH_INTERVAL_SECS)) {
@@ -127,8 +123,9 @@ impl PreviewDiskCache {
             return Ok(());
         }
 
-        let mut bytes = Vec::new();
-        image::codecs::png::PngEncoder::new(&mut bytes).write_image(pixels, side, side, image::ExtendedColorType::Rgba8).map_err(io::Error::other)?;
+        let image = Image::from_u8(side, side, ChannelLayout::Rgba, pixels.to_vec()).map_err(io::Error::other)?;
+        let opts = EncodeOptions { embed_icc: false, embed_metadata: false, ..EncodeOptions::default() };
+        let bytes = craft_image_codecs::encode(&image, Format::Png, &opts).map_err(io::Error::other)?;
         if bytes.len() as u64 > MAX_FILE_BYTES {
             return Ok(());
         }

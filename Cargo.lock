@@ -3000,6 +3000,7 @@ dependencies = [
  "base64 0.22.1",
  "craft-atomic",
  "craft-dialogs",
+ "craft-image-codecs",
  "craft-keymap",
  "craft-platform",
  "craft-quit",
