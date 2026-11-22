@@ -3,12 +3,14 @@
 //! for text with `{name}` placeholders); each language is a static `(English, translation)`
 //! table, indexed into a hash map the first time the language is used. `Prefs::language` picks it.
 
+// Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod ar;
+mod ru;
 
 pub struct Language {
     /// BCP 47 code ("en", "ar").
@@ -21,10 +23,13 @@ pub struct Language {
     pub table: &'static [(&'static str, &'static str)],
 }
 
-const COUNT: usize = 2;
+const COUNT: usize = 3;
 
-pub static LANGUAGES: [Language; COUNT] =
-    [Language { code: "en", name: "English", english: "English", table: &[] }, Language { code: "ar", name: "العربية", english: "Arabic", table: ar::TABLE }];
+pub static LANGUAGES: [Language; COUNT] = [
+    Language { code: "en", name: "English", english: "English", table: &[] },
+    Language { code: "ar", name: "العربية", english: "Arabic", table: ar::TABLE },
+    Language { code: "ru", name: "Русский", english: "Russian", table: ru::TABLE },
+];
 
 static MAPS: [OnceLock<HashMap<&'static str, &'static str>>; COUNT] = [const { OnceLock::new() }; COUNT];
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
@@ -93,6 +98,7 @@ pub fn language_for_locale(locale: &str) -> &'static str {
     let lang = locale.split(['-', '_', '.', '@']).next().unwrap_or("").to_ascii_lowercase();
     match lang.as_str() {
         "ar" => "ar",
+        "ru" => "ru",
         l => LANGUAGES.iter().find(|x| x.code == l).map_or("en", |x| x.code),
     }
 }
@@ -115,6 +121,9 @@ mod tests {
         assert_eq!(language_for_locale("ar"), "ar");
         assert_eq!(language_for_locale("ar-EG"), "ar");
         assert_eq!(language_for_locale("ar_SA.UTF-8"), "ar");
+        assert_eq!(language_for_locale("ru"), "ru");
+        assert_eq!(language_for_locale("ru-RU"), "ru");
+        assert_eq!(language_for_locale("ru_RU.UTF-8"), "ru");
         assert_eq!(language_for_locale("en-US"), "en");
         assert_eq!(language_for_locale("fr-FR"), "en");
     }
@@ -136,5 +145,32 @@ mod tests {
             vp.sort();
             assert_eq!(kp, vp, "mismatched placeholders in {k:?} vs {v:?}");
         }
+    }
+
+    #[test]
+    fn russian_table_has_no_duplicate_keys() {
+        let mut seen = std::collections::HashSet::new();
+        for (k, _) in ru::TABLE {
+            assert!(seen.insert(*k), "duplicate key in ru::TABLE: {k:?}");
+        }
+    }
+
+    #[test]
+    fn placeholders_match_between_key_and_russian_translation() {
+        for (k, v) in ru::TABLE {
+            let mut kp: Vec<&str> = k.split('{').skip(1).filter_map(|s| s.split_once('}').map(|(p, _)| p)).collect();
+            let mut vp: Vec<&str> = v.split('{').skip(1).filter_map(|s| s.split_once('}').map(|(p, _)| p)).collect();
+            kp.sort();
+            vp.sort();
+            assert_eq!(kp, vp, "mismatched placeholders in {k:?} vs {v:?}");
+        }
+    }
+
+    #[test]
+    fn russian_table_covers_every_arabic_key() {
+        let ar: std::collections::HashSet<&str> = ar::TABLE.iter().map(|(k, _)| *k).collect();
+        let ru: std::collections::HashSet<&str> = ru::TABLE.iter().map(|(k, _)| *k).collect();
+        let missing: Vec<&str> = ar.difference(&ru).copied().collect();
+        assert!(missing.is_empty(), "ru::TABLE missing keys present in ar::TABLE: {missing:?}");
     }
 }
