@@ -33,9 +33,10 @@ pub static LANGUAGES: [Language; COUNT] = [
 static MAPS: [OnceLock<HashMap<&'static str, &'static str>>; COUNT] = [const { OnceLock::new() }; COUNT];
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
 
-/// Switch the UI language (unknown codes fall back to English).
+/// Switch the UI language (normalizes tags such as `iw` / `he-IL`; unknown codes fall back to English).
 pub fn set_language(code: &str) {
-    CURRENT.store(LANGUAGES.iter().position(|l| l.code == code).unwrap_or(0), Ordering::Relaxed);
+    let norm = language_for_locale(code);
+    CURRENT.store(LANGUAGES.iter().position(|l| l.code == norm).unwrap_or(0), Ordering::Relaxed);
 }
 
 /// The current UI language.

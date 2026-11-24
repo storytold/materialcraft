@@ -48,8 +48,13 @@ fn language_switching_and_arabic_translations_work() {
         assert_eq!(translate("Cancel", &[]), "ביטול");
         assert_eq!(translate("{app} update", &[("app", "MaterialCraft")]), "עדכון MaterialCraft");
     }
-    assert_eq!(trf("{count} node(s) failed: see the graph", &[("count", &3)]), "3 צמתים נכשלו: ראה בגרף");
+    assert_eq!(trf("{count} node(s) failed: see the graph", &[("count", &3)]), "3 צמתים נכשלו: יש לעיין בגרף");
     assert_eq!(tr("Unknown untranslated string 1234"), "Unknown untranslated string 1234");
+
+    // Legacy iw tag normalizes to Hebrew
+    set_language("iw");
+    assert_eq!(current().code, "he");
+    assert!(is_rtl());
 
     // Reset to English
     set_language("en");
