@@ -11,7 +11,7 @@ use serde_json::json;
 
 #[test]
 fn embedded_function_commands_do_not_edit_the_parent_selection() {
-    let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
     let owner = NodeId(app.run("graph.node.add", json!({"def": "pixel_processor"})).unwrap()["id"].as_u64().unwrap());
     let target = materialcraft_engine::FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
     app.run("graph.function.set", json!({"target": target, "function": FunctionGraph::constant(Value::Float(0.5))})).unwrap();
@@ -29,7 +29,7 @@ fn embedded_function_commands_do_not_edit_the_parent_selection() {
 
 #[test]
 fn nested_function_commands_take_priority_over_fx_map_selection() {
-    let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
     let owner = NodeId(app.run("graph.node.add", json!({"def": "fx_map"})).unwrap()["id"].as_u64().unwrap());
     let mut graph = PatternGraph::with_root(PatternNodeKind::Quadrant);
     let node = graph.nodes[0].id;
@@ -144,7 +144,7 @@ fn processors_edit_inline_and_return_to_the_parent_without_document_changes() {
 #[test]
 fn instance_navigation_preserves_parent_view_and_material_across_renames() {
     use materialcraft_engine::core::Graph;
-    let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
     let owner = app.session.graph_mut().unwrap().add_node("graph_instance", [0.0; 2]);
     app.session.graph_mut().unwrap().node_mut(owner).unwrap().params.insert("graph".into(), Value::Text("Child".into()));
     app.session.pkg.graphs.push(Graph::new("Child"));
@@ -172,7 +172,7 @@ fn instance_navigation_preserves_parent_view_and_material_across_renames() {
 
 #[test]
 fn dynamic_parameter_functions_return_to_the_owning_node() {
-    let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
     let owner = NodeId(app.run("graph.node.add", json!({"def": "blur"})).unwrap()["id"].as_u64().unwrap());
     app.run("graph.node.function", json!({"id": owner, "param": "intensity"})).unwrap();
     super::subgraph_navigation::open_function(&mut app, owner, FunctionTarget::Dynamic("intensity".into()));
@@ -218,7 +218,7 @@ fn idle_ui_frames_preserve_explicit_automation_undo_groups() {
 fn canvas_frame_cost() {
     for count in [128, 4096] {
         for kind in ["function", "pattern"] {
-            let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+            let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
             if kind == "function" {
                 app.run("file.new", json!({"kind": "function"})).unwrap();
                 let mut graph = FunctionGraph::default();
@@ -268,7 +268,7 @@ fn canvas_frame_cost() {
 
 #[test]
 fn undo_closes_an_embedded_editor_when_its_owning_graph_changes() {
-    let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
     let owner = NodeId(app.run("graph.node.add", json!({"def": "pixel_processor"})).unwrap()["id"].as_u64().unwrap());
     app.run("graph.duplicate", json!({})).unwrap();
     app.session.reset_history();
@@ -289,7 +289,7 @@ fn undo_closes_an_embedded_editor_when_its_owning_graph_changes() {
 
 #[test]
 fn rejected_duplicate_keeps_the_function_editor_selection() {
-    let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(new_session(), UiState::english());
     app.run("file.new", json!({"kind": "function"})).unwrap();
     let mut graph = FunctionGraph::default();
     for _ in 0..2049 {

@@ -9,7 +9,7 @@ fn navigation_pin_library_drop_and_properties_in_every_canvas() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     for kind in ["material", "function", "pixel_processor", "value_processor", "fx_map"] {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         if kind == "function" {
             app.run("file.new", json!({"kind": "function"})).unwrap();
         } else if kind != "material" {

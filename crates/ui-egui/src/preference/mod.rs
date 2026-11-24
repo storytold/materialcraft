@@ -131,7 +131,7 @@ fn page_list(app: &mut MaterialCraftApp, ui: &mut Ui) {
                 |ui| ui.add(button),
             )
             .inner;
-        crate::widgets::name(&row, egui::Role::Tab, page.label());
+        crate::widgets::name(&row, egui::Role::Tab, tr(page.label()));
         if row.clicked() {
             app.ui.preferences.page = page;
             app.ui.preferences.capturing = None;

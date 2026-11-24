@@ -5,7 +5,7 @@ use egui::accesskit::{Role, Toggled};
 fn check_menu_toggle(menu: &str, label: &str) {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 4);
     let button = |label| By::new().role(Role::Button).label(label);

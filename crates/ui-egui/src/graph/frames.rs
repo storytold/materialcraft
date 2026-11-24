@@ -14,7 +14,7 @@ impl Frames {
     /// `session` after a few frames, so the canvas is laid out
     pub(super) fn new(session: materialcraft_engine::Session) -> Frames {
         let mut f =
-            Frames { ctx: egui::Context::default(), app: MaterialCraftApp::headless(session, crate::UiState::default()), time: 0.0, canvas_text: Vec::new() };
+            Frames { ctx: egui::Context::default(), app: MaterialCraftApp::headless(session, crate::UiState::english()), time: 0.0, canvas_text: Vec::new() };
         for _ in 0..3 {
             f.run(Vec::new(), egui::Modifiers::NONE);
         }

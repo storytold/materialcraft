@@ -31,7 +31,7 @@ fn divider(harness: &Harness<'static, MaterialCraftApp>) -> Pos2 {
 
 #[test]
 fn the_library_divider_drags_the_tree_narrower_and_a_double_click_resets_it() {
-    let mut harness = harness(MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default()));
+    let mut harness = harness(MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english()));
 
     assert_eq!(harness.state().ui.library_tree_width, 0.0, "the tree starts at its automatic width");
 
@@ -69,7 +69,7 @@ fn the_library_divider_drags_the_tree_narrower_and_a_double_click_resets_it() {
 
 #[test]
 fn a_constant_node_fits_a_field_for_each_component() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.new", json!({"kind": "function", "name": "Faces"})).unwrap();
     app.run("graph.function.edit", json!({"edit": {"action": "add", "operation": "const_float4", "at": [0, 0]}})).unwrap();
     app.run("graph.function.edit", json!({"edit": {"action": "add", "operation": "add", "at": [200, 0]}})).unwrap();

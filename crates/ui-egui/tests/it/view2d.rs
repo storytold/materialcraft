@@ -9,7 +9,7 @@ const GRAPH_SIZE: u32 = 256;
 
 /// An app whose 2D view shows a uniform node, gray or color, with two graph outputs behind it
 fn app(color: bool) -> MaterialCraftApp {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.new", json!({"template": "empty", "size": GRAPH_SIZE})).unwrap();
     let node = add(&mut app, json!({"def": "uniform", "params": {"color_mode": color}}));
     add(&mut app, json!({"def": "output", "params": {"identifier": "basecolor"}, "connectFrom": {"node": node}}));

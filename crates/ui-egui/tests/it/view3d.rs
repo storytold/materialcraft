@@ -13,7 +13,7 @@ fn harness() -> Harness<'static, MaterialCraftApp> {
 }
 
 fn harness_with_width(width: f32) -> Harness<'static, MaterialCraftApp> {
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     let mut harness = Harness::builder().with_context_setup(materialcraft_ui_egui::theme::install).with_size(vec2(width, 900.0)).build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
             let whole = ui.available_rect_before_wrap();

@@ -9,7 +9,7 @@ pub(crate) fn title(app: &MaterialCraftApp) -> String {
         let inspected = crate::graph::node_selection::inspected(&editor.selection, editor.inspected_node);
         graph.nodes.iter().find(|node| Some(node.id) == inspected).map(|node| node.kind)
     });
-    format!("{} - {}", kind.map_or("FX-Map", |kind| kind.label()), tr("Properties"))
+    format!("{} - {}", tr(kind.map_or("FX-Map", |kind| kind.label())), tr("Properties"))
 }
 
 pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {

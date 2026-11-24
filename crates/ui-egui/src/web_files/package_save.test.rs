@@ -4,7 +4,7 @@ use egui_kittest::kittest::Queryable as _;
 use serde_json::json;
 
 fn app() -> MaterialCraftApp {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
     app.session.modified = true;
     app
 }

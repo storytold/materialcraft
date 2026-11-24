@@ -109,7 +109,7 @@ pub(super) fn paint(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui:
                         &painter,
                         position - vec2(10.0, 0.0),
                         Align2::RIGHT_CENTER,
-                        port_label(identifier),
+                        crate::i18n::tr(port_label(identifier)),
                         editor.zoom,
                         tokens.text_strong,
                     );
@@ -131,7 +131,7 @@ pub(super) fn paint(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui:
                 &painter,
                 output_position + vec2(10.0, 0.0),
                 Align2::LEFT_CENTER,
-                port_label("output"),
+                crate::i18n::tr(port_label("output")),
                 editor.zoom,
                 tokens.text_strong,
             );

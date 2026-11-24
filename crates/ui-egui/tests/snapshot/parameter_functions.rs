@@ -19,7 +19,7 @@ fn wait_for_cook(harness: &mut egui_kittest::Harness<'static, MaterialCraftApp>)
 fn parameter_functions_create_edit_reset_and_return_to_the_owner() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").expect("set MC_SNAPSHOT_DIR"));
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.ui.prefs.preview_size = 32;
     let owner = NodeId(app.run("graph.node.add", json!({"def": "directional_blur"})).unwrap()["id"].as_u64().unwrap());
     let mut harness = harness(app, 1600.0, 1100.0);
@@ -118,7 +118,7 @@ fn parameter_functions_create_edit_reset_and_return_to_the_owner() {
 fn exposing_a_specific_parameter_waits_for_confirmation() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").expect("set MC_SNAPSHOT_DIR"));
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.ui.prefs.preview_size = 32;
     let owner = NodeId(app.run("graph.node.add", json!({"def": "blur"})).unwrap()["id"].as_u64().unwrap());
     app.run("graph.node.param", json!({"id": owner, "param": "intensity", "value": 10.0}));

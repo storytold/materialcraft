@@ -8,7 +8,7 @@ use egui_kittest::Harness;
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 
 fn harness(w: f32, h: f32) -> Harness<'static, MaterialCraftApp> {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
 
     // Retain real background rendering with fewer pixels to test resize scheduling under coverage
     app.session.view3d.override_resolution = true;

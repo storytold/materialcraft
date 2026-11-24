@@ -5,7 +5,7 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState, control, view2d};
 use serde_json::json;
 
 fn app() -> MaterialCraftApp {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.new", json!({"template": "empty", "size": 4096})).unwrap();
     let node = app.run("graph.node.add", json!({"def": "uniform", "params": {"color_mode": false}})).unwrap()["id"].as_u64().unwrap();
     app.run("graph.node.add", json!({"def": "output", "connectFrom": {"node": node}})).unwrap();

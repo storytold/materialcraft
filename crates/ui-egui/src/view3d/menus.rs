@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::Subject;
 use crate::MaterialCraftApp;
-use crate::i18n::tr;
+use crate::i18n::{tr, trc};
 use crate::theme::Tokens;
 
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
@@ -162,7 +162,7 @@ fn shader_item(app: &mut MaterialCraftApp, ui: &mut Ui, shader: Shader) {
     if shader == Shader::MeshInfo {
         ui.menu_button(label, |ui| {
             for &shown in MeshInfo::ALL {
-                if ui.add(egui::Button::selectable(current && mesh_info == shown, tr(shown.label()))).clicked() {
+                if ui.add(egui::Button::selectable(current && mesh_info == shown, trc("Mesh info", shown.label()))).clicked() {
                     app.run("view.3d", json!({"shader": shader.id(), "meshInfo": shown.id()}));
                     ui.close();
                 }

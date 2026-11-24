@@ -126,11 +126,11 @@ fn outputs_grid(ui: &mut Ui, settings: &mut ExportSettings, graph_path: &str, ou
 
             let original_space = settings.color_spaces.get(&key).copied();
             let mut space = original_space;
-            let label = space.map_or_else(|| tr("Automatic"), ColorSpace::label);
+            let label = space.map_or_else(|| tr("Automatic"), |space| tr(space.label()));
             let combo = egui::ComboBox::from_id_salt(("export-color-space", &key)).width(110.0).selected_text(label).show_ui(ui, |ui| {
                 ui.selectable_value(&mut space, None, tr("Automatic"));
                 for choice in ColorSpace::ALL {
-                    ui.selectable_value(&mut space, Some(choice), choice.label());
+                    ui.selectable_value(&mut space, Some(choice), tr(choice.label()));
                 }
             });
             crate::widgets::name(&combo.response, egui::Role::ComboBox, &format!("{} {}", output.identifier, tr("color space")));

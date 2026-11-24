@@ -40,6 +40,8 @@ debug test profile and CI test selection also remain unchanged.
 The language-switching test stays in its own executable because it changes the
 process-global locale, which UI constructors also set.
 
+Tests build their app from `UiState::english()` rather than `UiState::default()`: the default takes the system language, and the tests find controls by their English labels, so on a machine set to Arabic or Russian they would otherwise look for "File" and find "ملف" or "Файл".
+
 The standalone engine `session` target and UI `snapshot` target remain
 available for the commands in `AGENTS.md`. Existing ignore attributes are
 unchanged. Tests in the shared executable can run concurrently across modules;

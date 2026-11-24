@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 fn waiting() -> (MaterialCraftApp, mpsc::Sender<Result<PreviewCook, String>>, Arc<AtomicBool>) {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
     app.session.cook();
     app.session.cooked.ms = 123.0;
     let (tx, rx) = mpsc::channel();
@@ -61,7 +61,7 @@ fn cancelling_a_finished_worker_keeps_the_displayed_preview() {
 
 #[test]
 fn cancelling_without_a_worker_keeps_pending_work() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
     app.session.dirty = true;
 
     cancel(&mut app);
@@ -74,7 +74,7 @@ fn cancelled_preview_is_unavailable_for_parameter_capture_until_recooked() {
     use materialcraft_engine::core::{FunctionGraph, NodeId, Value};
     use serde_json::json;
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
     app.session.preview_size = Some(64);
     let owner = NodeId(app.run("graph.node.add", json!({"def": "blur"})).unwrap()["id"].as_u64().unwrap());
     let set_intensity = |app: &mut MaterialCraftApp, value| {

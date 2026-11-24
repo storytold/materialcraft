@@ -10,7 +10,7 @@ fn directory() -> std::path::PathBuf {
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn function_nodes_show_their_values_and_symbols() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.new", json!({"kind": "function", "name": "Look"})).unwrap();
     let operations = [
         ("const_float1", [0, 0]),
@@ -44,7 +44,7 @@ fn function_nodes_show_their_values_and_symbols() {
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn library_nodes_and_tiles_show_previews() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     let entries = [
         ("node:uniform", [0, 0]),
         ("node:blur", [160, 0]),

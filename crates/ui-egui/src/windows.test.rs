@@ -5,7 +5,7 @@ mod home_modality_tests {
     use crate::{MaterialCraftApp, state::UiState};
 
     fn harness(block: impl FnOnce(&mut MaterialCraftApp)) -> egui_kittest::Harness<'static, MaterialCraftApp> {
-        let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+        let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
         // The icon font has to be in place for the frame that first draws Home
         let mut fonts_installed = false;
         let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(
@@ -89,7 +89,7 @@ mod open_guard_tests {
     fn a_failed_open_keeps_unsaved_work_without_a_discard_prompt() {
         let mut s = materialcraft_engine::sample_session();
         s.modified = true;
-        let mut app = MaterialCraftApp::headless(s, UiState::default());
+        let mut app = MaterialCraftApp::headless(s, UiState::english());
         let before = app.session.pkg.clone();
         crate::windows::open_path(&mut app, "does-not-exist.sbs");
         assert!(app.ui.windows.unsaved.is_none());
@@ -102,7 +102,7 @@ mod open_guard_tests {
     fn opening_a_path_over_a_clean_package_goes_straight_to_open() {
         let mut s = materialcraft_engine::sample_session();
         s.modified = false;
-        let mut app = MaterialCraftApp::headless(s, UiState::default());
+        let mut app = MaterialCraftApp::headless(s, UiState::english());
         crate::windows::open_path(&mut app, "does-not-exist.sbs");
         assert!(app.ui.windows.unsaved.is_none());
         assert!(!app.toasts.is_empty(), "the open was attempted and its error reported");
@@ -120,7 +120,7 @@ mod import_tests {
         let png = encode(&Image::filled(4, 4, Kind::Color, [0.5, 0.2, 0.1, 1.0]), "png", Depth::U8, true).unwrap();
         let path = std::env::temp_dir().join(format!("mc-import-{}.png", std::process::id()));
         std::fs::write(&path, png).unwrap();
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
         let base = app.session.history().len();
         crate::graph::import_bitmap_file(&mut app, &path.display().to_string());
         std::fs::remove_file(&path).ok();
@@ -160,7 +160,7 @@ fn template_texture_handles_drop_with_their_application() {
     let initial_count = manager.read().num_allocated();
 
     for name in ["empty", "pbr", "atomics"] {
-        let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+        let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
         let (sender, receiver) = std::sync::mpsc::channel();
         sender.send(vec![(name.to_string(), vec![255; (super::PREVIEW * super::PREVIEW * 4) as usize])]).unwrap();
         app.template_previews.rx = Some(receiver);

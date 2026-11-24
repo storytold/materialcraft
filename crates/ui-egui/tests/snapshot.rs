@@ -145,7 +145,7 @@ fn explorer_drags_a_linked_graph_between_open_packages() {
     file_cmds::open_bytes(&mut session, &formats::sbs::write_sbs(&target).unwrap(), Some(directory.join("target.sbs").to_string_lossy().into_owned())).unwrap();
     session.preview_size = Some(16);
     let target_document = session.document_id;
-    let mut app = MaterialCraftApp::headless(session, UiState::default());
+    let mut app = MaterialCraftApp::headless(session, UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 6);
@@ -235,7 +235,7 @@ fn explorer_drags_a_linked_graph_between_open_packages() {
 fn function_output_highlight_follows_context_menu_and_undo() {
     use materialcraft_engine::core::{FunctionGraph, Value};
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     app.run("file.new", json!({"kind": "function", "name": "Output selection"})).unwrap();
     let mut function = FunctionGraph::default();
@@ -391,7 +391,7 @@ fn function_output_highlight_follows_context_menu_and_undo() {
 fn selected_function_links_expose_swap_in_the_context_menu() {
     use materialcraft_engine::core::{FunctionGraph, NodeId, Value};
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     app.run("file.new", json!({"kind": "function", "name": "Swap links"})).unwrap();
     let mut graph = FunctionGraph::default();
@@ -501,7 +501,7 @@ fn selected_function_links_expose_swap_in_the_context_menu() {
 fn pattern_links_share_the_pair_context_menu() {
     use materialcraft_engine::core::{NodeId, PatternGraph, PatternNodeKind, Value};
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     let owner = NodeId(app.run("graph.node.add", json!({"def": "fx_map"})).unwrap()["id"].as_u64().unwrap());
     let mut graph = PatternGraph::with_root(PatternNodeKind::Switch);
@@ -554,7 +554,7 @@ fn incomplete_functions_warn_in_standalone_and_processor_canvases() {
     };
 
     for definition in ["function", "pixel_processor", "value_processor"] {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
         let target = if definition == "function" {
             app.run("file.new", json!({"kind": "function", "name": "Incomplete function"})).unwrap();
@@ -622,7 +622,7 @@ fn output_menu_and_package_warnings_follow_parameter_types() {
         core::{FunctionGraph, NodeId, Value},
     };
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     let owner = NodeId(app.run("graph.node.add", json!({"def": "pixel_processor", "params": {"color_mode": false}})).unwrap()["id"].as_u64().unwrap());
     let target = FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
@@ -680,7 +680,7 @@ fn output_menu_and_package_warnings_follow_parameter_types() {
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn explorer_disclosure_tracks_input_and_output_entries() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.session.pkg.graphs[0].name = "Graph entries".into();
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     app.run("graph.node.add", json!({"def": "uniform"})).unwrap();
@@ -741,7 +741,7 @@ fn explorer_disclosure_tracks_input_and_output_entries() {
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn explorer_open_targets_the_clicked_graph() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     app.run("graph.duplicate", json!({"graph": 0}));
     app.session.pkg.graphs[1].name = "Export target".into();
     app.run("graph.open", json!({"graph": 0}));
@@ -768,7 +768,7 @@ fn explorer_open_targets_the_clicked_graph() {
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn empty_startup_can_create_a_template() {
-    let app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 40);
     assert_eq!(harness.state().session.pkg.graphs.len(), 1);
@@ -801,7 +801,7 @@ fn snapshots() {
     };
 
     std::fs::create_dir_all(&dir).unwrap();
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     let mut h = harness(app, 1600.0, 960.0);
     settle(&mut h, 40);
 
@@ -893,7 +893,7 @@ fn snapshots() {
 #[ignore]
 fn perf() {
     use materialcraft_ui_egui::docking::Panel;
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     let mut h = harness(app, 1600.0, 960.0);
     settle(&mut h, 60);
     let measure = |h: &mut Harness<'static, MaterialCraftApp>| {
@@ -916,7 +916,7 @@ fn perf() {
 #[test]
 #[ignore = "requires an offscreen GPU"]
 fn graph_context_menu_has_flat_node_list() {
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 8);
     harness.get(By::new().role(egui::accesskit::Role::Button).label("Brightness")).click_secondary();
@@ -1141,7 +1141,7 @@ fn annotations_and_function_graph_creation() {
 
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("graph.node.add", json!({"def": "uniform", "at": [64, 64]})).unwrap();
     let frame =
         app.run("graph.frame.add", json!({"rect": [0, -64, 500, 404], "title": "Frame", "description": "Frame descriptions appear inside the frame and wrap as the frame is resized. Nodes and comments move together with this frame."})).unwrap()["id"].as_u64().unwrap();
@@ -1236,7 +1236,7 @@ fn annotations_and_function_graph_creation() {
 fn function_cards_and_dot_share_the_regular_graph_style() {
     use materialcraft_engine::core::{FunctionGraph, Value};
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.run("file.new", json!({"kind": "function", "name": "Function_cards"})).unwrap();
     let mut function = FunctionGraph::default();
     let value = function.add_constant(Value::Float4([1.0, 0.5, 0.25, 1.0]));
@@ -1295,7 +1295,7 @@ fn click_canvas(harness: &mut Harness<'static, MaterialCraftApp>, position: egui
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn named_outputs_select_without_loading_and_open_on_double_click() {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     let source = app.run("graph.node.add", json!({"def": "uniform", "at": [0, 0]})).unwrap()["id"].as_u64().unwrap();
     let output = app
         .run(
@@ -1354,7 +1354,7 @@ fn shared_toolbar_targets_each_graph_and_preserves_undo() {
     std::fs::create_dir_all(&directory).unwrap();
     let mut common_controls = None;
     for kind in ["material", "function", "pattern"] {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         let mut owner = 0;
         match kind {
             "function" => {
@@ -1445,7 +1445,7 @@ fn embedded_function_toolbar_and_panels_share_the_active_target() {
         core::{FunctionGraph, NodeId, Value},
     };
     for definition in ["pixel_processor", "value_processor"] {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
         let owner = NodeId(app.run("graph.node.add", json!({"def": definition, "at": [700, 800]})).unwrap()["id"].as_u64().unwrap());
         let target = FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
         let mut graph = FunctionGraph::default();
@@ -1528,7 +1528,7 @@ fn embedded_function_toolbar_and_panels_share_the_active_target() {
 fn material_assignment_previews_outputs_and_survives_function_editing() {
     use materialcraft_engine::core::NodeId;
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.session.preview_size = Some(64);
     app.ui.prefs.preview_size = 64;
     let source =
@@ -1592,7 +1592,7 @@ fn material_assignment_previews_outputs_and_survives_function_editing() {
 fn explorer_inputs_and_graph_drop_share_labels_and_material_assignment() {
     use materialcraft_engine::core::{ComponentUsage, MaterialChannel, NodeId};
 
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.session.pkg.graphs[0].name = "Atomic_sample".into();
     app.ui.prefs.preview_size = 64;
     let mut inputs = Vec::new();
@@ -1716,7 +1716,7 @@ fn explorer_inputs_and_graph_drop_share_labels_and_material_assignment() {
 #[test]
 #[ignore = "requires an offscreen GPU"]
 fn library_cache_preferences() {
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     let mut h = harness(app, 1100.0, 850.0);
     settle(&mut h, 4);
     h.state_mut().ui.windows.preferences = true;

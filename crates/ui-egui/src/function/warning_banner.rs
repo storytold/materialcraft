@@ -19,7 +19,7 @@ pub(super) fn show(ui: &mut Ui, document: &Graph, target: &FunctionGraphTarget, 
             ui.colored_label(tokens.text_dim, format!("{}: {}", tr("Expected output"), expected.label()));
         }
         for message in messages {
-            ui.colored_label(tokens.warning, format!("{}  {message}", egui_phosphor::regular::WARNING))
+            ui.colored_label(tokens.warning, format!("{}  {}", egui_phosphor::regular::WARNING, tr(&message)))
                 .on_hover_text(tr("Choose an output of the expected type and connect it to a value source, such as a constant or variable input"));
         }
     });

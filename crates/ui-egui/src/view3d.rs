@@ -191,7 +191,7 @@ mod inspection_tests {
 
     #[test]
     fn another_selection_discards_the_previous_3d_inspection() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         inspect(&mut app, Subject::Camera);
 
         let previous = app.session.selection.clone();
@@ -204,7 +204,7 @@ mod inspection_tests {
 
     #[test]
     fn pattern_selection_discards_the_previous_3d_inspection() {
-        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
         app.pattern_editor = Some(crate::pattern::PatternEditor::new(app.session.graph, NodeId(0)));
         inspect(&mut app, Subject::Camera);
         assert_eq!(inspected(&app), Some(Subject::Camera));

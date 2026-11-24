@@ -8,7 +8,7 @@ use materialcraft_ui_egui::export::ExportTab;
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 
 fn harness() -> Harness<'static, MaterialCraftApp> {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
     let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_ui_state(
         |ui, app: &mut MaterialCraftApp| {

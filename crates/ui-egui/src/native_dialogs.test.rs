@@ -4,7 +4,7 @@ use crate::unsaved::Guarded;
 use craft_dialogs::Request;
 
 fn app() -> MaterialCraftApp {
-    MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default())
+    MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::english())
 }
 
 #[test]

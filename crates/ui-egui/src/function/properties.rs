@@ -15,7 +15,7 @@ pub(crate) fn title(app: &MaterialCraftApp) -> Option<String> {
     let (graph, id) = current(app)?;
     let node = graph.node(id)?;
     let label = node_label(node);
-    Some(format!("{label} - {}", tr("Properties")))
+    Some(format!("{} - {}", tr(label), tr("Properties")))
 }
 
 pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
@@ -30,10 +30,11 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
     }
 
     if let Some(instance) = &node.instance {
-        ui.label(format!("Source: {}", if instance.package.is_empty() { "This package" } else { &instance.package }));
+        let package = if instance.package.is_empty() { tr("This package") } else { instance.package.as_str() };
+        ui.label(crate::i18n::trf("Source: {package}", &[("package", &package)]));
         ui.label(&instance.graph);
         if let Some(Err(error)) = &node.source {
-            ui.colored_label(egui::Color32::from_rgb(255, 90, 180), error);
+            ui.colored_label(egui::Color32::from_rgb(255, 90, 180), tr(error));
         }
     }
     if node.missing.is_some() {

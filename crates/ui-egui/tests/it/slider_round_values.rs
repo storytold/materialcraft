@@ -15,7 +15,7 @@ use serde_json::json;
 const AIM_OFFSET_PHYSICAL_PIXELS: f32 = 0.4;
 
 fn harness(ppp: f32, render: bool, definition: &str) -> (Harness<'static, MaterialCraftApp>, NodeId) {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     let id = NodeId(app.run("graph.node.add", json!({"def":definition})).unwrap()["id"].as_u64().unwrap());
     app.session.reset_history();
     let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(ppp).with_step_dt(1.0 / 60.0);

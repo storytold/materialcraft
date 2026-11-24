@@ -101,6 +101,14 @@ impl Default for UiState {
 }
 
 impl UiState {
+    /// The default state with the interface in English whatever the system language is, for tests
+    /// and offscreen snapshots that find or show controls by their English labels
+    pub fn english() -> UiState {
+        let mut ui = UiState::default();
+        ui.prefs.language = "en".into();
+        ui
+    }
+
     /// Preferences committed by Apply or OK, including while the window shows a draft
     pub(crate) fn committed_prefs(&self) -> &Prefs {
         self.preferences.applied.as_ref().unwrap_or(&self.prefs)

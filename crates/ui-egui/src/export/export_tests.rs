@@ -4,7 +4,7 @@ use super::*;
 
 /// One 16 px graph, New_graph, with two connected outputs: base_color (base color usage) and height
 fn app() -> MaterialCraftApp {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), crate::UiState::english());
     app.run("graph.size", json!({"width": 16}));
     for (identifier, usage) in [("base_color", "baseColor"), ("height", "height")] {
         let usage = materialcraft_engine::core::ComponentUsage::index(usage);

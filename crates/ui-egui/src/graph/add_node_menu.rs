@@ -68,7 +68,7 @@ mod tests {
     };
 
     fn app() -> crate::MaterialCraftApp {
-        crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default())
+        crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english())
     }
 
     #[test]

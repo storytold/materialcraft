@@ -40,7 +40,7 @@ pub(super) fn show(
             ui.vertical(|ui| {
                 ui.set_width(content_width);
                 if base.is_some() || driven {
-                    ui.label(RichText::new(&descriptor.label).color(if driven { tokens.accent } else { tokens.text }));
+                    ui.label(RichText::new(tr(&descriptor.label)).color(if driven { tokens.accent } else { tokens.text }));
                 } else {
                     literal(app, ui);
                 }

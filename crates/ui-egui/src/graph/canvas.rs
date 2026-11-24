@@ -251,9 +251,8 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
                 let label_text = if let Some(limit) = app.session.preview_size {
                     let [width, height] = graph.size_px();
                     response.clone().on_hover_text(format!(
-                        "{} x {} ({bits}bpc)\n{}: {width} x {height}\n{}: {limit} px\n{}",
-                        image.width(),
-                        image.height(),
+                        "{}\n{}: {width} x {height}\n{}: {limit} px\n{}",
+                        crate::i18n::trf("{width} x {height} ({bits}bpc)", &[("width", &image.width()), ("height", &image.height()), ("bits", &bits)]),
                         tr("Parent size"),
                         tr("Preview limit"),
                         tr("Change Preview size while editing in Edit > Preferences. Exports use each node's configured output size.")
@@ -282,7 +281,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
                 painter.line_segment([screen_rect.left_top(), screen_rect.right_bottom()], Stroke::new(1.5, theme.danger));
             }
             if let Some(e) = error {
-                response.clone().on_hover_text(e);
+                response.clone().on_hover_text(tr(e));
             }
         }
 
@@ -353,13 +352,13 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let (failed, placeholders) = app.session.cook_failures();
     let mut at = rect.right_bottom() - vec2(8.0, 8.0);
     if !failed.is_empty() {
-        let text = format!("{} {} node(s) failed", icon::WARNING, failed.len());
+        let text = format!("{} {}", icon::WARNING, crate::i18n::trf("{count} node(s) failed", &[("count", &failed.len())]));
         at.y = painter.text(at, Align2::RIGHT_BOTTOM, text, FontId::proportional(11.0), theme.danger).top() - 2.0;
     }
 
     // Placeholders for missing SBS nodes are a soft warning, not a failure
     if placeholders > 0 {
-        let text = format!("{} {placeholders} missing node(s), see the Console", icon::WARNING);
+        let text = format!("{} {}", icon::WARNING, crate::i18n::trf("{count} missing node(s), see the Console", &[("count", &placeholders)]));
         painter.text(at, Align2::RIGHT_BOTTOM, text, FontId::proportional(11.0), theme.warning);
     }
 }

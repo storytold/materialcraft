@@ -45,7 +45,7 @@ fn a_press_inside_the_window_does_not_resize() {
 
 #[test]
 fn the_menu_bar_shows_window_buttons_only_when_the_app_draws_the_frame() {
-    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+    let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::english());
     let mut labels_drawn = |layout: Option<craft_window::Layout>| {
         app.window_layout = layout;
         let ctx = egui::Context::default();

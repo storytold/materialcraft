@@ -7,7 +7,7 @@ use serde_json::json;
 
 /// Two wired nodes, both selected
 fn harness(render: bool) -> Harness<'static, MaterialCraftApp> {
-    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::english());
     app.session.preview_size = Some(32);
     let source = app.run("graph.node.add", json!({"def": "uniform", "at": [0, 0]})).unwrap()["id"].as_u64().unwrap();
     let levels = app.run("graph.node.add", json!({"def": "levels", "connectFrom": {"node": source}})).unwrap()["id"].as_u64().unwrap();

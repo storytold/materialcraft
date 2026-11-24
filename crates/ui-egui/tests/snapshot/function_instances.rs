@@ -48,7 +48,7 @@ fn function_instances_drop_into_compatible_canvases_and_return_from_their_source
         )
         .unwrap();
         let target_document = session.document_id;
-        let mut app = MaterialCraftApp::headless(session, UiState::default());
+        let mut app = MaterialCraftApp::headless(session, UiState::english());
         app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
         let owner = if matches!(kind, "pixel_processor" | "value_processor" | "fx_map") {
             Some(NodeId(app.run("graph.node.add", json!({"def": kind})).unwrap()["id"].as_u64().unwrap()))
