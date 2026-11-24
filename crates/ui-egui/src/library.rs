@@ -25,6 +25,14 @@ pub(crate) const FAVORITES: &str = "@favorites";
 /// Function entries that need more nodes than MaterialCraft has are shown in this color
 const WARNING: Color32 = Color32::from_rgb(255, 90, 180);
 
+/// Translate catalog labels without changing names from user-authored library packages.
+fn display_label(entry: &LibraryEntry) -> &str {
+    match &entry.item {
+        LibraryItem::Instance { .. } | LibraryItem::FunctionInstance { .. } | LibraryItem::Bitmap { .. } => &entry.label,
+        _ => tr(&entry.label),
+    }
+}
+
 /// Choose the icon for a known category or fall back to a folder.
 fn category_icon(category: &str) -> &'static str {
     match category {
@@ -293,7 +301,9 @@ pub(crate) fn visible<'a>(app: &MaterialCraftApp, entries: &'a [LibraryEntry], t
         .filter(|entry| app.ui.library_show_other || entry.canvas == LibraryCanvas::Any || entry.canvas == target.canvas)
         .filter(|entry| {
             if !search.is_empty() {
-                return tr(&entry.label).to_lowercase().contains(&search) || entry.id.to_lowercase().contains(&search);
+                return display_label(entry).to_lowercase().contains(&search)
+                    || entry.label.to_lowercase().contains(&search)
+                    || entry.id.to_lowercase().contains(&search);
             }
 
             match category {
@@ -303,7 +313,7 @@ pub(crate) fn visible<'a>(app: &MaterialCraftApp, entries: &'a [LibraryEntry], t
             }
         })
         .collect();
-    visible.sort_by_cached_key(|entry| (tr(&entry.label).to_lowercase(), entry.id.as_str()));
+    visible.sort_by_cached_key(|entry| (display_label(entry).to_lowercase(), entry.id.as_str()));
     visible
 }
 
@@ -333,7 +343,7 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
             for entry in chunk {
                 let size = if as_list { vec2(ui.available_width(), 26.0) } else { tile };
                 let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-                crate::widgets::name(&response, egui::Role::ListItem, &entry.label);
+                crate::widgets::name(&response, egui::Role::ListItem, display_label(entry));
                 let takes = target.takes(entry);
                 let selected = app.ui.library_selected.as_deref() == Some(entry.id.as_str());
                 if selected {
@@ -351,10 +361,10 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
                 let color = if entry.warning.is_some() { WARNING } else { tokens.text };
                 let color = color.gamma_multiply(if takes { 1.0 } else { 0.55 });
                 if as_list {
-                    let galley = crate::widgets::elided(ui.painter(), entry.label.clone(), 11.5, color, rect.width() - 34.0);
+                    let galley = crate::widgets::elided(ui.painter(), display_label(entry).to_owned(), 11.5, color, rect.width() - 34.0);
                     ui.painter().galley(rect.left_center() + vec2(30.0, -galley.size().y * 0.5), galley, color);
                 } else {
-                    let galley = ui.painter().layout(entry.label.clone(), egui::FontId::proportional(10.5), color, tile.x - 4.0);
+                    let galley = ui.painter().layout(display_label(entry).to_owned(), egui::FontId::proportional(10.5), color, tile.x - 4.0);
                     let pos = egui::pos2(rect.center().x - galley.size().x * 0.5, image.bottom() + 3.0);
                     ui.painter().with_clip_rect(rect).galley(pos, galley, color);
                 }
@@ -368,7 +378,7 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
                     );
                 }
 
-                let mut tip = format!("{}\n{}", entry.label, tr(&entry.category));
+                let mut tip = format!("{}\n{}", display_label(entry), tr(&entry.category));
                 if !entry.description.is_empty() {
                     tip.push_str(&format!("\n\n{}", entry.description));
                 }

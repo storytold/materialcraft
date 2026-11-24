@@ -35,7 +35,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui, target: GraphT
             ui.label(tr(label));
             let editor = if key == "description" { egui::TextEdit::multiline(&mut text).desired_rows(6) } else { egui::TextEdit::singleline(&mut text) };
             let response = ui.add(editor.id(widget).desired_width(ui.available_width()));
-            crate::widgets::name(&response, egui::Role::TextInput, label);
+            crate::widgets::name(&response, egui::Role::TextInput, tr(label));
             if response.changed() {
                 *draft = Some(GraphPropertyDraft { target, key, original: current.clone(), text, widget });
             }

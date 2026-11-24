@@ -15,6 +15,7 @@ const MAX_UNDO_STEPS: f32 = 10_000.0;
 const MAX_AUTOSAVE_MINUTES: f32 = 60.0;
 
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    let fonts = &app.fonts;
     let prefs = &mut app.ui.prefs;
 
     heading(ui, "Recent documents");
@@ -27,9 +28,14 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     }
 
     heading(ui, "Language");
-    crate::widgets::combo(ui, tr("Language"), crate::i18n::current().name, |ui| {
+    let current = crate::i18n::current();
+    let current_name = if fonts.covers_language(current.code) { current.name } else { current.english };
+    crate::widgets::combo(ui, tr("Language"), current_name, |ui| {
         for language in &crate::i18n::LANGUAGES {
-            if ui.selectable_label(prefs.language == language.code, language.name).clicked() {
+            let supported = fonts.covers_language(language.code);
+            let name = if supported { language.name } else { language.english };
+            let response = ui.add_enabled(supported, egui::Button::selectable(prefs.language == language.code, name));
+            if response.on_disabled_hover_text(tr("No font on this system can show this language")).clicked() {
                 prefs.language = language.code.to_owned();
                 crate::i18n::set_language(&prefs.language);
             }

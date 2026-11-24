@@ -40,7 +40,8 @@ pub(super) fn show(
             ui.vertical(|ui| {
                 ui.set_width(content_width);
                 if base.is_some() || driven {
-                    ui.label(RichText::new(&descriptor.label).color(if driven { tokens.accent } else { tokens.text }));
+                    let label = if base.is_some() || node.def != "graph_instance" { tr(&descriptor.label) } else { &descriptor.label };
+                    ui.label(RichText::new(label).color(if driven { tokens.accent } else { tokens.text }));
                 } else {
                     literal(app, ui);
                 }

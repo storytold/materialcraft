@@ -1,5 +1,13 @@
 # Attribution
 
+## Simplified Chinese UI catalog
+
+`crates/ui-egui/src/i18n/zh_hans.rs` contains original MaterialCraft translations
+and shared terminology from the Craft contributors' MIT OR Apache-2.0
+[TextureCraft catalog](https://github.com/storytold/texturecraft/blob/main/crates/ui-egui/src/i18n/zh_hans.rs)
+and [craft-i18n Chinese catalogs](https://github.com/storytold/craft-i18n/tree/main/locales/zh-hans).
+No proprietary localization resources or font files are bundled by this change.
+
 Every bundled non-code asset in this repository, with its author, source and license. The rule:
 **each asset is covered by a row here in the same change that adds it.**
 The original SBS library shares one recursive entry below; its separately sourced resources keep
