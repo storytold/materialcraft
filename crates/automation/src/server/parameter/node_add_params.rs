@@ -11,8 +11,10 @@ pub struct NodeAddParams {
     pub at: Option<[f32; 2]>,
     /// Parameter values by id (see `library_list`): numbers, `[x, y]`, `"#rrggbb"`, enum indices
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("type" = ["object", "null"]))]
     pub params: Option<Value>,
     /// Wire `{node, port?}`'s output into the new node's first input
     #[serde(default, rename = "connectFrom", skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("type" = ["object", "null"]))]
     pub connect_from: Option<Value>,
 }

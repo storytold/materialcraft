@@ -362,6 +362,24 @@ mod tests {
     }
 
     #[test]
+    fn command_params_are_nullable_objects() {
+        let tools = MaterialCraftMcp::tool_router().list_all();
+        let schema = |name: &str| Value::Object((*tools.iter().find(|t| t.name == name).unwrap().input_schema).clone());
+        let run = schema("command_run");
+        let batch = schema("command_batch");
+        let step_ref = batch["properties"]["steps"]["items"]["$ref"].as_str().unwrap();
+        let step = batch.pointer(step_ref.strip_prefix('#').unwrap()).unwrap();
+        for command in [&run, step] {
+            assert_eq!(command["properties"]["params"]["type"], json!(["object", "null"]), "{command}");
+            assert!(!command["required"].as_array().unwrap().iter().any(|name| name == "params"));
+        }
+        let node = schema("node_add");
+        for field in ["params", "connectFrom"] {
+            assert_eq!(node["properties"][field]["type"], json!(["object", "null"]), "{node}");
+        }
+    }
+
+    #[test]
     fn oversized_replies_become_errors() {
         let r = ok_json(&json!("x".repeat(crate::budgets::MAX_RESPONSE_BYTES)));
         assert_eq!(r.is_error, Some(true));

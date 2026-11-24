@@ -8,5 +8,6 @@ pub struct RunParams {
     pub id: String,
     /// Command parameters (see the command's `params` doc). Omitted = defaults; never a dialog
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("type" = ["object", "null"]))]
     pub params: Option<Value>,
 }
