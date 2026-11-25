@@ -2,22 +2,22 @@ use egui::Ui;
 use materialcraft_engine::core::{Node, ValueType};
 use serde_json::json;
 
-use crate::MaterialCraftApp;
+use crate::{MaterialCraftApp, i18n::tr};
 
 pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, node: &Node) {
-    ui.collapsing("Value inputs", |ui| {
+    ui.collapsing(tr("Value inputs"), |ui| {
         for (identifier, value_type) in &node.input_values {
             ui.horizontal(|ui| {
                 ui.label(materialcraft_engine::eval::value_input_label(identifier));
                 ui.label(value_type.label());
 
-                if ui.small_button("Remove").clicked() {
+                if ui.small_button(tr("Remove")).clicked() {
                     app.run("graph.node.value_input", json!({"id": node.id.0, "name": identifier, "remove": true}));
                 }
             });
         }
 
-        ui.menu_button("Add value input", |ui| {
+        ui.menu_button(tr("Add value input"), |ui| {
             for value_type in ValueType::ALL {
                 if ui.button(value_type.label()).clicked() {
                     let name = (1..=65).map(|index| format!("value{index}")).find(|name| !node.input_values.contains_key(name));
@@ -38,7 +38,7 @@ pub(crate) fn default_value(app: &mut MaterialCraftApp, ui: &mut Ui, node: &Node
     let mut value = node.params.get("default").cloned().unwrap_or(Value::Float(0.0));
     let mut kind = ValueType::of(&value).unwrap_or(ValueType::Float);
     let before = kind;
-    egui::ComboBox::from_label("Value type").selected_text(kind.label()).show_ui(ui, |ui| {
+    egui::ComboBox::from_label(tr("Value type")).selected_text(kind.label()).show_ui(ui, |ui| {
         for candidate in ValueType::ALL {
             ui.selectable_value(&mut kind, candidate, candidate.label());
         }

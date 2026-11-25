@@ -11,31 +11,39 @@ use crate::MaterialCraftApp;
 use crate::i18n::tr;
 use crate::theme::Tokens;
 
+/// The menu bar itself defaults to LTR even when the app language is Hebrew.
+/// Override that inner layout so the first menu is anchored on the right in RTL.
+fn with_view3d_menu_direction<R>(ui: &mut Ui, rtl: bool, content: impl FnOnce(&mut Ui) -> R) -> R {
+    if rtl { ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), content).inner } else { content(ui) }
+}
+
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let tokens = Tokens::get(ui.ctx());
     egui::Frame::NONE.fill(tokens.panel).inner_margin(egui::Margin::symmetric(4, 1)).show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button(tr("Scene"), |ui| scene(app, ui));
-            ui.menu_button(tr("Materials"), |ui| materials(app, ui));
-            ui.menu_button(tr("Lights"), |ui| {
-                edit_properties(app, ui, Subject::Lights);
-                command(app, ui, "Reset Lights", None, "view.3d.resetLights");
-            });
-            ui.menu_button(tr("Camera"), |ui| camera(app, ui));
-            ui.menu_button(tr("Environment"), |ui| {
-                edit_properties(app, ui, Subject::Environment);
-                command(app, ui, "Reset Environment", None, "view.3d.resetEnvironment");
-            });
-            // The Display menu stays open, so several helpers can be switched in one visit
-            let stays_open = egui::containers::menu::MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-            egui::containers::menu::MenuButton::new(tr("Display")).config(stays_open).ui(ui, |ui| display(app, ui));
-            ui.menu_button(tr("Renderer"), |ui| {
-                if ui.button(tr("Edit settings")).clicked() {
-                    super::inspect(app, Subject::Renderer);
-                    ui.close();
-                }
-                ui.separator();
-                ui.add_enabled(false, egui::Button::selectable(true, tr("CPU ray tracer")));
+            with_view3d_menu_direction(ui, crate::i18n::is_rtl(), |ui| {
+                ui.menu_button(tr("Scene"), |ui| scene(app, ui));
+                ui.menu_button(tr("Materials"), |ui| materials(app, ui));
+                ui.menu_button(tr("Lights"), |ui| {
+                    edit_properties(app, ui, Subject::Lights);
+                    command(app, ui, "Reset Lights", None, "view.3d.resetLights");
+                });
+                ui.menu_button(tr("Camera"), |ui| camera(app, ui));
+                ui.menu_button(tr("Environment"), |ui| {
+                    edit_properties(app, ui, Subject::Environment);
+                    command(app, ui, "Reset Environment", None, "view.3d.resetEnvironment");
+                });
+                // The Display menu stays open, so several helpers can be switched in one visit
+                let stays_open = egui::containers::menu::MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+                egui::containers::menu::MenuButton::new(tr("Display")).config(stays_open).ui(ui, |ui| display(app, ui));
+                ui.menu_button(tr("Renderer"), |ui| {
+                    if ui.button(tr("Edit settings")).clicked() {
+                        super::inspect(app, Subject::Renderer);
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::selectable(true, tr("CPU ray tracer")));
+                });
             });
         });
     });
@@ -233,4 +241,37 @@ fn display(app: &mut MaterialCraftApp, ui: &mut Ui) {
     toggle(app, ui, "Resolution", "resolution", view.show_resolution);
     toggle(app, ui, "Scene stats", "sceneStats", view.scene_stats);
     toggle(app, ui, "FPS", "fps", view.fps);
+}
+
+#[cfg(test)]
+mod hebrew_view3d_menu_layout_tests {
+    use super::with_view3d_menu_direction;
+
+    fn menu_centers(rtl: bool) -> (f32, f32) {
+        let ctx = egui::Context::default();
+        let mut centers = None;
+        let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 600.0))), ..Default::default() };
+        let mut output = ctx.run_ui(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
+                    with_view3d_menu_direction(ui, rtl, |ui| {
+                        let first = ui.button("Material").rect.center().x;
+                        let next = ui.button("Scene").rect.center().x;
+                        centers = Some((first, next));
+                    });
+                });
+            });
+        });
+        output.textures_delta.clear();
+        centers.expect("two real egui menu hitboxes")
+    }
+
+    #[test]
+    fn hebrew_menu_mirrors_hitboxes_while_english_stays_ltr() {
+        let (en_first, en_second) = menu_centers(false);
+        let (he_first, he_second) = menu_centers(true);
+        assert!(en_first < en_second, "English menu order changed: {en_first} / {en_second}");
+        assert!(he_first > he_second, "Hebrew menu not mirrored: {he_first} / {he_second}");
+        assert!(he_first > en_first + 200.0, "Hebrew menu not anchored at right edge");
+    }
 }

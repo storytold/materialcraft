@@ -61,7 +61,7 @@ fn paint(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) ->
     let graph = editor.current(app)?;
     let selected: std::collections::BTreeSet<_> = editor.selection.iter().copied().collect();
     let mut geometry = CanvasGeometry::default();
-    crate::widgets::name(&response, egui::Role::Canvas, "FX-Map graph");
+    crate::widgets::name(&response, egui::Role::Canvas, tr("FX-Map graph"));
     let painter = ui.painter_at(bounds);
     painter.rect_filled(bounds, 0.0, Color32::from_rgb(0x26, 0x28, 0x2c));
     let snap = app.ui.prefs.snap_to_grid;
@@ -140,7 +140,7 @@ fn paint(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) ->
             );
         }
         let node_response = ui.interact(bounds, response.id.with(("node", node.id)), Sense::hover());
-        crate::widgets::name(&node_response, egui::Role::Button, node.kind.label());
+        crate::widgets::name(&node_response, egui::Role::Button, tr(node.kind.label()));
 
         for slot in std::iter::once(None).chain((0..node.children.len()).map(Some)) {
             let position = geometry::port(bounds, slot, node.children.len());

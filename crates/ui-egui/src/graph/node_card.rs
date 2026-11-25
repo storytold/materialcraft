@@ -58,18 +58,25 @@ pub(crate) fn paint(painter: &Painter, bounds: Rect, zoom: f32, label: &str, col
     painter.rect_filled(bounds, radius, CARD_COLOR);
     painter.rect_filled(header, CornerRadius { nw: radius, ne: radius, sw: 0, se: 0 }, color);
     painter.line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, Color32::from_black_alpha(110)));
-
     let font = FontId::proportional((11.0 * zoom).clamp(7.0, 16.0));
     let title = crate::widgets::elided(painter, label, font.size, Color32::WHITE, header.width() - 10.0 * zoom);
-    painter.galley(header.left_center() + vec2(5.0 * zoom, -title.size().y * 0.5), title, Color32::WHITE);
+    let origin = header_label_origin(header, title.size(), crate::i18n::is_rtl());
+    painter.galley(origin, title, Color32::WHITE);
 }
 
-/// The dark well a preview or a value sits in, inside `body`
+/// Place the graph-node title at the locale reading edge without changing
+/// input/output port geometry (which represents wiring direction).
+fn header_label_origin(header: Rect, label_size: egui::Vec2, rtl: bool) -> Pos2 {
+    let x = if rtl { header.right() - 4.0 - label_size.x } else { header.left() + 4.0 };
+    pos2(x, header.center().y - label_size.y * 0.5)
+}
+
+/// The dark well a preview or a value sits in, inside body
 pub(crate) fn paint_well(painter: &Painter, well: Rect, zoom: f32) {
     painter.rect_filled(well, (3.0 * zoom).clamp(1.0, 4.0) as u8, WELL_COLOR);
 }
 
-/// A short symbol or word centered in `body`, as large as its length allows
+/// A short symbol or word centered in body, as large as its length allows
 pub(crate) fn paint_symbol(painter: &Painter, body: Rect, zoom: f32, symbol: &str, color: Color32) {
     let size = match symbol.chars().count() {
         0..=2 => 24.0,
@@ -86,4 +93,23 @@ pub(crate) fn outline(painter: &Painter, bounds: Rect, zoom: f32, stroke: Stroke
 
 pub(crate) fn paint_dot(painter: &Painter, bounds: Rect, color: Color32) {
     painter.circle(bounds.center(), bounds.width() * 0.5, Color32::from_gray(0x50), Stroke::new(1.5, color));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_title_uses_hebrew_reading_edge_without_reversing_port_wiring() {
+        let node = Rect::from_min_size(pos2(10.0, 20.0), vec2(140.0, 80.0));
+        let title = header(node, 1.0);
+        let label = vec2(32.0, 12.0);
+        let ltr = header_label_origin(title, label, false);
+        let rtl = header_label_origin(title, label, true);
+        assert_eq!(ltr.x, 14.0);
+        assert_eq!(rtl.x, 114.0);
+        assert_eq!(ltr.y, rtl.y);
+        assert_eq!(port(node, 0, 1, false, false).x, node.left());
+        assert_eq!(port(node, 0, 1, true, false).x, node.right());
+    }
 }

@@ -5,6 +5,11 @@ use egui_phosphor::regular as icon;
 use materialcraft_engine::core::{Graph, OutputFormat, Resource, Value};
 use serde_json::{Value as JsonValue, json};
 
+/// Mirror the physical row order for Hebrew without reversing input or preset values.
+fn with_graph_row<R>(ui: &mut Ui, rtl: bool, add_contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    if rtl { ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), add_contents) } else { ui.horizontal(add_contents) }
+}
+
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_engine::GraphTarget) {
     ui.push_id(target, |ui| show_target(app, ui, target));
 }
@@ -78,7 +83,7 @@ fn show_target(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_en
             }
             last_group = Some(exposed.group.as_str());
             let current = graph.input_value(&exposed.id).cloned().unwrap_or_else(|| exposed.default.clone());
-            ui.horizontal(|ui| {
+            with_graph_row(ui, crate::i18n::is_rtl(), |ui| {
                 if crate::widgets::icon_button(ui, icon::X, tr("Delete input"), false, 18.0).clicked() {
                     emit("graph.exposed.delete", json!({"id": exposed.id}));
                 }
@@ -133,7 +138,7 @@ fn input_previews(ui: &mut Ui, graph: &Graph, resources: &[Resource], emit: &mut
         for input in &inputs {
             let id = &input.identifier;
             let bound = graph.input_images.get(id);
-            ui.horizontal(|ui| {
+            with_graph_row(ui, crate::i18n::is_rtl(), |ui| {
                 ui.label(id);
                 egui::ComboBox::from_id_salt(("input-preview", id)).width(120.0).selected_text(bound.map_or(tr("None"), String::as_str)).show_ui(ui, |ui| {
                     if ui.selectable_label(bound.is_none(), tr("None")).clicked() {
@@ -158,7 +163,7 @@ fn input_previews(ui: &mut Ui, graph: &Graph, resources: &[Resource], emit: &mut
 fn presets_bar(ui: &mut Ui, graph: &Graph, emit: &mut impl FnMut(&'static str, JsonValue)) {
     let name_id = ui.make_persistent_id("preset-name");
     let mut name: String = ui.data(|data| data.get_temp(name_id)).unwrap_or_default();
-    ui.horizontal(|ui| {
+    with_graph_row(ui, crate::i18n::is_rtl(), |ui| {
         let response = egui::ComboBox::from_id_salt("presets").width(110.0).selected_text(tr("Presets")).show_ui(ui, |ui| {
             for preset in &graph.presets {
                 if ui.button(&preset.name).clicked() {
@@ -195,5 +200,38 @@ mod tests {
         run_or_pick(&mut app, "graph.node.add", json!({"def": "input_grayscale"}));
         assert_eq!(app.dialogs.queued(), 1, "a command does not ask for a file");
         assert_eq!(app.session.graph().unwrap().nodes.len(), nodes + 1);
+    }
+}
+
+#[cfg(test)]
+mod graph_row_rtl_tests {
+    use super::with_graph_row;
+
+    #[test]
+    fn graph_input_rows_reverse_physical_order_only_for_hebrew() {
+        fn positions(rtl: bool) -> (f32, f32) {
+            use std::cell::Cell;
+
+            let ctx = egui::Context::default();
+            let leading_x = Cell::new(f32::NAN);
+            let trailing_x = Cell::new(f32::NAN);
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 180.0))), ..Default::default() };
+            let mut output = ctx.run_ui(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    with_graph_row(ui, rtl, |ui| {
+                        leading_x.set(ui.button("Presets").rect.center().x);
+                        trailing_x.set(ui.button("Save").rect.center().x);
+                    });
+                });
+            });
+            output.textures_delta.clear();
+            (leading_x.get(), trailing_x.get())
+        }
+
+        let (leading_en, trailing_en) = positions(false);
+        assert!(leading_en < trailing_en, "English graph row must remain LTR");
+        let (leading_he, trailing_he) = positions(true);
+        assert!(leading_he > trailing_he, "Hebrew graph row must mirror physical control order");
+        assert!(leading_en.is_finite() && trailing_en.is_finite() && leading_he.is_finite() && trailing_he.is_finite());
     }
 }
