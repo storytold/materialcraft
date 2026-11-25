@@ -9,9 +9,10 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod ar;
+mod zh_hans;
 
 pub struct Language {
-    /// BCP 47 code ("en", "ar").
+    /// BCP 47 code ("en", "ar", "zh-Hans").
     pub code: &'static str,
     /// The language's own name, for the picker.
     pub name: &'static str,
@@ -21,10 +22,13 @@ pub struct Language {
     pub table: &'static [(&'static str, &'static str)],
 }
 
-const COUNT: usize = 2;
+const COUNT: usize = 3;
 
-pub static LANGUAGES: [Language; COUNT] =
-    [Language { code: "en", name: "English", english: "English", table: &[] }, Language { code: "ar", name: "العربية", english: "Arabic", table: ar::TABLE }];
+pub static LANGUAGES: [Language; COUNT] = [
+    Language { code: "en", name: "English", english: "English", table: &[] },
+    Language { code: "ar", name: "العربية", english: "Arabic", table: ar::TABLE },
+    Language { code: "zh-Hans", name: "简体中文", english: "Chinese (Simplified)", table: zh_hans::TABLE },
+];
 
 static MAPS: [OnceLock<HashMap<&'static str, &'static str>>; COUNT] = [const { OnceLock::new() }; COUNT];
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
@@ -88,8 +92,20 @@ pub fn trf(template: &str, args: &[(&str, &dyn Display)]) -> String {
     out
 }
 
-/// The supported language for a locale such as "ar-EG", "ar-SA" ("en" when none matches).
+/// Resolve OS locales, including Simplified Chinese. Traditional Chinese stays on English
+/// until a Traditional Chinese catalog is available; an explicit script takes precedence.
 pub fn language_for_locale(locale: &str) -> &'static str {
+    let normalized = locale.split(['.', '@']).next().unwrap_or("").replace('_', "-").to_ascii_lowercase();
+    let parts: Vec<&str> = normalized.split('-').collect();
+    if parts.first() == Some(&"zh") {
+        if parts.contains(&"hant") {
+            return "en";
+        }
+        if parts.contains(&"hans") {
+            return "zh-Hans";
+        }
+        return if parts.iter().any(|p| matches!(*p, "tw" | "hk" | "mo")) { "en" } else { "zh-Hans" };
+    }
     let lang = locale.split(['-', '_', '.', '@']).next().unwrap_or("").to_ascii_lowercase();
     match lang.as_str() {
         "ar" => "ar",
@@ -103,7 +119,10 @@ pub fn os_language() -> &'static str {
     let locale = sys_locale::get_locale();
     #[cfg(target_arch = "wasm32")]
     let locale = web_sys::window().and_then(|w| w.navigator().language());
-    locale.map_or("en", |l| language_for_locale(&l))
+    let language = locale.map_or("en", |l| language_for_locale(&l));
+    // The browser cannot read system CJK fonts. Do not start with unreadable text
+    // until the web shell has an embedded font source for this language.
+    if cfg!(target_arch = "wasm32") && language == "zh-Hans" { "en" } else { language }
 }
 
 #[cfg(test)]
@@ -117,24 +136,34 @@ mod tests {
         assert_eq!(language_for_locale("ar_SA.UTF-8"), "ar");
         assert_eq!(language_for_locale("en-US"), "en");
         assert_eq!(language_for_locale("fr-FR"), "en");
-    }
-
-    #[test]
-    fn arabic_table_has_no_duplicate_keys() {
-        let mut seen = std::collections::HashSet::new();
-        for (k, _) in ar::TABLE {
-            assert!(seen.insert(*k), "duplicate key in ar::TABLE: {k:?}");
+        for locale in ["zh", "zh-CN", "zh_SG.UTF-8", "zh-Hans", "ZH-hans-HK"] {
+            assert_eq!(language_for_locale(locale), "zh-Hans");
+        }
+        for locale in ["zh-TW", "zh_HK", "zh-MO", "zh-Hant-CN"] {
+            assert_eq!(language_for_locale(locale), "en");
         }
     }
 
     #[test]
-    fn placeholders_match_between_key_and_arabic_translation() {
-        for (k, v) in ar::TABLE {
-            let mut kp: Vec<&str> = k.split('{').skip(1).filter_map(|s| s.split_once('}').map(|(p, _)| p)).collect();
-            let mut vp: Vec<&str> = v.split('{').skip(1).filter_map(|s| s.split_once('}').map(|(p, _)| p)).collect();
-            kp.sort();
-            vp.sort();
-            assert_eq!(kp, vp, "mismatched placeholders in {k:?} vs {v:?}");
+    fn tables_have_no_duplicate_keys() {
+        for language in &LANGUAGES {
+            let mut seen = std::collections::HashSet::new();
+            for (k, _) in language.table {
+                assert!(seen.insert(*k), "duplicate key in {}: {k:?}", language.code);
+            }
+        }
+    }
+
+    #[test]
+    fn placeholders_match_between_key_and_translation() {
+        for language in &LANGUAGES {
+            for (k, v) in language.table {
+                let mut kp: Vec<&str> = k.split('{').skip(1).filter_map(|s| s.split_once('}').map(|(p, _)| p)).collect();
+                let mut vp: Vec<&str> = v.split('{').skip(1).filter_map(|s| s.split_once('}').map(|(p, _)| p)).collect();
+                kp.sort();
+                vp.sort();
+                assert_eq!(kp, vp, "mismatched placeholders in {k:?} vs {v:?}");
+            }
         }
     }
 }
