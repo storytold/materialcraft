@@ -121,6 +121,9 @@ pub struct MaterialCraftApp {
     // PLAN: pn.A30 lists panels-w6..w10 as readers, and no sheet names the one that reads `levels_histograms`
     #[allow(dead_code)]
     pub(crate) levels_histograms: std::collections::HashMap<(u64, usize), Arc<craft_imaging::ui::histogram::HistogramData>>,
+    // owed by panels-w10: the property text drafts its files still keep, until its commits replace them (pn.A30).
+    pub(crate) folder_property_draft: Option<crate::properties::FolderPropertyDraft>,
+    pub(crate) graph_property_draft: Option<crate::properties::GraphPropertyDraft>,
     /// What Copy or Cut put on the clipboard this frame, for the system clipboard
     pub(crate) system_clipboard: Option<String>,
     /// The version this build names itself with: the Launcher's feed identity for a Nightly.
@@ -245,6 +248,8 @@ impl MaterialCraftApp {
             preset_name: String::new(),
             function_json: None,
             levels_histograms: Default::default(),
+            folder_property_draft: None,
+            graph_property_draft: None,
             system_clipboard: None,
             build_version: materialcraft_engine::VERSION.to_owned(),
             build_commit: String::new(),
