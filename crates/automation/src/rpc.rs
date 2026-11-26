@@ -94,7 +94,12 @@ impl Headless {
                 };
 
                 let r = self.render_png(&o)?;
-                Ok(json!({ "width": r.width, "height": r.height, "png": base64::engine::general_purpose::STANDARD.encode(r.png) }))
+                Ok(json!({
+                    "width": r.width,
+                    "height": r.height,
+                    "base64": base64::engine::general_purpose::STANDARD.encode(r.png),
+                    "mime": "image/png",
+                }))
             }
             m if m.starts_with("ui.") || m == "viewport.screenshot" => {
                 Err(bad(format!("`{m}` needs the running app (materialcraft --control <port>); headless renders use `render`")))
@@ -355,7 +360,8 @@ mod tests {
         let h = session();
         let flat = call(&h, "render", json!({"width": 32, "height": 32, "displacement": 0.0})).unwrap();
         let strong = call(&h, "render", json!({"width": 32, "height": 32, "displacement": 0.5})).unwrap();
-        assert_ne!(flat["png"], strong["png"], "displacement must change the 3D relief without hq");
+        assert!(flat["base64"].is_string(), "{flat}");
+        assert_ne!(flat["base64"], strong["base64"], "displacement must change the 3D relief without hq");
     }
 
     #[test]

@@ -39,10 +39,11 @@ fn to_result(r: Result<Value, AutomationError>) -> Result<CallToolResult, McpErr
     })
 }
 
-/// A `{width, height, png: base64}` reply (render or app screenshot) as image content
+/// An image reply `{base64, mime, width, height}` (render, view or window screenshot; a window screenshot also
+/// carries `pixels_per_point`), whose `base64` is a PNG, as image content.
 fn image_result(r: Result<Value, AutomationError>, note: &str, refit: bool) -> Result<CallToolResult, McpError> {
     let png = r.and_then(|v| {
-        let b64 = v.get("png").and_then(Value::as_str).ok_or_else(|| AutomationError::Other("the reply has no PNG".into()))?;
+        let b64 = v.get("base64").and_then(Value::as_str).ok_or_else(|| AutomationError::Other("the reply has no PNG".into()))?;
         if !refit {
             check_png(b64.len() / 4 * 3)?;
             return Ok(b64.to_string());

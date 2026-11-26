@@ -11,16 +11,21 @@ Agents drive MaterialCraft three ways, all dispatching the same engine commands:
    behind a token.
 3. **The app's control channel** (`materialcraft --control <port>`): one JSON request per line,
    `{"id", "method", "params"}` → `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error"}`.
-   The first request must be `{"method":"auth","params":{"token":"…"}}` with the token from
-   `MATERIALCRAFT_CONTROL_TOKEN` (16 to 1024 printable ASCII characters) or the file
-   `<temp>/materialcraft-control-<port>.token`, a fresh random 256-bit token written after the port
-   is bound. On Unix the file is created new with mode 0600 (owner only); if an existing file there
-   cannot be replaced, the control server stays off and `MATERIALCRAFT_CONTROL_TOKEN` is the
-   alternative. Clients (`materialcraft-cli mcp --bridge`) refuse a token file that is a symlink,
-   not a regular file, not owned by them, or accessible to group or others. A connection gets one
-   authentication attempt, within 10 s; a wrong token, any other first request or malformed JSON
-   closes it. At most 16 connections are served at once. Whoever holds the token has full
-   engine-command authority, including host file access.
+   The transport and its authentication are the Craft framework's. A connection authenticates
+   first, within 10 s: with `{"method":"auth","params":{"token":"…"}}`, or with the challenge
+   handshake (`auth.challenge`, then `auth` with the proof), which never sends the token. Until then
+   nothing else is answered. The token is 64 hexadecimal characters: `MATERIALCRAFT_CONTROL_TOKEN`
+   (the desktop app refuses any other form and starts no server; the headless `serve --port`
+   still takes 16 to 1024 printable ASCII characters), or else the token in
+   `<temp>/materialcraft-control-<bound port>.token`. That file is read when it exists (it must be
+   a regular file the owner alone can read) and otherwise created with a fresh random 256-bit
+   token (mode 0600 on Unix); a file that cannot be trusted keeps the control server off, with
+   `MATERIALCRAFT_CONTROL_TOKEN` as the alternative. Clients (`materialcraft-cli mcp --bridge`)
+   refuse a token file that is a symlink, not a regular file, not owned by them, or accessible to
+   group or others. A request line is at most 1 MiB, at most 16 connections are served at once,
+   and a connection idle for 30 s is closed. A request the app has not answered within 60 s
+   gets a `timeout` error. Whoever holds the token has full engine-command authority, including
+   host file access.
    Set `MATERIALCRAFT_NO_PREFS=1` for scripted runs so the user's layout is left alone.
 
 The first SBS save sets `formatVersion` and `updaterVersion` to MaterialCraft's workspace release
@@ -40,13 +45,15 @@ to the saving application's release version. Save As and archive packaging retai
 | `bitmap.import {path, name?}` | headless | embed an image as a resource |
 | `outputs.export {dir, format?, pattern?, depth?, size?, graph?, outputs?, colorSpaces?, profile?, preset?, values?, inputs?, normalFormat?, displacementScale?}` | headless | cook at full size and write the outputs: `size` is the larger side or `[width, height]`, `outputs` lists identifiers (default all), `colorSpaces` maps identifiers to `srgb`, `linear` or `raw` (default by usage) |
 | `material.export {path, graph?}` | headless | write a portable `.mcmat` below the write root |
-| `render {view?, width?, height?, yaw?, pitch?, scene?, node?, port?, full?, tiling?, hq?, displacement?}` | headless | PNG (base64) of the 3D view or of one node; `hq` is the beauty render (displaced mesh, ray-traced AO, shadowed key light, 3×3 supersampling), `displacement` its depth in scene radii |
-| `ui.inspect` | app | UI state, the graph view rectangle, every node's screen rectangle, every port's identifier, display label and screen position, fps, toasts |
-| `ui.menu.list` / `ui.menu.invoke {id}` | app | the menu catalog; behave like a click. While a dialog or prompt is open (an app dialog, the unsaved-changes prompt, a file dialog, or the update prompt or result window; not Home, the Shortcuts list or the notice that an update installed), an item lists as disabled and `ui.menu.invoke` returns an error. When a file dialog is the only one open, the items that show a file dialog stay enabled and bring it forward |
-| `ui.set {...}` | app | recursively merge fields into the UI state |
-| `ui.input {events}` | app | synthetic input, below |
-| `view.screenshot {view?: "3d"\|"2d"}` | app | PNG of the 3D or 2D view |
-| `ui.screenshot` | app | PNG of the whole window |
+| `render {view?, width?, height?, yaw?, pitch?, scene?, node?, port?, full?, tiling?, hq?, displacement?}` | headless | `{width, height, base64, mime: "image/png"}`: a PNG of the 3D view or of one node; `hq` is the beauty render (displaced mesh, ray-traced AO, shadowed key light, 3×3 supersampling), `displacement` its depth in scene radii |
+| `ui.inspect {query?, role?, focused?, limit?}` | app | the on-screen widgets (`widgets`, `count`, `truncated`: the window's accessibility tree, filtered by the four keys; absent before the window drew a frame), the UI state (`state`), the held unsaved-changes prompt (`unsaved`: the action it holds, or null), the graph view rectangle, every node's screen rectangle, every port's identifier, display label and screen position, the open subgraph editor with its selected nodes and wires, fps, the toasts on screen (`toasts`: `{text, error}`), the open framework dialogs (`dialogs`: `{id, parent, key, fields}`), and the [capture hooks](#capture-hooks)' fields |
+| `ui.menu.list` / `ui.menu.invoke {id}` | app | the menu catalog; behave like a click. While a dialog or prompt is open (an app dialog, the unsaved-changes prompt, a file dialog, or the update prompt or result window; not Home, the Shortcuts list or the notice that an update installed), an item lists as disabled and `ui.menu.invoke` returns an error that names what is open. When a file dialog is the only one open, the items that show a file dialog stay enabled; invoking one while the dialog is open does nothing |
+| `ui.set {...}` | app | recursively merge fields into the UI state; the [capture hooks](#capture-hooks)' keys are applied after the merge |
+| `ui.input {events}` | app | event descriptions run as the framework's input methods, below; replies `null` once the input is processed |
+| `ui.click`, `ui.focus`, `ui.move`, `ui.wheel`, `ui.key`, `ui.type`, `ui.release`, `ui.drop` | app | the framework's synthetic input, below |
+| `ui.dialog.set {dialog, field, value}` or `{dialog, fields: [{field, value}]}`, `ui.dialog.confirm {dialog, choice?}`, `ui.dialog.cancel {dialog}` | app | answer a framework dialog as its controls would; `dialog` is an id from `ui.inspect`'s `dialogs` or `"top"` |
+| `view.screenshot {view?: "3d"\|"2d"}` | app | the 3D or 2D view's shown image: `{base64, mime: "image/png", width, height}` in image pixels |
+| `ui.screenshot {region?}` | app | the whole window, or `region` `[x0, y0, x1, y1]` of it in points, once it has settled: `{base64, mime: "image/png", width, height, pixels_per_point}`. The app has no automation write root, so a `path` is refused |
 | `ui.resize {width, height}` | app | window size in points |
 
 ### Undo preferences and document history
@@ -62,10 +69,29 @@ document id operates on that package without switching the canvas. UI Undo/Redo 
 package whose graph is being inspected in Explorer, or the canvas package when no graph is
 being inspected.
 
-### Synthetic input (`ui.input`)
+### Synthetic input
 
-Events are applied one frame at a time, so egui sees real presses, drags and releases. Positions are
-window points (take them from `ui.inspect`'s `nodes` and `ports`).
+The framework's input methods queue input for the window and reply `null` once the app has
+processed all of it (or `input cancelled: …` when the window dropped it), so a following
+`ui.inspect` sees the effect. Points are window points (take them from `ui.inspect`'s `widgets`,
+`nodes` and `ports`). Modifiers are `shift`, `alt`, `command` and `ctrl` flags, top-level or under
+`modifiers` (`command` is Command on macOS and Ctrl elsewhere; elsewhere `ctrl` counts as it).
+
+| Method | Params |
+|---|---|
+| `ui.click` | `{x?, y?, button?, count?, hold?, modifiers…}` at a point, or `{id \| label, button?}` on a widget of `ui.inspect`'s `widgets` (its own click, or its context menu for `right`); `button` is `left`, `right` or `middle`; `count: 2` is a double click; `hold` keeps the last press down until `ui.release` |
+| `ui.focus` | `{id \| label}`: move the keyboard focus to that widget |
+| `ui.move` | `{x, y, rest?, modifiers…}`; `rest` seconds the pointer stays (at most 10) |
+| `ui.wheel` | `{x?, y?, dx?, dy?, unit?, modifiers…}`; `unit` is `points` (the default) or `lines` |
+| `ui.key` | `{key, hold?, modifiers…}` with key names `A`, `Enter`, `Space`, `Delete`, `F5`, … |
+| `ui.type` | `{text}` |
+| `ui.release` | `{button? \| key?, x?, y?}`: what a `hold` kept down; with neither, everything held |
+| `ui.drop` | `{paths, hover_only?, x?, y?}`: hover files over the point and drop them |
+
+### Event lists (`ui.input`)
+
+`ui.input` takes a list of event descriptions and runs each as the input methods above, checked
+as a whole before any of it is queued (at most 10,000 calls). Positions are window points.
 
 ```json
 {"method": "ui.input", "params": {"events": [
@@ -79,8 +105,36 @@ window points (take them from `ui.inspect`'s `nodes` and `ports`).
 ]}}
 ```
 
-Types: `move`, `down`, `up`, `click`, `doubleClick`, `drag`, `scroll`, `key` (egui key names:
-`A`, `Enter`, `Space`, `Delete`, `F5`, …), `text`. Buttons: `left`, `right`, `middle`.
+Types: `move` (`ui.move`), `down` (a held `ui.click`), `up` (`ui.release`), `click` (`ui.click`),
+`doubleClick` (two), `drag` (a held press at `from`, `steps` moves, default 8, and a release at
+`to`), `scroll` (`ui.wheel`, `delta` `[dx, dy]` in points, default `[0, -120]`), `key`
+(`ui.key`), `text` (`ui.type`). Buttons: `left`, `right`, `middle`. `modifiers` is a list of
+`ctrl`, `shift`, `alt` and `cmd`; `ctrl` and `cmd` are the shortcut modifier, Command on macOS.
+
+### Capture hooks
+
+Methods that drive the app into a state a capture shows, or report what is on screen. A target is
+`{id | label, index?}` or `{target: {id | label, index?}}`, an `id` from `ui.inspect`'s `widgets`.
+
+| Method | What |
+|---|---|
+| `ui.toast {text, error?}` | post a toast as the app does |
+| `ui.update.status {status, version?, message?}` | show an updater outcome without the network: `idle`, `checking`, `upToDate`, `available`, `failed` (desktop only) |
+| `ui.explorer.select {target}` | select an Explorer row as a click does |
+| `ui.explorer.menu {target, open?, pick?}` | open the row's context menu, then hover the submenu labelled `open`, or run the menu command `pick` |
+| `ui.explorer.rename {target, name?}` | open the rename field with `name` typed in; replies once the input is processed, so read the text with a following `ui.inspect` |
+| `ui.properties.parameterMenu {id, param, base?, menu?}` | open a parameter's actions menu, or with `menu: "inheritance"` a base parameter's inheritance menu |
+| `ui.properties.expose {id, param, identifier?, label?, group?, description?, open?}` | open the Expose Parameter dialog with fields filled; `open: "group"` opens its group list |
+| `ui.library.select {entry, menu?}` | select a library entry, and open its context menu |
+| `ui.library.filter {open}` | open or close the Library filter popup |
+| `ui.graph.openFunction {node, parameter, base?}` | open a parameter's function editor; with the FX-Map editor open, `node` is the pattern node |
+| `ui.drag.hold {graph, document?, pos}` / `ui.drag.release {drop?}` | hold a graph drag payload with the pointer at `pos`; release it there (`drop`, default true) or cancel it |
+
+`ui.set` keys: `preferencesPage`, `cookHold` (holds cooking and thumbnails), `view3d
+{sceneBrowser, tool, displayToolsHidden, selected, inspected}`. `ui.inspect` adds `wires`,
+`nodeSearch`, `view3d`, `view2dImage`, `view3dPicture`, `preferencesPage`, `cookHold`,
+`librarySelected`, `explorerRows`, `drag` and `hookErrors` (requests no panel served, drained by
+the read).
 
 ## Key commands
 
@@ -116,7 +170,7 @@ Types: `move`, `down`, `up`, `click`, `doubleClick`, `drag`, `scroll`, `key` (eg
 | `graph.node.reset` | `{id?, param?, base?}` removes the driver and restores defaults; omit `param` to reset the selected parameter section |
 | `graph.preset.save` / `.apply` / `.delete` | `{name}`: store, restore or remove the current input values |
 | `graph.createFromSelection` | `{name?, ids?}`: move nodes into a sub-graph and replace them with an instance |
-| `view.2d` | `{node?, port?}` picks what the 2D view shows. Display: `channel` (`rgba`\|`r`\|`g`\|`b`\|`a`), `tiled` (repeat the image across the view), `checkerboard` (behind transparent pixels, else black), `premultiplied` (colors already multiplied by alpha), `srgb` (values are sRGB encoded, the default; false shows them as linear light), `physicalSize` (proportions of the graph's physical size), `maintainZoom` (keep the zoom when the image size changes, the default; false keeps the image's size on screen), `uv` (overlay the UV layout of the 3D view's mesh), `background` (an image file drawn behind transparent pixels, or null). Information panel: `information`, `sampler` (`[x, y]` in 0..1 from the top-left corner, or null). Histogram panel: `histogram`, `histogramChannel` (`luminance`\|`red`\|`green`\|`blue`\|`rgb`\|`alpha`), `histogramBits` (8\|16\|32; 0 follows the image), `histogramSqrt`, `histogramSelection` (`[low, high]` in 0..1, or null). A rejected parameter changes nothing; the result and `session.inspect` (`view2d`) hold every setting. Pan and zoom are UI state: `ui.set {imageCamera: {zoom, offset, fit}}` |
+| `view.2d` | `{node?, port?}` picks what the 2D view shows. Display: `channel` (`rgba`\|`r`\|`g`\|`b`\|`a`), `tiled` (repeat the image across the view), `checkerboard` (behind transparent pixels, else black), `premultiplied` (colors already multiplied by alpha), `srgb` (values are sRGB encoded, the default; false shows them as linear light), `physicalSize` (proportions of the graph's physical size), `maintainZoom` (keep the zoom when the image size changes, the default; false keeps the image's size on screen), `uv` (overlay the UV layout of the 3D view's mesh), `background` (an image file drawn behind transparent pixels, or null). Information panel: `information`, `sampler` (`[x, y]` in 0..1 from the top-left corner, or null). Histogram panel: `histogram`, `histogramChannel` (`luminance`\|`red`\|`green`\|`blue`\|`rgb`\|`alpha`), `histogramBits` (8\|16\|32; 0 follows the image), `histogramSqrt`, `histogramSelection` (`[low, high]` in 0..1, or null). A rejected parameter changes nothing; the result and `session.inspect` (`view2d`) hold every setting. Pan and zoom are UI state: `ui.set {imageCamera: {zoom, center, fit}}` (`zoom` in points per image pixel, `center` the image point at the middle of the view); a field left out keeps its value. `offset` is a legacy field: a state that sets it is read with the default centre and refits once, and it is no longer written |
 | `view.3d` | Every setting of the 3D view, each optional; the reply is the whole view. See [3D view settings](#3d-view-settings) |
 | `view.3d.viewpoint` | `{name}`: `default`, `front`, `right`, `back`, `left`, `top` or `bottom` turns the camera to look from there, at the same distance |
 | `view.3d.frame` | `{}` centers the mesh and moves the camera to where all of it is in view |
