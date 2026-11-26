@@ -16,6 +16,7 @@ mod library_divider_action;
 mod library_target;
 use crate::graph::{LibraryDrag, header_color};
 use crate::i18n::tr;
+// PLAN: `theme` and `widgets` are gone from lib.rs (shell-w4); this file's readers of `Tokens` and `widgets::elided` are panels-w7's rewrite
 use crate::theme::Tokens;
 use library_divider_action::LibraryDividerAction;
 pub(crate) use library_target::LibraryTarget;
@@ -84,7 +85,7 @@ pub(crate) fn entries(app: &mut MaterialCraftApp) -> Arc<Vec<LibraryEntry>> {
     }
 
     let key: Vec<_> = key.map(|(path, address)| (path.to_owned(), address)).collect();
-    let list = app.session.library_entries(); // P3(shell-w4): K1-K4
+    let list = app.session.library_entries();
     app.library_entries = EntriesCache { key, list: list.clone() };
     list
 }

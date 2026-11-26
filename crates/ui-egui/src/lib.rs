@@ -2,6 +2,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod annotation;
+mod app_icons;
 mod appearance;
 mod autosave;
 mod commands;
@@ -14,7 +15,6 @@ pub mod docking;
 mod edit_commit; // P3(panels-w8): pn.A23
 pub mod explorer;
 pub mod export;
-pub mod fonts;
 pub mod function;
 pub mod graph;
 mod graph_drag_payload;
@@ -37,7 +37,6 @@ mod settings;
 mod shell;
 mod shortcuts_list;
 pub mod state;
-pub mod theme;
 pub mod thumbs;
 pub mod toolbar;
 pub mod unsaved;
@@ -45,27 +44,22 @@ mod value_input_editor;
 pub mod view2d;
 pub mod view3d;
 pub mod web_files;
-pub mod widgets;
 pub mod windows;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod autosave_versions;
 mod material_craft_app;
-#[cfg(not(target_arch = "wasm32"))]
 mod native_dialogs;
 pub mod pattern;
 mod plugin_manager;
 #[path = "preference/mod.rs"]
 pub mod preferences;
 mod template_card;
-mod toast;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod updates_ui;
 mod user_directory;
 mod value_editor;
 mod view_lettering; // P3(views-w9): vw.A2
-#[cfg(not(target_arch = "wasm32"))]
-mod window_controls;
 
 /// This app as the updater knows it: its release repository, and the icon and accent color the
 /// update prompt shows
@@ -76,7 +70,6 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
     ..craft_update::app::App::new("materialcraft", "MaterialCraft", "Procedural material design", "storytold/materialcraft")
 };
 
-pub use control::ControlRequest;
 pub use material_craft_app::MaterialCraftApp;
 pub use material_craft_app::StartOptions;
 pub use materialcraft_engine::eval::now_ms;

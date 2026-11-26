@@ -14,7 +14,7 @@ materialcraft-render = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "persistence"] }
 egui = { workspace = true }
 craft-ui = { workspace = true }
-craft-keymap = { workspace = true, features = ["egui"] }
+craft-keymap = { workspace = true }
 craft-behavior = { workspace = true }
 craft-host = { workspace = true }
 craft-i18n = { workspace = true }
@@ -22,32 +22,43 @@ craft-settings = { workspace = true }
 craft-theme = { workspace = true }
 craft-tracked = { workspace = true }
 craft-menu = { workspace = true }
+craft-platform = { workspace = true }
+craft-automation = { workspace = true }
+craft-imaging = { workspace = true }
+craft-color-ui = { workspace = true }
+craft-window = { workspace = true, features = ["ui"] }
 egui-phosphor = { version = "0.14", features = ["regular"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# eframe's old storage file (settings::eframe_legacy).
+ron = { workspace = true }
 log = { workspace = true }
 base64 = "0.22"
 image = { workspace = true }
 zip = { workspace = true }
 
+[build-dependencies]
+craft-i18n = { workspace = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 craft-atomic = { workspace = true }
 craft-png = { workspace = true }
 sha2 = { workspace = true }
-sys-locale = "0.3"
 craft-update = { workspace = true }
-craft-dialogs = { workspace = true }
+# The Host's file service uses these native panels, pumped on the UI thread each pass.
+craft-dialogs = { workspace = true, features = ["ui"] }
 craft-quit = { workspace = true, features = ["ui"] }
-craft-window = { workspace = true, features = ["ui"] }
-# Floating panels open as OS windows.
-craft-ui = { workspace = true }
 
 # Browser file I/O (web_files.rs): async pickers and Blob downloads.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 craft-platform = { workspace = true, features = ["browser"] }
-rfd = { workspace = true }
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["Window", "Navigator"] }
+
+[dev-dependencies]
+craft-ui = { workspace = true, features = ["testing"] }
+# The in-memory settings files (settings.rs tests).
+craft-settings = { workspace = true, features = ["testing"] }
 
 # winit needs a window system on Linux, so the crate's own tests build with X11.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

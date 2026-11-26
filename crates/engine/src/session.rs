@@ -107,13 +107,27 @@ pub struct Session {
     pub(crate) history: crate::document_history::DocumentHistory,
     group: Option<(Snapshot, bool)>,
     decoded: Arc<Mutex<crate::decoded_images::DecodedImages>>,
+    /// Counts document changes and undo/redo restores; not saved.
+    revision: u64,
+    /// Counts installs of the library or of linked sources.
+    library_generation: u64,
 }
 
 impl Session {
     /// A number that changes whenever the node library's entries change, so a reader rebuilds only then.
-    #[allow(dead_code)] // P3(shell-w4): K1-K4
     pub fn library_generation(&self) -> u64 {
-        todo!("shell-w4")
+        self.library_generation
+    }
+
+    /// A number that changes whenever the document changes or an undo or redo restores it, so a reader (autosave)
+    /// sees a change a later edit back to the same content would hide.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Records that the library or the linked sources the entries resolve against were replaced.
+    pub(crate) fn library_installed(&mut self) {
+        self.library_generation = self.library_generation.wrapping_add(1);
     }
 
     /// Open a package with the process's installed node library.
@@ -175,6 +189,8 @@ impl Session {
             history: Default::default(),
             group: None,
             decoded: Arc::new(Mutex::new(crate::decoded_images::DecodedImages::default())),
+            revision: 0,
+            library_generation: 0,
         };
 
         session.refresh_links();
@@ -187,6 +203,7 @@ impl Session {
         }
 
         session.library = library;
+        session.library_installed();
         session
     }
 
@@ -321,6 +338,7 @@ impl Session {
         self.annotation_target = s.annotation_target;
         self.material_preview = s.material_preview;
         self.modified = s.modified;
+        self.revision = self.revision.wrapping_add(1);
         self.dirty = s.dirty || self.cook_epoch != s.cook_epoch;
         if self.cook_epoch != s.cook_epoch {
             self.clear_preview_results();
@@ -330,6 +348,7 @@ impl Session {
     /// Mark the document modified and in need of a cook.
     pub fn changed(&mut self) {
         self.modified = true;
+        self.revision = self.revision.wrapping_add(1);
         self.dirty = true;
 
         // Publish a grouped edit only after it succeeds, so rollback cannot dirty other packages

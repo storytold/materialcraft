@@ -36,7 +36,6 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
 
 impl Session {
     /// The library's entries, resolved against this session's loaded packages, shared: the same `Arc` while `library_generation` is unchanged.
-    // P3(shell-w4): K1-K4: the body still resolves on every call; shell-w4 caches it by generation
     pub fn library_entries(&self) -> std::sync::Arc<Vec<LibraryEntry>> {
         std::sync::Arc::new(self.library.entries(&self.pkg.dependencies))
     }
@@ -56,7 +55,7 @@ fn tree(session: &mut Session, parameters: &Value) -> Result<Value> {
     let entries: Vec<_> = session
         .library_entries()
         .iter()
-        .cloned() // P3(shell-w4): K1-K4
+        .cloned()
         .filter(|entry| category.is_empty() || entry.category == category || entry.category.starts_with(&format!("{category}/")))
         .filter(|entry| canvas.is_none_or(|canvas| entry.canvas == LibraryCanvas::Any || entry.canvas == canvas))
         .filter(|entry| filter.is_empty() || entry.label.to_lowercase().contains(&filter) || entry.id.to_lowercase().contains(&filter))
@@ -181,7 +180,11 @@ fn replace_library(session: &mut Session, library: std::sync::Arc<NodeLibrary>) 
         session.warn(warning.clone());
     }
     session.library = library;
+    session.library_installed();
     session.refresh_links_from(changed);
+
+    // The placements can change while every source stays the same
+    session.library_installed();
 }
 
 /// Reload the installed library and report the catalog visible to this session.

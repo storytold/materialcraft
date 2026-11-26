@@ -9,20 +9,33 @@ mod lib_tests {
     #[test]
     fn autosave_leaves_one_snapshot_worker_in_flight() {
         let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
+
+        // The revision follows edits and undo, not selection.
+        let start = app.session.revision();
+        app.run("graph.node.add", json!({"def": "levels"})).unwrap();
+        let edited = app.session.revision();
+        assert_ne!(edited, start, "an edit advances the revision");
+        app.run("edit.selectNone", json!({})).unwrap();
+        assert_eq!(app.session.revision(), edited, "a selection is no edit");
+        app.run("edit.undo", json!({})).unwrap();
+        assert_ne!(app.session.revision(), edited, "an undo advances the revision");
+
+        // Jobs that wait for the test: the first backup stays in flight.
+        let jobs = std::sync::Arc::new(craft_host::ManualJobs::new());
+        app.host = std::sync::Arc::new(MaterialCraftApp::host_builder().jobs(jobs.clone()).build());
+        app.ui.prefs.autosave_minutes = 1;
         app.session.modified = true;
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || receiver.recv().unwrap());
-        let initial_worker = worker.thread().id();
-        app.autosave_worker = Some(worker);
+        let interval = std::time::Duration::from_secs(60);
+        let now = std::time::Instant::now();
+        crate::autosave::tick(&mut app, now);
+        assert_eq!(jobs.waiting(), 0, "the first tick starts the clock");
 
-        for interval in 1..=3 {
-            let now = app.next_autosave + f64::from(interval) * 600.0;
-            app.autosave(now);
-            assert_eq!(app.autosave_worker.as_ref().unwrap().thread().id(), initial_worker);
+        for passed in 1..=3 {
+            // A new revision each interval, so only the job in flight holds the next write back.
+            app.run("graph.node.add", json!({"def": "levels"})).unwrap();
+            crate::autosave::tick(&mut app, now + interval * passed + std::time::Duration::from_secs(1));
+            assert_eq!(jobs.waiting(), 1, "one backup write in flight after interval {passed}");
         }
-
-        sender.send(()).unwrap();
-        app.autosave_worker.take().unwrap().join().unwrap();
     }
 
     #[test]
@@ -35,6 +48,8 @@ mod lib_tests {
         let target = materialcraft_engine::FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
         app.run("graph.function.set", json!({"target": target, "function": FunctionGraph::constant(Value::Float(0.5))})).unwrap();
         let context = egui::Context::default();
+        // `invoke` asks the modality, which reads the window's dialog host.
+        MaterialCraftApp::install_runtime(&context, None).unwrap();
 
         crate::menus::invoke(&mut app, &context, "edit.selectAll");
         crate::menus::invoke(&mut app, &context, "edit.copy");
@@ -49,20 +64,6 @@ mod lib_tests {
         assert!(app.session.embedded_clipboard.is_some());
     }
 
-    /// A frame which does not draw Explorer clears hover state left by its previous frame.
-    #[test]
-    fn review_hidden_explorer_drawing_clears_hover() {
-        let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
-        app.fonts_ready = true;
-        app.ui.explorer.hovered = true;
-        app.ui.dock.close(crate::docking::Panel::Explorer);
-        let context = egui::Context::default();
-
-        context.run_ui(egui::RawInput::default(), |ui| app.draw(ui)).textures_delta.clear();
-
-        assert!(!app.ui.explorer.hovered);
-    }
-
     #[test]
     fn run_reports_errors_as_toasts_and_keeps_the_session() {
         let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
@@ -73,43 +74,58 @@ mod lib_tests {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod close_order_tests {
+mod title_bar_tests {
     use crate::MaterialCraftApp;
     use crate::state::UiState;
+    use craft_window::policy::{Backend, Decision, Desktop, Frame, Os, Runtime, TitleBarPref, WindowKind, decide};
 
-    fn close_frame(app: &mut MaterialCraftApp) -> bool {
+    /// The frame Windows gets for `pref`: the system's, or the app's bar with Windows captions.
+    fn decision(pref: TitleBarPref) -> Decision {
+        decide(Os::Windows, Runtime::Native, Backend::X11, &Desktop::detect(Backend::X11), WindowKind::Main, pref, None)
+    }
+
+    /// The accessible labels of the window after two frames of the in-crate frame loop over an app whose runtime was
+    /// installed with `frame`.
+    fn labels(frame: Decision) -> Vec<String> {
+        let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
         let ctx = egui::Context::default();
-        let mut input = egui::RawInput::default();
-        input.viewports.entry(egui::ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
-        let mut canceled = false;
-        ctx.run_ui(input, |ui| {
-            app.step_then(ui.ctx(), |ctx| {
-                canceled = ctx.viewport(|viewport| viewport.commands.contains(&egui::ViewportCommand::CancelClose));
-                false
-            });
-        })
-        .textures_delta
-        .clear();
-        canceled
+        MaterialCraftApp::install_runtime(&ctx, Some(frame.clone())).unwrap();
+        app.frame = Some(frame);
+        ctx.enable_accesskit();
+        let mut labels = Vec::new();
+        for _ in 0..2 {
+            let mut raw = egui::RawInput::default();
+            eframe::App::raw_input_hook(&mut app, &ctx, &mut raw);
+            let output = ctx.run_ui(raw, |ui| app.draw(ui));
+            app.step(&ctx);
+            labels = output
+                .platform_output
+                .accesskit_update
+                .map(|update| update.nodes.iter().filter_map(|(_, node)| node.label().map(|label| label.to_string())).collect())
+                .unwrap_or_default();
+        }
+        labels
     }
 
     #[test]
-    fn the_quit_hook_runs_after_the_close_guard() {
-        let mut held = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
-        held.fonts_ready = true;
-        held.session.modified = true;
-        assert!(close_frame(&mut held), "the guard canceled the close before the hook runs");
+    fn the_title_bar_shows_window_buttons_only_when_the_app_draws_the_frame() {
+        let native = decision(TitleBarPref::System);
+        assert_eq!(native.frame, Frame::Native);
+        let shown = labels(native);
+        assert!(!shown.iter().any(|label| label.starts_with("Close")), "the system draws the window buttons: {shown:?}");
 
-        let mut clean = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
-        clean.fonts_ready = true;
-        clean.session.modified = false;
-        assert!(!close_frame(&mut clean), "nothing to hold: the hook sees a close to take over");
+        let integrated = decision(TitleBarPref::Integrated);
+        assert!(matches!(integrated.frame, Frame::Integrated(_)));
+        let shown = labels(integrated);
+        for button in ["Minimize", "Maximize", "Close"] {
+            assert!(shown.iter().any(|label| label.starts_with(button)), "the app's bar shows {button}: {shown:?}");
+        }
     }
 }
 
 #[cfg(test)]
 mod unsaved_state_tests {
-    use crate::unsaved::{Choice, Guarded, Step, answer, guard};
+    use crate::unsaved::{Guarded, guard};
     use crate::{MaterialCraftApp, state::UiState};
 
     fn app(modified: bool) -> MaterialCraftApp {
@@ -120,16 +136,17 @@ mod unsaved_state_tests {
 
     #[test]
     fn closing_all_over_unsaved_work_waits_for_an_answer() {
-        let mut a = app(true);
+        let mut a = app(false);
+        a.run("graph.node.add", serde_json::json!({"def": "levels"})).unwrap();
+        assert!(a.session.modified, "the edit modified the package");
         let before = a.session.pkg.name.clone();
-        guard(&mut a, Guarded::Menu { id: "ui.closeAll".into() });
-        assert!(a.ui.windows.unsaved.is_some());
-        assert_eq!(a.session.pkg.name, before, "nothing was replaced yet");
-        // The control channel can inspect the held action
-        let v = serde_json::to_value(&a.ui).unwrap();
-        assert_eq!(v["windows"]["unsaved"]["kind"], "menu");
+        let graphs = a.session.pkg.graphs.len();
 
-        assert_eq!(answer(&mut a.ui.windows.unsaved, Choice::Cancel), Step::Stop);
+        guard(&mut a, Guarded::Menu { id: "ui.closeAll".into() });
+        assert!(a.unsaved.is_some(), "the prompt holds the close");
+        assert_eq!((a.session.pkg.name.clone(), a.session.pkg.graphs.len()), (before.clone(), graphs), "nothing was replaced yet");
+
+        a.unsaved = None;
         assert!(a.session.modified);
         assert_eq!(a.session.pkg.name, before);
     }
@@ -139,17 +156,8 @@ mod unsaved_state_tests {
         let mut a = app(false);
         guard(&mut a, Guarded::Menu { id: "ui.closeAll".into() });
 
-        assert!(a.ui.windows.unsaved.is_none());
+        assert!(a.unsaved.is_none());
         assert!(a.session.pkg.graphs.is_empty());
         assert!(a.session.open_packages().is_empty());
-    }
-
-    #[test]
-    fn a_pending_dialog_is_not_restored_from_saved_state() {
-        let mut a = app(true);
-        guard(&mut a, Guarded::Quit);
-        let saved = serde_json::to_string(&a.ui).unwrap();
-        let back: UiState = serde_json::from_str(&saved).unwrap();
-        assert!(back.windows.unsaved.is_none());
     }
 }

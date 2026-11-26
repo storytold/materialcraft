@@ -44,17 +44,14 @@ pub struct UiState {
     /// The package a new graph goes in; `None` is a new package
     #[serde(skip)]
     pub new_graph_package: Option<u64>,
-    /// A card was double-clicked: create on this frame
-    #[serde(skip)]
-    pub new_graph_create_now: bool,
     /// Export window: the saved settings, the open tab and the copy the open window edits
     pub export: crate::export::ExportSettings,
     pub export_tab: crate::export::ExportTab,
     #[serde(skip)]
     pub export_draft: Option<crate::export::ExportSettings>,
-    /// The open Preferences window's page, the preferences Cancel returns to, and the Shortcuts page's search
+    /// The open Preferences window's staged copy and the Shortcuts page's search
     #[serde(skip)]
-    pub preferences: crate::preferences::PreferencesState,
+    pub(crate) preferences: crate::preferences::State,
     /// The Plugin Manager's filter text
     #[serde(skip)]
     pub plugin_filter: String,
@@ -68,11 +65,6 @@ pub struct UiState {
     /// The Export outputs groups closed this session
     #[serde(skip)]
     pub export_closed: std::collections::BTreeSet<String>,
-}
-
-impl craft_settings::Settings for UiState {
-    const APP_ID: &'static str = "materialcraft";
-    const SCHEMA_VERSION: u32 = 1;
 }
 
 impl Default for UiState {
@@ -101,7 +93,6 @@ impl Default for UiState {
             new_graph_linked: true,
             new_graph_category: None,
             new_graph_package: None,
-            new_graph_create_now: false,
             export: crate::export::ExportSettings::default(),
             export_tab: crate::export::ExportTab::default(),
             export_draft: None,
@@ -116,15 +107,10 @@ impl Default for UiState {
 }
 
 impl UiState {
-    /// Preferences committed by Apply or OK, including while the window shows a draft
-    pub(crate) fn committed_prefs(&self) -> &Prefs {
-        self.preferences.applied.as_ref().unwrap_or(&self.prefs)
-    }
-
     /// Remember `path` at the top of the recent list, keeping as many as the preferences ask for
     pub fn add_recent(&mut self, path: &str) {
         self.recent.retain(|recent| recent != path);
         self.recent.insert(0, path.to_string());
-        self.recent.truncate(self.committed_prefs().recent_limit.clamp(1, Prefs::MAX_RECENT));
+        self.recent.truncate(self.prefs.recent_limit.clamp(1, Prefs::MAX_RECENT));
     }
 }

@@ -214,6 +214,21 @@ fn persistence_path() -> Option<std::path::PathBuf> {
         .or_else(|| std::env::var_os("MATERIALCRAFT_DATA_DIR").filter(|v| !v.is_empty()).map(|dir| std::path::PathBuf::from(dir).join("app.ron")))
 }
 
+/// Where this launch keeps its settings document, by the same rules as [`persistence_path`]: the private profile for
+/// a Nightly, memory for a scripted run, the redirected data folder, else the platform's settings folder.
+fn settings_location() -> craft_settings::Location {
+    use craft_settings::Location;
+    if launch_profile::current().is_nightly() {
+        return materialcraft_ui_egui::data_root::sub("settings").map_or(Location::Memory, Location::Dir);
+    }
+    if std::env::var_os("MATERIALCRAFT_NO_PREFS").is_some() {
+        return Location::Memory;
+    }
+    std::env::var_os("MATERIALCRAFT_DATA_DIR")
+        .filter(|v| !v.is_empty())
+        .map_or(Location::Auto, |dir| Location::Dir(std::path::PathBuf::from(dir).join("settings")))
+}
+
 fn main() {
     let Some(arguments) = prepare_launch() else { return };
     let nightly = launch_profile::current().is_nightly();
@@ -239,13 +254,15 @@ fn main() {
         prev(info);
     }));
     let session = initial_session(&args);
-    let window_frame = craft_window::Choice::probe(craft_window::Prefix::new("MATERIALCRAFT")).into_frame();
-    // P3(shell-w4): removed upstream: `craft_window::decorate`; sh.A1 decides the frame with `policy::decide_for` + `policy::apply`
-    let mut viewport = egui::ViewportBuilder::default()
-        .with_title(os_window::name_for(os_window::identity()))
-        .with_inner_size(DEFAULT_SIZE)
-        .with_min_inner_size(MIN_SIZE)
-        .with_decorations(window_frame.decorations());
+    use craft_window::policy;
+    let window_frame = policy::decide_for(craft_window::Prefix::new("MATERIALCRAFT"), policy::Backend::from_env(), policy::TitleBarPref::Integrated);
+    let mut viewport = policy::apply(
+        egui::ViewportBuilder::default()
+            .with_title(os_window::name_for(os_window::identity()))
+            .with_inner_size(DEFAULT_SIZE)
+            .with_min_inner_size(MIN_SIZE),
+        &window_frame.frame,
+    );
     // Stable keeps eframe's implicit app id, so its saved layout stays where it is; a Nightly
     // carries its own id so docks, compositor rules and the taskbar list it separately.
     if nightly {
@@ -256,6 +273,10 @@ fn main() {
     }
     // Scripted runs (agents, tests) set MATERIALCRAFT_NO_PREFS so they neither read nor overwrite the user's saved layout and settings: state goes to a throwaway file
     let persistence_path = persistence_path();
+    // Without a persistence path eframe wrote `app.ron` in its own folder for the window's name.
+    let legacy_settings =
+        persistence_path.clone().or_else(|| eframe::storage_dir(os_window::name_for(os_window::identity())).map(|dir| dir.join("app.ron")));
+    let start = materialcraft_ui_egui::StartOptions { frame: Some(window_frame), settings: settings_location(), legacy_settings };
     let control = args.control;
     // Throwaway preferences are MATERIALCRAFT_NO_PREFS, not "a persistence path exists": a stable
     // run that only redirects MATERIALCRAFT_DATA_DIR keeps its storage and its update prompt.
@@ -284,7 +305,7 @@ fn main() {
         os_window::name_for(os_window::identity()),
         options,
         Box::new(move |cc| {
-            let mut app = MaterialCraftApp::new(cc, session, materialcraft_ui_egui::StartOptions::default()); // P3(shell-w4): sh.A1
+            let mut app = MaterialCraftApp::new(cc, session, start);
             app.build_version = BUILT_VERSION.to_owned();
             app.build_commit = BUILD_SHA.to_owned();
             // macOS quits inside AppKit's terminate, so the record is finished from the exit hook.
@@ -293,15 +314,10 @@ fn main() {
             app.at_exit = Some(Box::new(move || {
                 nightly_session::finish_once(&hook_session, hook_notice.load(std::sync::atomic::Ordering::Relaxed));
             }));
-            app.window_layout = window_frame.layout().cloned();
-            // Called from the creator: winit installs its default menu before this runs. On error winit's menu stays, whose Quit does not ask
-            #[cfg(target_os = "macos")]
-            if let Err(error) = craft_menu::mac::install_app_menu(&cc.egui_ctx, os_window::name_for(os_window::identity())) {
-                log::warn!("could not install the app menu: {error}");
-            }
             app.set_startup_update_check(startup_update_check);
-            if let Some(port) = control {
-                app.control = Some(control_server::start(port, cc.egui_ctx.clone()));
+            if let Some((requests, listening)) = control.and_then(|port| control_server::start(port, cc.egui_ctx.clone())) {
+                app.control = Some(craft_automation::ControlChannel::new(requests));
+                app.control_listener = Some(listening);
             }
             if previous_nightly_unclean || session_health_warning {
                 let message = if previous_nightly_unclean {

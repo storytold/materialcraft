@@ -114,6 +114,12 @@ craft-i18n = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c
 craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 craft-theme = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 craft-tracked = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
+craft-automation = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
+craft-imaging = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
+# PLAN: craft-ui has no `color-ui` feature; `ColorPopover` and `PickedColor` are craft-color-ui's, added as its own crate
+craft-color-ui = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
+# eframe's old storage file is RON (settings::eframe_legacy); the version eframe's `persistence` already resolves. MIT OR Apache-2.0
+ron = "0.12"
 # Atomic persistence, at the suite's current revision
 craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 craft-png = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }

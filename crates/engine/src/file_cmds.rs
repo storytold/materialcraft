@@ -141,6 +141,7 @@ pub fn replace_package(session: &mut Session, package: Package, path: Option<Str
     // Reloaded archive dependencies must replace cached snapshots before links are refreshed
     session.linked_sources.extend(package.dependencies.clone());
     session.pkg = package;
+    session.library_installed();
     session.document_open = true;
     session.path = path;
     session.graph = 0;

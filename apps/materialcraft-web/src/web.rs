@@ -60,7 +60,9 @@ async fn run(canvas: web_sys::HtmlCanvasElement) -> Result<(), String> {
             canvas,
             options,
             Box::new(|cc| {
-                let mut app = MaterialCraftApp::new(cc, session, materialcraft_ui_egui::StartOptions::default()); // P3(shell-w4): sh.A1
+                // eframe's web storage kept the settings as the localStorage item of their key, `"ui"`.
+                let start = materialcraft_ui_egui::StartOptions { legacy_settings: Some(std::path::PathBuf::from("ui")), ..Default::default() };
+                let mut app = MaterialCraftApp::new(cc, session, start);
 
                 // One thread cooks in the browser, so keep previews small
                 app.ui.prefs.preview_size = app.ui.prefs.preview_size.clamp(128, 256);

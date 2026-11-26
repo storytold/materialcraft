@@ -38,6 +38,7 @@ impl crate::Session {
         }
 
         self.refresh_links_from(std::collections::BTreeSet::from([path.to_string()]));
+        self.library_installed();
     }
 }
 
