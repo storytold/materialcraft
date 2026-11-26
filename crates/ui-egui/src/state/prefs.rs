@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::theme::{Accent, Brightness};
 use materialcraft_engine::{CameraPrefs, HistoryPrefs, LibraryCachePrefs};
 
 /// Preferences (Edit ▸ Preferences)
@@ -9,8 +8,6 @@ use materialcraft_engine::{CameraPrefs, HistoryPrefs, LibraryCachePrefs};
 pub struct Prefs {
     /// UI language code (`i18n::LANGUAGES`)
     pub language: String,
-    pub brightness: Brightness,
-    pub accent: Accent,
     pub ui_scale: f32,
     /// Largest node output while editing (0 = full size)
     pub preview_size: u32,
@@ -41,20 +38,14 @@ pub struct Prefs {
     pub wire_drop_opens_node_search: bool,
     /// Opening a material graph shows its outputs in the 3D view
     pub view_outputs_on_open: bool,
-    /// Node creation shortcuts: library entry id to shortcut text ("Ctrl+Shift+B")
-    pub node_shortcuts: std::collections::BTreeMap<String, String>,
     /// Windows ▸ Main toolbar
     pub show_toolbar: bool,
-    /// The app's own theme, mode and size choice; the framework resolves it over the suite's.
+    /// The app's own theme, mode and size choice over the app's defaults (`appearance::root_env`). A file without it
+    /// loads the fresh-install choice, which follows the defaults; the old `brightness` value is the migration's.
     pub appearance: craft_theme::AppChoice,
 }
 
 impl Prefs {
-    /// What a wheel step up does to the zoom: 1 zooms in, -1 zooms out when the zoom is inverted
-    pub fn zoom_direction(&self) -> f32 {
-        if self.invert_zoom { -1.0 } else { 1.0 }
-    }
-
     /// Most packages the recent list can hold
     pub const MAX_RECENT: usize = 30;
     /// Most autosaved copies kept for a package
@@ -65,8 +56,6 @@ impl Default for Prefs {
     fn default() -> Self {
         Prefs {
             language: crate::i18n::os_language().into(),
-            brightness: Brightness::default(),
-            accent: Accent::default(),
             ui_scale: 1.0,
             preview_size: 512,
             autosave_minutes: 5,
@@ -84,7 +73,6 @@ impl Default for Prefs {
             tab_opens_node_search: true,
             wire_drop_opens_node_search: true,
             view_outputs_on_open: true,
-            node_shortcuts: Default::default(),
             show_toolbar: true,
             appearance: craft_theme::AppChoice::new(None, None, None),
         }
@@ -107,15 +95,18 @@ mod tests {
         assert_eq!(old.library_cache, LibraryCachePrefs::default());
         assert_eq!((old.recent_limit, old.autosave_versions, old.invert_zoom), (10, 6, false));
         assert!(old.tab_opens_node_search && old.wire_drop_opens_node_search && old.view_outputs_on_open && old.show_toolbar);
-        assert!(old.node_shortcuts.is_empty());
+        assert_eq!(old.appearance, Prefs::default().appearance);
 
+        let (theme, mode) = crate::appearance::brightness_choices()[3].clone();
+        let appearance = craft_theme::AppChoice::new(Some(theme), Some(mode), Some(craft_theme::Size::Comfortable));
+        assert_ne!(appearance, old.appearance);
         let p = Prefs {
             camera: CameraPrefs { pan_limit: 8.0, pan_speed: 0.5 },
             history: HistoryPrefs { undo_limit: 500 },
             library_cache: LibraryCachePrefs { disk_mib: 512, max_previews: 12000 },
             recent_limit: 4,
             invert_zoom: true,
-            node_shortcuts: [("blur".to_string(), "Ctrl+Shift+B".to_string())].into(),
+            appearance,
             ..Prefs::default()
         };
 
@@ -125,7 +116,7 @@ mod tests {
         assert_eq!(v["history"]["undoLimit"], 500);
         assert_eq!(v["libraryCache"], serde_json::json!({"diskMib": 512, "maxPreviews": 12000}));
         assert_eq!((v["recentLimit"].clone(), v["invertZoom"].clone()), (serde_json::json!(4), serde_json::json!(true)));
-        assert_eq!(v["nodeShortcuts"], serde_json::json!({"blur": "Ctrl+Shift+B"}));
+        assert!(v.get("appearance").is_some(), "the theme choice is saved under `appearance`");
         assert_eq!(serde_json::from_value::<Prefs>(v).unwrap(), p);
     }
 
