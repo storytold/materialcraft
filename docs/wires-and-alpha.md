@@ -148,11 +148,9 @@ Headless renders (`materialcraft-cli render`, the `render` RPC) use the same set
 - `crates/engine/src/wire_cmds.rs`: `graph.wire.insertDot`, `graph.wire.swap` (unplugs every
   listed wire first, then reconnects, so a half-swapped state is never mistaken for a cycle) and
   `graph.wire.delete`.
-- `crates/ui-egui/src/graph_view.rs`: wire hit testing (`bezier_points`, `bezier_at`,
-  `bezier_distance`, `wire_at`), the `WirePress` gesture, the multi-wire selection
-  (`GraphView::selected_wires`), the wire menu, `delete_selected_wires` and
-  `swap_selected_wires`; `crates/ui-egui/src/menus.rs` gives Delete, Backspace and X to selected
-  wires before the node commands and shortcuts.
+- `crates/ui-egui/src/graph/graph_view.rs` publishes wire hit geometry and the canvas-owned
+  `Selection<u64>`; `graph/actions.rs` and `graph/wire_actions.rs` route graph commands and link
+  menu actions through the command board's `GRAPH_SCOPE` catalog rows.
 - `crates/ui-egui/src/view3d.rs`: the Display menu toggles and the bottom-bar button.
 
 ## Tests
@@ -165,9 +163,9 @@ Headless renders (`materialcraft-cli render`, the `render` RPC) use the same set
 - `selected_wires_swap_their_sources_and_delete_together` (engine): two-wire swap in any order,
   single-step undo, refused requests (one or three wires, duplicates, missing wires),
   a refused cycle that leaves the graph unchanged, deleting several wires in one step.
-- `graph_view::tests::clicked_wires_swap_with_x_and_delete_together`: real clicks on a Blend
+- `graph::canvas_tests::clicked_wires_swap_with_x_and_delete_together`: real clicks on a Blend
   node's two wires (the second with Shift), X swaps, X again swaps back, Delete removes both.
 - `every_template_is_opaque_in_the_3d_view` (engine): no built-in template turns see-through.
-- `graph_view::tests::wires_are_hit_near_their_curve_only`: wire hit testing.
+- `graph::canvas_tests::wires_are_hit_near_their_curve_only`: wire hit testing.
 - The `snapshots` UI test renders both screenshots on this page (`alpha-transparency`,
   `alpha-channel`).

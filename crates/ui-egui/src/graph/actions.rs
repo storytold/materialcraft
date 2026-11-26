@@ -1,55 +1,194 @@
 use crate::{MaterialCraftApp, docking::Panel};
+use craft_behavior::canvas::CanvasView;
+use craft_ui::canvas::{ViewCommands, ViewRequest};
+use egui::pos2;
+use serde_json::{Value, json};
 
-pub(crate) fn enabled(app: &MaterialCraftApp, command: &str, params: &serde_json::Value) -> Option<bool> {
-    let _ = params; // P3(graph-w8): ge.A21
-    if let Some(enabled) = super::wire_actions::enabled(app, command, &app.graph.selected_wires, None) {
+/// Reports whether a graph command is available for the active editor and its parameters.
+pub(crate) fn enabled(app: &MaterialCraftApp, command: &str, params: &Value) -> Option<bool> {
+    let target = super::editor_target::EditorTarget::resolve(app);
+    let refs = match target {
+        super::editor_target::EditorTarget::Material => app.graph.selected_wire_refs(),
+        super::editor_target::EditorTarget::Function => app.function_editor.as_ref().map_or_else(Vec::new, |editor| editor.selected_wire_refs(app)),
+        super::editor_target::EditorTarget::Pattern => app.pattern_editor.as_ref().map_or_else(Vec::new, |editor| editor.selected_wire_refs(app)),
+    };
+    let selection_target = match target {
+        super::editor_target::EditorTarget::Function => {
+            app.function_editor.as_ref().and_then(|editor| editor.command_target()).map(materialcraft_engine::SelectionTarget::Function)
+        }
+        super::editor_target::EditorTarget::Pattern => app.pattern_editor.as_ref().map(|editor| materialcraft_engine::SelectionTarget::Pattern(editor.node)),
+        super::editor_target::EditorTarget::Material => None,
+    };
+    if let Some(enabled) = super::wire_actions::enabled(app, command, &refs, selection_target.as_ref()) {
         return Some(enabled);
     }
-
+    let selected = match target {
+        super::editor_target::EditorTarget::Material => app.session.selection.len(),
+        super::editor_target::EditorTarget::Function => app.function_editor.as_ref().map_or(0, |editor| editor.selection.len()),
+        super::editor_target::EditorTarget::Pattern => app.pattern_editor.as_ref().map_or(0, |editor| editor.selection.len()),
+    };
     match command {
+        "graph.align" => Some(selected > 1),
+        "ui.graph.quickAdd" => Some(target != super::editor_target::EditorTarget::Pattern && params.get("def").and_then(Value::as_str).is_some()),
+        "ui.graph.nodeSearch" | "ui.graph.frame" => Some(true),
+        "edit.delete" | "edit.deleteRelink" if target == super::editor_target::EditorTarget::Material && refs.is_empty() => return None,
+        "edit.delete" | "edit.deleteRelink" if target == super::editor_target::EditorTarget::Material => Some(true),
+        "graph.wire.swap" | "graph.wire.delete" | "edit.delete" if !refs.is_empty() => {
+            super::wire_actions::enabled(app, command, &refs, selection_target.as_ref())
+        }
         "ui.graph.viewOutputs" | "ui.graph.resetViewOutputs" => Some(app.session.graph().is_ok_and(|graph| graph.function.is_none())),
         "ui.graph.previousPin" | "ui.graph.nextPin" => Some(app.graph.annotation_target.items(&app.session).is_ok_and(|items| !items.pins.is_empty())),
+        "ui.graph.copyInfo" | "ui.graph.view2d" => Some(true),
         command if command.starts_with("ui.graph.") => Some(app.session.graph().is_ok()),
         _ => None,
     }
 }
 
-/// The view that centres the next or previous pin.
-#[allow(dead_code)] // P3(graph-w8): ge.A21
-pub(crate) fn pin_target(app: &MaterialCraftApp, forward: bool) -> Option<craft_behavior::canvas::CanvasView> {
-    let _ = (app, forward);
-    todo!("ge.A21")
+/// Returns a canvas view centred on the next or previous pin.
+pub(crate) fn pin_target(app: &MaterialCraftApp, forward: bool) -> Option<CanvasView> {
+    let graph = app.graph.annotation_target.items(&app.session).ok()?;
+    let view = crate::annotation::camera(app);
+    let center = view.center;
+    let current = graph.pins.iter().position(|pin| (pin.pos[0] - center.x).abs() < 0.1 && (pin.pos[1] - center.y).abs() < 0.1);
+    let count = graph.pins.len();
+    if count == 0 {
+        return None;
+    }
+    let index = match (current, forward) {
+        (Some(index), true) => (index + 1) % count,
+        (Some(index), false) => (index + count - 1) % count,
+        (None, true) => 0,
+        (None, false) => count - 1,
+    };
+    let pin = graph.pins.get(index)?;
+    Some(CanvasView { center: craft_behavior::kurbo::Point::new(f64::from(pin.pos[0]), f64::from(pin.pos[1])), ..view })
 }
 
-pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &str, params: &serde_json::Value) -> bool {
-    let _ = (ctx, params); // P3(graph-w8): ge.A21
+/// Runs a graph action, including command parameters and editor-specific routing.
+pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &str, params: &Value) -> bool {
+    use super::editor_target::EditorTarget;
+    let target = EditorTarget::resolve(app);
     match command {
-        "graph.wire.swap" => {
-            super::wire_actions::swap_selected_wires(app);
+        "graph.wire.swap" | "graph.wire.delete" => return super::wire_actions::invoke_selected(app, command),
+        "edit.delete" | "edit.deleteRelink" => {
+            let refs = match target {
+                EditorTarget::Material => app.graph.selected_wire_refs(),
+                EditorTarget::Function => app.function_editor.as_ref().map_or_else(Vec::new, |editor| editor.selected_wire_refs(app)),
+                EditorTarget::Pattern => app.pattern_editor.as_ref().map_or_else(Vec::new, |editor| editor.selected_wire_refs(app)),
+            };
+            if !refs.is_empty() {
+                return super::wire_actions::invoke_selected(app, "graph.wire.delete");
+            }
+            if target != EditorTarget::Material {
+                return false;
+            }
+            if app.session.selection.is_empty() {
+                return false;
+            }
         }
-        "graph.wire.delete" => {
-            super::wire_actions::delete_selected_wires(app);
+        "graph.align" => {
+            let Some(mode) = params.get("mode").and_then(Value::as_str) else { return false };
+            let mut parameters = match target {
+                EditorTarget::Material => json!({"graph": app.session.graph, "ids": app.session.selection.iter().map(|id| id.0).collect::<Vec<_>>() }),
+                EditorTarget::Function => app.function_editor.as_ref().map_or(Value::Null, |editor| editor.selection_parameters(command)),
+                EditorTarget::Pattern => app.pattern_editor.as_ref().map_or(Value::Null, |editor| editor.selection_parameters(command)),
+            };
+            if let Some(object) = parameters.as_object_mut() {
+                object.insert("mode".into(), Value::String(mode.into()));
+            }
+            app.run("graph.align", parameters);
+            return true;
         }
+        "ui.graph.quickAdd" => {
+            let Some(def) = params.get("def").and_then(Value::as_str) else { return false };
+            match target {
+                EditorTarget::Material => super::navigation::add_node_near_selection(app, def),
+                EditorTarget::Function => crate::function::library::add_near_selection(app, def),
+                EditorTarget::Pattern => return false,
+            }
+            return true;
+        }
+        "ui.graph.nodeSearch" => {
+            let Some(pointer) = ctx.input(|input| input.pointer.latest_pos()) else { return true };
+            let (view, rect) = match target {
+                EditorTarget::Material => (app.ui.graph_camera.view(app.graph.view), app.graph.view),
+                EditorTarget::Function => app
+                    .function_editor
+                    .as_ref()
+                    .map_or((CanvasView::new(egui::Rect::NOTHING, craft_behavior::kurbo::Point::ZERO, 1.0), egui::Rect::NOTHING), |editor| {
+                        (editor.view, editor.view.rect)
+                    }),
+                EditorTarget::Pattern => app
+                    .pattern_editor
+                    .as_ref()
+                    .map_or((CanvasView::new(egui::Rect::NOTHING, craft_behavior::kurbo::Point::ZERO, 1.0), egui::Rect::NOTHING), |editor| {
+                        (editor.view, editor.view.rect)
+                    }),
+            };
+            if rect.contains(pointer) {
+                let point = view.to_doc(pointer);
+                let at = pos2(point.x as f32, point.y as f32);
+                if target == EditorTarget::Pattern {
+                    if let Some(editor) = &mut app.pattern_editor {
+                        editor.open_menu(at);
+                    }
+                } else {
+                    crate::graph::search::open(app, target, at, None);
+                }
+            }
+            return true;
+        }
+        "ui.graph.frame" => {
+            let request = ViewRequest::Command(ViewCommands::FitLayers);
+            match target {
+                EditorTarget::Material => app.graph.request_view(request),
+                EditorTarget::Function => {
+                    if let Some(editor) = &mut app.function_editor {
+                        editor.queued.push(request);
+                    }
+                }
+                EditorTarget::Pattern => {
+                    if let Some(editor) = &mut app.pattern_editor {
+                        editor.queued.push(request);
+                    }
+                }
+            }
+            return true;
+        }
+        "ui.graph.copyInfo" => {
+            let Some(id) = params.get("id") else { return false };
+            let Some(result) = app.run("graph.node.info", json!({"id": id})) else { return true };
+            let Some(text) = result.get("text").and_then(Value::as_str) else { return true };
+            let _ = craft_ui::runtime::commands::ClipboardHandle::of(ctx).offer(&[craft_ui::runtime::commands::ClipItem::Text(text.into())]);
+            return true;
+        }
+        "ui.graph.view2d" => {
+            app.run("view.2d", params.clone());
+            app.ui.dock.focus(Panel::View2d);
+            return true;
+        }
+        "ui.function.copyInfo" | "ui.function.openReference" | "ui.function.setOutput" | "ui.function.add" | "ui.function.annotate"
+            if target == EditorTarget::Function =>
+        {
+            return crate::function::actions::invoke_ui(app, ctx, command, params);
+        }
+        "ui.pattern.add" if target == EditorTarget::Pattern => return crate::pattern::actions::invoke_ui(app, command, params),
         "graph.node.edit" => {
             if !crate::menus::enabled(app, command) {
                 return true;
             }
-
-            let Some(result) = app.run(command, serde_json::Value::Null) else { return true };
-            let Some(node) = result.get("node").and_then(serde_json::Value::as_u64) else { return true };
-
+            let Some(result) = app.run(command, Value::Null) else { return true };
+            let Some(node) = result.get("node").and_then(Value::as_u64) else { return true };
             let node = materialcraft_engine::core::NodeId(node);
-            match result.get("kind").and_then(serde_json::Value::as_str) {
+            match result.get("kind").and_then(Value::as_str) {
                 Some("pattern") => {
                     app.function_editor = None;
                     app.pattern_editor = Some(crate::pattern::PatternEditor::new(app.session.graph, node));
                 }
-                Some("function") => {
-                    super::subgraph_navigation::open_function(app, node, crate::function::FunctionTarget::Parameter("function".into()));
-                }
+                Some("function") => super::subgraph_navigation::open_function(app, node, crate::function::FunctionTarget::Parameter("function".into())),
                 Some("graph") => {
-                    if let Some(index) = result.get("graph").and_then(serde_json::Value::as_u64).and_then(|index| usize::try_from(index).ok()) {
-                        if result.get("document").and_then(serde_json::Value::as_u64) == Some(app.session.document_id) {
+                    if let Some(index) = result.get("graph").and_then(Value::as_u64).and_then(|index| usize::try_from(index).ok()) {
+                        if result.get("document").and_then(Value::as_u64) == Some(app.session.document_id) {
                             super::subgraph_navigation::open_instance(app, index);
                         } else {
                             super::subgraph_navigation::open_external_instance(app, &result, index);
@@ -59,10 +198,11 @@ pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &
                 _ => {}
             }
             app.ui.dock.focus(Panel::Graph);
+            return true;
         }
         "ui.graph.snapToGrid" => app.ui.prefs.snap_to_grid = !app.ui.prefs.snap_to_grid,
         "ui.graph.viewOutputs" | "ui.graph.resetViewOutputs" => {
-            app.run("view.3d.outputs", serde_json::json!({"reset": command == "ui.graph.resetViewOutputs"}));
+            app.run("view.3d.outputs", json!({"reset": command == "ui.graph.resetViewOutputs"}));
         }
         "ui.graph.computeThumbnails" => {
             app.graph.thumbnails_cleared = false;
@@ -70,42 +210,15 @@ pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &
             app.session.dirty = true;
         }
         "ui.graph.clearThumbnails" => {
-            app.thumbs.clear_nodes();
+            app.thumbs.clear_nodes(ctx);
             app.graph.thumbnails_cleared = true;
         }
-        "ui.graph.previousPin" => navigate_pin(app, false),
-        "ui.graph.nextPin" => navigate_pin(app, true),
+        "ui.graph.previousPin" | "ui.graph.nextPin" => {
+            if let Some(view) = pin_target(app, command == "ui.graph.nextPin") {
+                crate::annotation::set_camera(app, view);
+            }
+        }
         _ => return false,
     }
-
     true
-}
-
-fn navigate_pin(app: &mut MaterialCraftApp, forward: bool) {
-    let Ok(graph) = app.graph.annotation_target.items(&app.session) else { return };
-    if graph.pins.is_empty() {
-        return;
-    }
-
-    let mut camera = crate::annotation::camera(app);
-    let zoom = camera.zoom.clamp(0.08, 4.0);
-    let center = [camera.pan[0] + app.graph.view.width() * 0.5 / zoom, camera.pan[1] + app.graph.view.height() * 0.5 / zoom];
-    let current = graph.pins.iter().position(|pin| (pin.pos[0] - center[0]).abs() < 0.1 && (pin.pos[1] - center[1]).abs() < 0.1);
-    let count = graph.pins.len();
-    let index = match current {
-        Some(index) if forward => (index + 1) % count,
-        Some(index) => (index + count - 1) % count,
-        None if forward => 0,
-        None => count - 1,
-    };
-    let Some(pin) = graph.pins.get(index) else { return };
-
-    camera.pan = [pin.pos[0] - app.graph.view.width() * 0.5 / zoom, pin.pos[1] - app.graph.view.height() * 0.5 / zoom];
-    if let Some(editor) = &mut app.function_editor {
-        editor.set_camera(camera);
-    } else if let Some(editor) = &mut app.pattern_editor {
-        editor.set_camera(camera);
-    } else {
-        app.ui.graph_camera = camera;
-    }
 }
