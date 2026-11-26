@@ -1,13 +1,12 @@
 //! Command rows for the FX-Map canvas menu.
 
 use craft_menu::{CommandRef, Item, Node};
-use craft_ui::canvas::{ViewCommands, ViewRequest};
 use craft_ui::contract::overlay::Anchor;
 use craft_ui::contract::{Bind, CollectionEvent, ShowContainer as _, Trigger};
 use craft_ui::graph::{AnnotationEvent, NodeGraphResponse};
 use craft_ui::menu::Menu;
 use egui::{Pos2, Ui};
-use materialcraft_engine::{PatternEdit, SelectionTarget, core::PatternNodeKind};
+use materialcraft_engine::{SelectionTarget, core::PatternNodeKind};
 use serde_json::json;
 
 use super::PatternEditor;

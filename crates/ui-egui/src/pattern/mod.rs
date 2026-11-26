@@ -7,6 +7,6 @@ mod parameter_value;
 mod pattern_editor;
 pub(crate) mod properties;
 
-pub(crate) use actions::{active, enabled, invoke, invoke_ui};
+pub(crate) use actions::{active, enabled, invoke};
 pub(crate) use canvas::show;
 pub use pattern_editor::PatternEditor;

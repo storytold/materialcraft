@@ -1,5 +1,4 @@
-use super::canvas::*;
-use egui::{Event, vec2};
+use egui::vec2;
 use materialcraft_engine::core::NodeId;
 use serde_json::json;
 
@@ -50,9 +49,22 @@ fn clicking_a_node_shows_it_in_the_2d_view() {
     let from = f.center(checker);
     let before = f.app.session.graph().unwrap().node(checker).unwrap().pos;
     f.run(vec![egui::Event::PointerMoved(from)], egui::Modifiers::NONE);
-    f.run(vec![egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }], egui::Modifiers::NONE);
-    for step in 1..=8 { f.run(vec![egui::Event::PointerMoved(from + vec2(5.0 * step as f32, 0.0))], egui::Modifiers::NONE); }
-    f.run(vec![egui::Event::PointerButton { pos: from + vec2(40.0, 0.0), button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }], egui::Modifiers::NONE);
+    f.run(
+        vec![egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }],
+        egui::Modifiers::NONE,
+    );
+    for step in 1..=8 {
+        f.run(vec![egui::Event::PointerMoved(from + vec2(5.0 * step as f32, 0.0))], egui::Modifiers::NONE);
+    }
+    f.run(
+        vec![egui::Event::PointerButton {
+            pos: from + vec2(40.0, 0.0),
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        egui::Modifiers::NONE,
+    );
     let after = f.app.session.graph().unwrap().node(checker).unwrap().pos;
     assert_ne!(after, before);
     assert_eq!(f.shown(), Some(noise));
@@ -75,7 +87,9 @@ fn clicked_wires_swap_with_x_and_delete_together() {
     for _ in 0..3 {
         frames.run(Vec::new(), egui::Modifiers::NONE);
     }
-    let mid = |frames: &Frames, port: &str| frames.app.graph.wires.iter().find(|(w, _)| w.0.0 == blend && w.1 == port).map(|(_, c)| Frames::wire_midpoint(c)).unwrap();
+    let mid = |frames: &Frames, port: &str| {
+        frames.app.graph.wires.iter().find(|(w, _)| w.0.0 == blend && w.1 == port).map(|(_, c)| Frames::wire_midpoint(c)).unwrap()
+    };
     frames.click(mid(&frames, "foreground"), egui::Modifiers::NONE);
     frames.click(mid(&frames, "background"), egui::Modifiers::SHIFT);
     assert_eq!(frames.app.graph.selected_wire_refs().len(), 2);

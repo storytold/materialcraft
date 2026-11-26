@@ -30,7 +30,6 @@ use base64::Engine as _;
 use craft_automation::control::Reply;
 use craft_automation::synthetic::{self, Click, KeyPress, Move, Release, Wheel};
 use craft_automation::{access, dialogs, screenshot};
-use craft_host::{PickRequest, ScriptedFiles};
 use craft_theme::variant::Tone;
 use craft_ui::runtime::commands::{ClipItem, ClipboardHandle};
 use craft_ui::runtime::env::WindowKey;
@@ -530,6 +529,7 @@ fn displayed_command(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use craft_host::{PickRequest, ScriptedFiles};
 
     #[test]
     fn input_events_become_frames() {

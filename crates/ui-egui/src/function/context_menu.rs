@@ -10,7 +10,13 @@ use egui::Ui;
 use materialcraft_engine::SelectionTarget;
 use serde_json::json;
 
-pub(super) fn show(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui, graph: &craft_ui::graph::NodeGraphResponse<FunctionValueEdit>, ids: &[u32]) {
+pub(super) fn show(
+    app: &mut MaterialCraftApp,
+    editor: &mut FunctionEditor,
+    ui: &mut Ui,
+    graph: &craft_ui::graph::NodeGraphResponse<FunctionValueEdit>,
+    ids: &[u32],
+) {
     let rows = graph
         .collection
         .menu

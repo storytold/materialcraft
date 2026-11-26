@@ -103,7 +103,12 @@ fn wires_dropped_on_empty_canvas_search_and_connect_the_new_node() {
 
     // From an output: the new node takes the wire on its first input
     let from = port(&frames, constant, "output");
-    open(&mut frames.app, EditorTarget::Function, from + vec2(260.0, -60.0), Some(SearchWire::From((materialcraft_engine::core::NodeId(u64::from(constant)), "output".into()))));
+    open(
+        &mut frames.app,
+        EditorTarget::Function,
+        from + vec2(260.0, -60.0),
+        Some(SearchWire::From((materialcraft_engine::core::NodeId(u64::from(constant)), "output".into()))),
+    );
     assert!(search(&frames).unwrap().wire.is_some());
     choose(&mut frames, "add");
     let (add, _, inputs) = nodes(&frames).into_iter().find(|(_, op, _)| op == "add").unwrap();
@@ -185,7 +190,7 @@ fn processor_search_and_toolbar_keep_both_samplers_available() {
         frames.run(Vec::new(), Modifiers::NONE);
         let target = FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
         let parent_count = frames.app.session.graph().unwrap().nodes.len();
-        let mut editor = frames.app.function_editor.take().unwrap();
+        let editor = frames.app.function_editor.take().unwrap();
         let candidates = candidates(&frames.app, Some(&editor), "sample");
         frames.app.function_editor = Some(editor);
         for operation in ["samplelum", "samplecol"] {

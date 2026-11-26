@@ -1,10 +1,10 @@
 use crate::MaterialCraftApp;
-use craft_behavior::{EditEvent, IconId, Mixed};
+use craft_behavior::{EditEvent, IconId};
 use craft_ui::{
     bars::{Bar, BarItem, BarItems, BarKind, BreadcrumbBar},
     buttons::{IconButton, ToggleButton},
     contract::{Bind, Entry, Props as _, Show as _, ShowContainer as _},
-    display::{Divider, Shade, Text},
+    display::{Shade, Text},
     layout_components::Row,
     pickers::Select,
     runtime::commands::CommandRef,
@@ -44,10 +44,8 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
         let groups = if function { function_items(app) } else { atomic_items() };
         Bar::new(crate::i18n::tr("Quick nodes"), BarKind::Options).show(ui, |ui, _| {
             for (section, group) in groups.iter().enumerate() {
-                let items = group
-                    .iter()
-                    .map(|def| BarItem::new(CommandRef::with_params("ui.graph.quickAdd", json!({"def": def}))).section(section as u16))
-                    .collect();
+                let items =
+                    group.iter().map(|def| BarItem::new(CommandRef::with_params("ui.graph.quickAdd", json!({"def": def}))).section(section as u16)).collect();
                 BarItems::new(items).show(ui);
             }
         });

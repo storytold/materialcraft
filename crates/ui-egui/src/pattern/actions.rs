@@ -60,7 +60,7 @@ pub(super) fn invoke_editor(app: &mut MaterialCraftApp, editor: &mut PatternEdit
     if command.starts_with("graph.wire.") || (command == "edit.delete" && !editor.selected_wires.items.is_empty()) {
         let command = if command == "edit.delete" { "graph.wire.delete" } else { command };
         let target = Some(materialcraft_engine::SelectionTarget::Pattern(editor.node));
-        let mut refs = editor.selected_wire_refs(app);
+        let refs = editor.selected_wire_refs(app);
         crate::graph::wire_actions::edit(app, &refs, &mut editor.selected_wires, target, command);
         if command == "graph.wire.delete" {
             editor.selected_wires = craft_behavior::Selection::default();

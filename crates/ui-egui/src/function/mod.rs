@@ -8,7 +8,7 @@ mod node_kind;
 mod port_label;
 pub(crate) mod properties;
 
-pub(crate) use actions::{enabled, invoke, invoke_ui};
+pub(crate) use actions::{enabled, invoke};
 pub use function_editor::FunctionEditor;
 pub use function_target::FunctionTarget;
 pub(crate) use panel::show_graph;

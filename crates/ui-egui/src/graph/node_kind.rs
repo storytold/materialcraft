@@ -6,7 +6,7 @@ use craft_ui::{
     primitives::{Draw, IconSpec, Priority, TextRun, ThumbRequest},
     style::{Corners, DataColor, StyleCx, SurfaceKind},
 };
-use materialcraft_engine::{core::Node, eval::Port, nodes::PortKind};
+use materialcraft_engine::{core::Node, eval::Port};
 
 use crate::{
     MaterialCraftApp,
@@ -131,7 +131,7 @@ impl MaterialKind {
             .map(|texture| (texture.id, texture.uv()));
         let graph = app.session.graph().ok();
         let bits = result.map_or_else(|| graph.as_ref().map_or("16", |g| g.format.bits()), |r| r.base.format.bits());
-        let footer = result.and_then(|r| {
+        let footer = result.and_then(|_| {
             image.map(|image| {
                 if app.session.preview_size.is_some() {
                     format!("{}x{} {}", image.width(), image.height(), crate::i18n::tr("Preview"))

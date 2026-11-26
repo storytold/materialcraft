@@ -29,7 +29,7 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
         );
         Row::new().show(body, |row, _| {
             for label in buttons {
-                Button::new(tr(label)).tooltip(TooltipSpec::new(tr(label)).disabled_text(reason.clone())).enabled(false).show(row);
+                Button::new(tr(label)).tooltip(TooltipSpec::new(tr(label)).disabled_text(reason)).enabled(false).show(row);
             }
         });
     });
