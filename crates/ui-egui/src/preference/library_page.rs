@@ -1,36 +1,78 @@
 //! Preferences ▸ Library: the library's previews, their cache and its layout
 
+use craft_ui::buttons::Button;
+use craft_ui::contract::Show as _;
+use craft_ui::patterns::preferences::{GroupSpec, PageSpec, PrefValue, RowKind, RowSpec};
 use egui::Ui;
 
-use super::heading;
+use super::preferences_page::{LIBRARY, LIBRARY_TITLE};
 use crate::MaterialCraftApp;
 use crate::i18n::tr;
+use crate::state::Prefs;
 
-/// Width of the Rebuild thumbnails button
-const REBUILD_WIDTH: f32 = 360.0;
+const REBUILD: &str = "library.rebuild";
+#[cfg(not(target_arch = "wasm32"))]
+const DISK: &str = "library.diskMib";
+#[cfg(not(target_arch = "wasm32"))]
+const PREVIEWS: &str = "library.maxPreviews";
+const LIST: &str = "library.list";
 
-/// Returns true when the stored previews should be thrown away, which happens after the window drew
-pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
-    let prefs = &mut app.ui.prefs;
-    let rebuild = ui.add_sized([ui.available_width().min(REBUILD_WIDTH), 24.0], egui::Button::new(tr("Rebuild thumbnails"))).clicked();
-    ui.label(tr("Previews rebuild as they come into view."));
+#[cfg(not(target_arch = "wasm32"))]
+fn disk_range() -> std::ops::RangeInclusive<i64> {
+    0..=i64::from(materialcraft_engine::LibraryCachePrefs::MAX_DISK_MIB)
+}
 
-    heading(ui, "Library preview cache");
+#[cfg(not(target_arch = "wasm32"))]
+fn previews_range() -> std::ops::RangeInclusive<i64> {
+    1..=i64::from(materialcraft_engine::LibraryCachePrefs::MAX_PREVIEWS)
+}
+
+pub(super) fn page(prefs: &Prefs) -> PageSpec<'_> {
+    let rebuild = RowSpec::new(REBUILD, tr("Rebuild thumbnails"), RowKind::CustomRows).help(tr("Previews rebuild as they come into view."));
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+    let mut cache = vec![rebuild];
     #[cfg(not(target_arch = "wasm32"))]
-    {
-        use materialcraft_engine::LibraryCachePrefs;
+    cache.extend([
+        RowSpec::new(DISK, tr("Disk limit (MiB, 0 = off)"), RowKind::int(i64::from(prefs.library_cache.disk_mib), disk_range())),
+        RowSpec::new(PREVIEWS, tr("Maximum stored previews"), RowKind::int(i64::from(prefs.library_cache.max_previews), previews_range())),
+    ]);
 
-        ui.horizontal(|ui| {
-            let label = ui.label(tr("Disk limit (MiB, 0 = off)"));
-            ui.add(egui::DragValue::new(&mut prefs.library_cache.disk_mib).range(0..=LibraryCachePrefs::MAX_DISK_MIB)).labelled_by(label.id);
-        });
-        ui.horizontal(|ui| {
-            let label = ui.label(tr("Maximum stored previews"));
-            ui.add(egui::DragValue::new(&mut prefs.library_cache.max_previews).range(1..=LibraryCachePrefs::MAX_PREVIEWS)).labelled_by(label.id);
-        });
+    let mut page = PageSpec::new(LIBRARY, tr(LIBRARY_TITLE), Vec::new());
+    page.groups = vec![
+        GroupSpec::new(Some(tr("Library preview cache")), cache),
+        GroupSpec::new(Some(tr("Layout")), vec![RowSpec::new(LIST, tr("Show the library as a list"), RowKind::Bool(prefs.library_list))]),
+    ];
+    page
+}
+
+pub(super) fn set(prefs: &mut Prefs, key: &str, value: PrefValue) {
+    match (key, value) {
+        #[cfg(not(target_arch = "wasm32"))]
+        (DISK, PrefValue::Int(mib)) => {
+            if let Some(mib) = super::whole(mib, disk_range()) {
+                prefs.library_cache.disk_mib = mib;
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        (PREVIEWS, PrefValue::Int(count)) => {
+            if let Some(count) = super::whole(count, previews_range()) {
+                prefs.library_cache.max_previews = count;
+            }
+        }
+        (LIST, PrefValue::Bool(on)) => prefs.library_list = on,
+        _ => {}
     }
+}
 
-    heading(ui, "Layout");
-    ui.checkbox(&mut prefs.library_list, tr("Show the library as a list"));
-    rebuild
+/// The Rebuild thumbnails button throws the stored previews away at once, not on Apply: it changes no preference.
+pub(super) fn custom_row(app: &mut MaterialCraftApp, ui: &mut Ui, key: &str) -> bool {
+    if key == REBUILD && Button::new(tr("Rebuild thumbnails")).show(ui).clicked() {
+        app.run("library.cache.clear", serde_json::json!({}));
+    }
+    false
+}
+
+pub(super) fn reset(prefs: &mut Prefs, defaults: &Prefs) {
+    prefs.library_cache = defaults.library_cache;
+    prefs.library_list = defaults.library_list;
 }

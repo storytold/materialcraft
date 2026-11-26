@@ -1,22 +1,44 @@
-//! Edit ▸ Preferences: pages, OK, Cancel and Apply, and the node creation shortcuts they set
+//! Edit ▸ Preferences: edits stay in the draft until Apply or OK, and the node creation shortcuts they set
 
 use egui::accesskit::Role;
-use egui::{Key, Modifiers, vec2};
+use egui::{Event, Key, Modifiers, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{By, Queryable};
-use materialcraft_ui_egui::preferences::PreferencesPage;
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 
-fn harness() -> Harness<'static, MaterialCraftApp> {
+fn app() -> MaterialCraftApp {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.ui.windows.home = false;
-    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    app
+}
+
+/// The window alone over the installed runtime; it is drawn while `ui.windows.preferences` is set, as the app's
+/// window dispatcher does.
+fn window_harness(app: MaterialCraftApp) -> Harness<'static, MaterialCraftApp> {
+    let mut harness = Harness::builder()
+        .with_size(vec2(1600.0, 960.0))
+        .with_pixels_per_point(1.0)
+        .with_context_setup(|ctx| {
+            MaterialCraftApp::install_runtime(ctx, None).expect("runtime");
+        })
+        .build_ui_state(
+            |ui, app: &mut MaterialCraftApp| {
+                if app.ui.windows.preferences {
+                    materialcraft_ui_egui::preferences::show(app, ui);
+                }
+            },
+            app,
+        );
+    harness.run_steps(4);
+    harness
+}
+
+/// The whole app, for a test whose keys run app commands.
+fn app_harness(app: MaterialCraftApp) -> Harness<'static, MaterialCraftApp> {
+    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_eframe(|cc| {
+        MaterialCraftApp::install_runtime(&cc.egui_ctx, None).expect("runtime");
+        app
+    });
     harness.run_steps(6);
     harness
 }
@@ -31,36 +53,28 @@ fn click(harness: &mut Harness<'static, MaterialCraftApp>, role: Role, label: &s
     harness.run_steps(4);
 }
 
-#[test]
-fn cancel_returns_to_the_preferences_of_the_last_apply() {
-    let mut harness = harness();
-    open(&mut harness);
+/// Types `text` over the number field named `label` and commits it with Enter.
+fn type_number(harness: &mut Harness<'static, MaterialCraftApp>, label: &str, text: &str) {
+    harness.get(By::new().role(Role::SpinButton).label(label)).click();
+    harness.step();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.event(Event::Text(text.into()));
+    harness.key_press(Key::Enter);
+    harness.run_steps(4);
+}
 
-    click(&mut harness, Role::CheckBox, "Invert zoom in views");
-    assert!(harness.state().ui.prefs.invert_zoom, "a change shows at once");
-    click(&mut harness, Role::Button, "Apply");
-
-    click(&mut harness, Role::Tab, "Graph");
-    assert_eq!(harness.state().ui.preferences.page, PreferencesPage::Graph);
-    click(&mut harness, Role::CheckBox, "Tab key shows the node search");
-    assert!(!harness.state().ui.prefs.tab_opens_node_search);
-
-    click(&mut harness, Role::Button, "Cancel");
-    let prefs = &harness.state().ui.prefs;
-    assert!(prefs.invert_zoom, "the applied change stays");
-    assert!(prefs.tab_opens_node_search, "the change after Apply is undone");
-    assert!(!harness.state().ui.windows.preferences);
-
-    open(&mut harness);
-    click(&mut harness, Role::CheckBox, "View outputs in 3D view when opening a graph");
-    click(&mut harness, Role::Button, "OK");
-    assert!(!harness.state().ui.prefs.view_outputs_on_open && !harness.state().session.view_outputs_on_open, "OK keeps the change and the session follows it");
-    assert!(!harness.state().ui.windows.preferences);
+/// Picks `option` on the choice row named `row`, a segment or an entry of its drop-down.
+fn choose(harness: &mut Harness<'static, MaterialCraftApp>, row: &str, option: &str) {
+    if harness.query(By::new().role(Role::Button).label(option)).is_none() {
+        click(harness, Role::ComboBox, row);
+    }
+    harness.get_by_label(option).click();
+    harness.run_steps(4);
 }
 
 #[test]
 fn draft_limits_preserve_recents_and_undo_until_applied() {
-    let mut harness = harness();
+    let mut harness = window_harness(app());
     for _ in 0..3 {
         harness.state_mut().run("graph.node.add", serde_json::json!({"def": "uniform"})).unwrap();
     }
@@ -68,81 +82,102 @@ fn draft_limits_preserve_recents_and_undo_until_applied() {
         harness.state_mut().ui.add_recent(path);
     }
     let history = harness.state().session.history();
+    let undo_limit = harness.state().session.history_prefs.undo_limit;
     open(&mut harness);
-    harness.state_mut().ui.prefs.history.undo_limit = 1;
-    harness.state_mut().ui.prefs.recent_limit = 1;
-    harness.run_steps(2);
-    click(&mut harness, Role::Button, "Cancel");
+    type_number(&mut harness, "Undo history (steps)", "1");
+    type_number(&mut harness, "Recent packages list contains", "1");
+    assert_eq!(harness.state().session.history(), history, "an edit reached the session before Apply");
+    assert_eq!(harness.state().ui.recent.len(), 3, "an edit trimmed the recent list before Apply");
 
+    click(&mut harness, Role::Button, "Cancel");
     assert_eq!(harness.state().session.history(), history);
+    assert_eq!(harness.state().session.history_prefs.undo_limit, undo_limit);
     assert_eq!(harness.state().ui.recent.len(), 3);
 
     open(&mut harness);
-    harness.state_mut().ui.prefs.history.undo_limit = 1;
-    harness.state_mut().ui.prefs.recent_limit = 1;
+    type_number(&mut harness, "Undo history (steps)", "1");
+    type_number(&mut harness, "Recent packages list contains", "1");
     click(&mut harness, Role::Button, "Apply");
-
     assert_eq!(harness.state().session.history_prefs.undo_limit, 1);
     assert_eq!(harness.state().ui.recent, ["third.sbs"]);
 }
 
 #[test]
 fn draft_preview_size_reaches_the_session_only_on_apply_or_ok() {
-    let mut harness = harness();
+    let mut harness = window_harness(app());
     let initial = harness.state().session.preview_size;
+    assert_ne!(initial, Some(512), "the trial picks a size the session does not have");
     open(&mut harness);
-    harness.state_mut().ui.prefs.preview_size = 64;
-    harness.run_steps(2);
-
-    assert_eq!(harness.state().session.preview_size, initial);
+    choose(&mut harness, "Preview size while editing", "512 px");
+    assert_eq!(harness.state().session.preview_size, initial, "the pick reached the session before Apply");
     click(&mut harness, Role::Button, "Cancel");
     assert_eq!(harness.state().session.preview_size, initial);
 
     open(&mut harness);
-    harness.state_mut().ui.prefs.preview_size = 1;
+    choose(&mut harness, "Preview size while editing", "512 px");
     click(&mut harness, Role::Button, "Apply");
-    assert_eq!(harness.state().session.preview_size, Some(64));
+    assert_eq!(harness.state().session.preview_size, Some(512));
 
-    harness.state_mut().ui.prefs.preview_size = 0;
-    harness.run_steps(2);
-    assert_eq!(harness.state().session.preview_size, Some(64));
+    choose(&mut harness, "Preview size while editing", "Full size");
+    assert_eq!(harness.state().session.preview_size, Some(512), "a second pick reached the session before OK");
     click(&mut harness, Role::Button, "OK");
     assert_eq!(harness.state().session.preview_size, None);
 }
 
+/// The applied node creation shortcuts, as (command key, binding texts).
+fn node_overrides(harness: &Harness<'static, MaterialCraftApp>) -> Vec<(String, Vec<String>)> {
+    harness
+        .state()
+        .ui
+        .shortcut_overrides
+        .iter()
+        .filter(|(key, _)| key.starts_with("node.add."))
+        .map(|(key, texts)| (key.to_owned(), texts.to_vec()))
+        .collect()
+}
+
 #[test]
 fn a_shortcut_is_captured_refused_when_taken_and_adds_its_node_over_the_graph() {
-    let mut harness = harness();
+    let mut harness = app_harness(app());
+    harness.state_mut().ui.preferences_page = "shortcuts".into();
     open(&mut harness);
-    click(&mut harness, Role::Tab, "Shortcuts");
 
     click(&mut harness, Role::Button, "Shortcut for Blur");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
     harness.run_steps(3);
-    assert!(harness.state().ui.prefs.node_shortcuts.is_empty(), "Ctrl+S already saves");
+    assert!(harness.state().toasts.iter().any(|toast| toast.error), "a chord an app command holds is refused with an error toast");
 
     click(&mut harness, Role::Button, "Shortcut for Blur");
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
     harness.run_steps(3);
-    assert_eq!(harness.state().ui.prefs.node_shortcuts.get("node:blur").map(String::as_str), Some("Ctrl+Shift+B"));
+    assert!(node_overrides(&harness).is_empty(), "the shortcut stays in the draft until OK");
 
     // The same keys on another entry move the shortcut there; the search brings it into view
-    harness.state_mut().ui.preferences.shortcut_search = "levels".into();
-    harness.run_steps(2);
+    harness.get(By::new().label("Search")).click();
+    harness.step();
+    harness.event(Event::Text("levels".into()));
+    harness.run_steps(3);
     click(&mut harness, Role::Button, "Shortcut for Levels");
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
     harness.run_steps(3);
-    assert_eq!(harness.state().ui.prefs.node_shortcuts.len(), 1);
-    assert!(harness.state().ui.prefs.node_shortcuts.contains_key("node:levels"));
     click(&mut harness, Role::Button, "OK");
 
+    let applied = node_overrides(&harness);
+    assert_eq!(applied.len(), 1, "the chord moved, so one node shortcut remains, not one per entry: {applied:?}");
+    assert!(applied[0].0.ends_with("levels"), "the chord belongs to Levels: {applied:?}");
+    assert!(!applied[0].1.is_empty());
+
     let nodes = harness.state().session.graph().unwrap().nodes.len();
-    let canvas = harness.state().graph.view;
-    harness.hover_at(canvas.center());
+    let blank = harness.state().graph.view.left_bottom() + vec2(12.0, -12.0);
+    harness.hover_at(blank);
+    for pressed in [true, false] {
+        harness.event(Event::PointerButton { pos: blank, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        harness.step();
+    }
     harness.run_steps(2);
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
     harness.run_steps(3);
     let graph = harness.state().session.graph().unwrap();
-    assert_eq!(graph.nodes.len(), nodes + 1);
+    assert_eq!(graph.nodes.len(), nodes + 1, "the keys over the focused graph add a node");
     assert_eq!(graph.nodes.last().unwrap().def, "levels");
 }

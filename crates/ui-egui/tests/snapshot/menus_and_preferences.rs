@@ -2,7 +2,6 @@
 //! and the Plugin Manager
 
 use egui_kittest::kittest::Queryable;
-use materialcraft_ui_egui::preferences::PreferencesPage;
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 
 #[test]
@@ -24,10 +23,10 @@ fn the_menus_and_their_windows() {
     }
 
     harness.state_mut().ui.windows.preferences = true;
-    for page in PreferencesPage::ALL {
-        harness.state_mut().ui.preferences.page = page;
+    for page in ["general", "projects", "graph", "view3d", "library", "shortcuts"] {
+        harness.state_mut().ui.preferences_page = page.into();
         super::settle(&mut harness, 6);
-        super::save(&mut harness, &directory, &format!("preferences-{}", page.label().to_lowercase().replace(' ', "-")));
+        super::save(&mut harness, &directory, &format!("preferences-{page}"));
     }
     harness.state_mut().ui.windows.preferences = false;
 
