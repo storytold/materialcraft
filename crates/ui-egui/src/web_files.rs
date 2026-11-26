@@ -1,30 +1,25 @@
-use std::sync::{Mutex, PoisonError};
-
 use crate::MaterialCraftApp;
 use crate::i18n::tr;
 
-#[cfg(any(test, target_arch = "wasm32"))]
 mod package_save;
-#[cfg(any(test, target_arch = "wasm32"))]
 pub use package_save::PackageSave;
 
-/// What a picked file is for
+/// What a picked or dropped file is for
 #[derive(Clone, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-enum Pick {
+pub(crate) enum Pick {
     Package,
     Bitmap { target: materialcraft_engine::GraphTarget, path: Option<String> },
-    Resource { document: u64, vector: bool, folder: String },
     Mesh { document: u64 },
 }
 
-#[cfg(any(test, target_arch = "wasm32"))]
 impl Pick {
-    fn bitmap(app: &MaterialCraftApp) -> Self {
+    /// A Bitmap node in the active graph, as it is now
+    pub(crate) fn bitmap(app: &MaterialCraftApp) -> Self {
         Self::Bitmap { target: materialcraft_engine::GraphTarget::active(&app.session), path: app.session.graph().ok().map(|graph| graph.sbs_path()) }
     }
 
-    fn mesh(app: &MaterialCraftApp) -> Self {
+    /// The 3D view's mesh, for the active package
+    pub(crate) fn mesh(app: &MaterialCraftApp) -> Self {
         Self::Mesh { document: app.session.document_id }
     }
 
@@ -40,26 +35,9 @@ impl Pick {
     }
 }
 
-/// Files picked in the browser, waiting for the next frame: (file name, bytes, purpose)
-static INBOX: Mutex<Vec<(String, Vec<u8>, Pick)>> = Mutex::new(Vec::new());
-
-/// Load files that arrived since the last frame. Call once per frame
-pub fn poll(app: &mut MaterialCraftApp) {
-    let picked = std::mem::take(&mut *INBOX.lock().unwrap_or_else(PoisonError::into_inner));
-    for (name, bytes, pick) in picked {
-        apply_pick(app, &name, bytes, pick);
-    }
-}
-
-fn apply_pick(app: &mut MaterialCraftApp, name: &str, bytes: Vec<u8>, pick: Pick) {
+/// Use a file's bytes for `pick`, unless its target changed while the file was on its way
+pub(crate) fn apply_pick(app: &mut MaterialCraftApp, name: &str, bytes: Vec<u8>, pick: Pick) {
     match pick {
-        Pick::Resource { document, vector, folder } => {
-            if let Err(error) = materialcraft_engine::file_cmds::validate_resource_extension(name, vector) {
-                app.toast(error.to_string(), true);
-            } else {
-                import_resource_bytes(app, document, name, bytes, &folder);
-            }
-        }
         Pick::Bitmap { target, path } => {
             // An index can belong to a different graph after deletion, so compare its qualified path too
             if target == materialcraft_engine::GraphTarget::active(&app.session) && path == app.session.graph().ok().map(|graph| graph.sbs_path()) {
@@ -83,7 +61,8 @@ fn not_applied(app: &mut MaterialCraftApp) {
     app.toast(tr("Not applied: the active graph or package changed while the file dialog was open"), true);
 }
 
-fn import_resource_bytes(app: &mut MaterialCraftApp, document: u64, name: &str, bytes: Vec<u8>, folder: &str) {
+/// Add a picked resource file to `document`, the package its picker was opened for
+pub(crate) fn import_resource_bytes(app: &mut MaterialCraftApp, document: u64, name: &str, bytes: Vec<u8>, folder: &str) {
     // A browser picker can finish after the user activates or closes its originating package
     if app.run("package.activate", serde_json::json!({"document": document})).is_none() {
         return;
@@ -96,26 +75,18 @@ fn import_resource_bytes(app: &mut MaterialCraftApp, document: u64, name: &str, 
 }
 
 /// Show a mesh file's bytes in the 3D view
-fn mesh(app: &mut MaterialCraftApp, name: &str, bytes: &[u8]) {
+pub(crate) fn mesh(app: &mut MaterialCraftApp, name: &str, bytes: &[u8]) {
     match app.session.load_mesh_bytes(name, bytes) {
         Ok(()) => app.toast(format!("{} {name}", tr("Showing")), false),
         Err(e) => app.toast(format!("{} {name}: {e}", tr("Couldn't load")), true),
     }
 }
 
-/// 3D view ▸ Scene ▸ Load mesh: a native dialog on the desktop, the file picker in the browser
-pub fn load_mesh(app: &mut MaterialCraftApp, ctx: &egui::Context) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = ctx;
-        let dialog = craft_dialogs::FileDialog::open().filter("Meshes", materialcraft_engine::formats::mesh::MESH_EXTENSIONS);
-        let then = crate::native_dialogs::Then::LoadMesh { document: app.session.document_id };
-        crate::native_dialogs::ask(app, dialog, then);
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        web::pick_mesh(app, ctx);
-    }
+/// 3D view ▸ Scene ▸ Load mesh: the host's file picker, for the active package
+pub fn load_mesh(app: &mut MaterialCraftApp) {
+    let request = craft_host::PickRequest::open("import").filter("Meshes", materialcraft_engine::formats::mesh::MESH_EXTENSIONS);
+    let then = crate::native_dialogs::Then::LoadMesh { document: app.session.document_id };
+    crate::native_dialogs::ask(app, request, then);
 }
 
 /// Open a package or import an image (by extension unless `bitmap` forces an image)
@@ -129,15 +100,13 @@ pub fn load(app: &mut MaterialCraftApp, name: &str, bytes: Vec<u8>, bitmap: bool
         crate::graph::import_bitmap_bytes(app, name, bytes);
         return;
     }
-    if app.ui.windows.unsaved.is_some() {
+    if app.unsaved.is_some() {
         return;
     }
     load_now(app, name, &bytes);
 }
 
 pub(crate) fn load_now(app: &mut MaterialCraftApp, name: &str, bytes: &[u8]) {
-    crate::properties::GraphPropertyDraft::commit(app);
-
     // Browser SBS downloads contain the same directory layout in a transport ZIP
     let path = name.strip_suffix("_sbs.zip").map_or_else(|| name.to_string(), |stem| format!("{stem}.sbs"));
     match materialcraft_engine::file_cmds::open_bytes(&mut app.session, bytes, Some(path)) {
@@ -151,35 +120,38 @@ pub(crate) fn load_now(app: &mut MaterialCraftApp, name: &str, bytes: &[u8]) {
     }
 }
 
-/// A file dropped on the window: a package opens, an image becomes a Bitmap node (in the browser the bytes arrive on a later frame)
-pub fn dropped(app: &mut MaterialCraftApp, ctx: &egui::Context, file: &egui::DroppedFileHandle) {
-    let name = file.path().file_name().and_then(|n| n.to_str()).unwrap_or("dropped").to_string();
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = ctx;
-        let lower = name.to_ascii_lowercase();
-        if (lower.ends_with(".sbs") || lower.ends_with(".mcraft")) && file.path().is_file() {
-            // Open from the path so an SBS package finds the bitmaps kept next to it
-            crate::windows::open_path(app, &file.path().display().to_string());
-            return;
+/// Files dropped on the window, as the drop veil reports them: a package opens, an image becomes a Bitmap node, a
+/// mesh shows in the 3D view. The desktop gives a path; the browser gives the bytes, read before the drop is reported
+pub fn dropped(app: &mut MaterialCraftApp, files: &craft_ui::contract::OsFiles) {
+    for file in &files.files {
+        let name = if file.name.is_empty() { "dropped" } else { file.name.as_str() };
+        if let Some(bytes) = &file.bytes {
+            let pick = Pick::dropped(app, name);
+            apply_pick(app, name, bytes.to_vec(), pick);
+            continue;
         }
 
-        match file.bytes() {
-            Ok(bytes) => load(app, &name, bytes, false),
+        let Some(path) = &file.path else {
+            app.toast(format!("{} {name}", tr("Couldn't open")), true);
+            continue;
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let lower = name.to_ascii_lowercase();
+            if (lower.ends_with(".sbs") || lower.ends_with(".mcraft")) && path.is_file() {
+                // Open from the path so an SBS package finds the bitmaps kept next to it
+                crate::windows::open_path(app, &path.display().to_string());
+                continue;
+            }
+        }
+
+        match app.host.files().read(path) {
+            Ok(bytes) => {
+                let pick = Pick::dropped(app, name);
+                apply_pick(app, name, bytes, pick);
+            }
             Err(e) => app.toast(format!("{} {name}: {e}", tr("Couldn't open")), true),
         }
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let pick = Pick::dropped(app, &name);
-        let (file, ctx) = (file.clone(), ctx.clone());
-        wasm_bindgen_futures::spawn_local(async move {
-            match file.bytes_async().await {
-                Ok(bytes) => INBOX.lock().unwrap_or_else(PoisonError::into_inner).push((name, bytes, pick)),
-                Err(e) => log::warn!("couldn't read dropped file {name}: {e}"),
-            }
-            ctx.request_repaint();
-        });
     }
 }
 
@@ -204,91 +176,28 @@ pub use web::*;
 
 #[cfg(target_arch = "wasm32")]
 mod web {
-    use std::sync::PoisonError;
-
-    use super::{INBOX, Pick, zip_files};
+    use super::zip_files;
     use crate::MaterialCraftApp;
     use crate::i18n::tr;
 
-    fn pick(ctx: &egui::Context, filter: &'static str, exts: &'static [&'static str], kind: Pick) {
-        let ctx = ctx.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            if let Some(file) = rfd::AsyncFileDialog::new().add_filter(filter, exts).pick_file().await {
-                let bytes = file.read().await;
-                INBOX.lock().unwrap_or_else(PoisonError::into_inner).push((file.file_name(), bytes, kind));
-            }
-            ctx.request_repaint();
-        });
-    }
-
-    /// File ▸ Open: a package, picked in the browser
-    pub fn open(ctx: &egui::Context) {
-        let ctx = ctx.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            let mut dialog = rfd::AsyncFileDialog::new();
-            for (label, extensions) in crate::windows::package_filters(true, false) {
-                dialog = dialog.add_filter(label, extensions);
-            }
-
-            // Browser SBS downloads wrap the XML and adjacent resources in a transport ZIP
-            dialog = dialog.add_filter("SBS Package Download (*.zip)", &["zip"]);
-            if let Some(file) = dialog.pick_file().await {
-                let bytes = file.read().await;
-                INBOX.lock().unwrap_or_else(PoisonError::into_inner).push((file.file_name(), bytes, Pick::Package));
-            }
-            ctx.request_repaint();
-        });
-    }
-
-    /// 3D view ▸ Scene ▸ Load mesh
-    pub fn pick_mesh(app: &MaterialCraftApp, ctx: &egui::Context) {
-        pick(ctx, "Meshes", materialcraft_engine::formats::mesh::MESH_EXTENSIONS, Pick::mesh(app));
-    }
-
-    /// File ▸ Import bitmap
-    pub fn import_bitmap(app: &MaterialCraftApp, ctx: &egui::Context) {
-        pick_image(ctx, Pick::bitmap(app), false);
-    }
-
-    pub fn import_resource(ctx: &egui::Context, document: u64, vector: bool, folder: &str) {
-        pick_image(ctx, Pick::Resource { document, vector, folder: folder.into() }, vector);
-    }
-
-    fn pick_image(ctx: &egui::Context, kind: Pick, vector: bool) {
-        let ctx = ctx.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            let mut dialog = rfd::AsyncFileDialog::new();
-            for (label, extensions) in crate::windows::resource_filters(vector) {
-                dialog = dialog.add_filter(label, extensions);
-            }
-            if let Some(file) = dialog.pick_file().await {
-                let bytes = file.read().await;
-                INBOX.lock().unwrap_or_else(PoisonError::into_inner).push((file.file_name(), bytes, kind));
-            }
-            ctx.request_repaint();
-        });
-    }
-
     /// File ▸ Save: download either the native archive or SBS with its resources.
     pub fn save(app: &mut MaterialCraftApp) {
-        super::PackageSave::save(app, download);
+        super::PackageSave::save(app);
     }
 
+    /// File ▸ Save a copy as: the Save package dialog, leaving the package's name and unsaved state as they are.
     pub fn save_copy(app: &mut MaterialCraftApp) {
         save_as(app, true);
     }
 
+    /// File ▸ Save as (`copy` for Save a copy as): the Save package dialog.
     pub fn save_as(app: &mut MaterialCraftApp, copy: bool) {
         super::PackageSave::request(app, copy);
     }
 
+    /// The browser's Save package dialog, while a save asks for its name and format.
     pub fn save_dialog(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
-        // P3(shell-w10): sh.A29: `save_dialog` takes the `Ui`; `PackageSave::show` still takes the context
-        super::PackageSave::show(app, &ui.ctx().clone(), download);
-    }
-
-    pub(crate) fn save_then(app: &mut MaterialCraftApp, action: crate::unsaved::Guarded) {
-        super::PackageSave::save_then(app, action, download);
+        super::PackageSave::show(app, ui);
     }
 
     /// Export outputs: one file downloads as is, several as `<graph>_outputs.zip`
@@ -301,30 +210,25 @@ mod web {
             })
             .map_err(|error| error.to_string())
             .and_then(|(graph, files)| {
-                let files: Vec<(String, Vec<u8>)> = files.into_iter().map(|exported| (exported.file, exported.bytes)).collect();
-                match files.as_slice() {
-                    [(name, bytes)] => download(name, bytes).map(|()| name.clone()),
-                    _ => {
-                        let name = format!("{graph}_outputs.zip");
-                        download(&name, &zip_files(&files)?).map(|()| name)
-                    }
+                let mut files: Vec<(String, Vec<u8>)> = files.into_iter().map(|exported| (exported.file, exported.bytes)).collect();
+                match files.len() {
+                    1 => Ok(files.remove(0)),
+                    _ => Ok((format!("{graph}_outputs.zip"), zip_files(&files)?)),
                 }
             });
 
+        // The download's answer reports the result
         match result {
-            Ok(name) => app.toast(format!("{} {name}", tr("Downloaded")), false),
+            Ok((name, bytes)) => download(app, &name, bytes),
             Err(error) => app.toast(format!("{}: {error}", tr("Couldn't export")), true),
         }
     }
 
-    /// Start a browser download of `bytes` named `name` (Blob + a temporary `<a download>`)
-    pub fn download(name: &str, bytes: &[u8]) -> Result<(), String> {
-        use craft_platform::browser::{DownloadOptions, download_bytes};
-
-        // Allow the browser to acquire the Blob after the click
-        const DOWNLOAD_URL_LIFETIME_MS: i32 = 10_000;
-        let mime = if name.ends_with(".zip") { "application/zip" } else { "application/octet-stream" };
-        download_bytes(name, mime, bytes, DownloadOptions { revoke_after_ms: DOWNLOAD_URL_LIFETIME_MS }).map_err(|error| format!("{error:?}"))
+    /// Hand `bytes` to the browser as a file named `name`; the answer's toast reports the result.
+    // Export saves use the host file service so its asynchronous answer can report success or failure.
+    pub fn download(app: &mut MaterialCraftApp, name: &str, bytes: Vec<u8>) {
+        let request = craft_host::PickRequest::save("export").file_name(name);
+        crate::native_dialogs::save(app, request, bytes, crate::native_dialogs::Then::Download);
     }
 }
 
@@ -343,7 +247,7 @@ mod tests {
         let mut app = app(true);
         let before = app.session.pkg.name.clone();
         load(&mut app, "other.sbs", b"not a package".to_vec(), false);
-        assert!(app.ui.windows.unsaved.is_none());
+        assert!(app.unsaved.is_none());
         assert!(app.pending_load.is_none());
         assert_eq!(app.session.pkg.name, before);
         assert!(app.session.modified);
@@ -354,7 +258,7 @@ mod tests {
     fn an_image_import_is_not_a_replacement_and_never_asks() {
         let mut app = app(true);
         load(&mut app, "x.png", b"junk".to_vec(), true);
-        assert!(app.ui.windows.unsaved.is_none());
+        assert!(app.unsaved.is_none());
     }
 
     #[test]

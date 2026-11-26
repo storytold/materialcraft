@@ -17,6 +17,5 @@ mod preview_resolution;
 mod resolution;
 mod search;
 mod slider_round_values;
-mod unsaved_changes;
 mod view2d;
 mod view3d;

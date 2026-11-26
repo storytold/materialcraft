@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum Guarded {
     /// Reload or close one package without affecting other open documents
     Package { document: u64, reload: bool },
-    /// A menu item: `ui.closeAll` or `file.newPackage`
+    /// A menu item: `ui.closeAll`
     Menu { id: String },
     /// Open the package at `path` (desktop)
     OpenPath { path: String },

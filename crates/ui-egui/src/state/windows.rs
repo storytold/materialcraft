@@ -11,9 +11,6 @@ pub struct Windows {
     pub shortcuts: bool,
     pub home: bool,
     pub plugin_manager: bool,
-    #[cfg(any(test, target_arch = "wasm32"))]
     #[serde(skip)]
     pub package_save: Option<crate::web_files::PackageSave>,
-    #[serde(skip_deserializing)]
-    pub unsaved: Option<crate::unsaved::Guarded>,
 }

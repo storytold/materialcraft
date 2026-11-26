@@ -669,7 +669,6 @@ impl MaterialCraftApp {
 
         crate::unsaved::handle_close(self, ctx);
         control::poll(self, ctx);
-        web_files::poll(self);
         #[cfg(not(target_arch = "wasm32"))]
         crate::native_dialogs::poll(self);
         #[cfg(not(target_arch = "wasm32"))]
