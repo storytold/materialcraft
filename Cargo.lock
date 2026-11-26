@@ -3684,6 +3684,7 @@ dependencies = [
  "craft-automation",
  "craft-menu",
  "craft-settings",
+ "craft-ui",
  "craft-update",
  "craft-window",
  "eframe",

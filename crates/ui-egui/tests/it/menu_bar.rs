@@ -22,18 +22,14 @@ fn choose(harness: &mut Harness<'static, MaterialCraftApp>, menu: &str, item: &s
     harness.get(By::new().role(Role::MenuItem).label(menu)).click();
     harness.run_steps(3);
     let rows = [Role::MenuItem, Role::MenuItemCheckBox, Role::MenuItemRadio];
-    harness
-        .get_all(By::new().label_contains(item))
-        .find(|node| rows.contains(&node.accesskit_node().role()))
-        .expect("the menu lists the item")
-        .click();
+    harness.get_all(By::new().label_contains(item)).find(|node| rows.contains(&node.accesskit_node().role())).expect("the menu lists the item").click();
     harness.run_steps(3);
 }
 
 /// Whether the main toolbar shows, found by its Open button's command label.
 fn toolbar_shown(harness: &Harness<'static, MaterialCraftApp>) -> bool {
     let open = craft_ui::runtime::commands::resolve(&harness.ctx, "file.open").label.clone();
-    harness.query_all(By::new().role(Role::Toolbar)).any(|bar| bar.query_by(By::new().role(Role::Button).label(&open)).is_some())
+    harness.query_all(By::new().role(Role::Toolbar)).any(|bar| bar.query(By::new().role(Role::Button).label(&open)).is_some())
 }
 
 #[test]

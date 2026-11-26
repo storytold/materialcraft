@@ -4,7 +4,7 @@ use egui::accesskit::Role;
 use egui::{Event, Modifiers, PointerButton, Pos2, pos2, vec2};
 use egui_kittest::{
     Harness,
-    kittest::{By, Queryable},
+    kittest::{By, NodeT as _, Queryable},
 };
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 
@@ -34,7 +34,7 @@ fn point(h: &mut Harness<'static, MaterialCraftApp>, pos: Pos2, pressed: Option<
 
 /// The draft scale the slider shows.
 fn shown(h: &Harness<'static, MaterialCraftApp>) -> f64 {
-    h.get(By::new().role(Role::Slider).label("Interface scale")).numeric_value().expect("the slider has a value")
+    h.get(By::new().role(Role::Slider).label("Interface scale")).accesskit_node().numeric_value().expect("the slider has a value")
 }
 
 #[test]

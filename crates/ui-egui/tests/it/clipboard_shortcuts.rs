@@ -49,7 +49,7 @@ fn copied_within_frames(harness: &mut Harness<'static, MaterialCraftApp>) -> Str
 }
 
 /// The menu row whose name starts with `label`; the name may go on with the row's shortcut text
-fn row<'h>(harness: &'h Harness<'static, MaterialCraftApp>, label: &str) -> Node<'h> {
+fn row<'h>(harness: &'h Harness<'static, MaterialCraftApp>, label: &'h str) -> Node<'h> {
     harness
         .query_all_by_label_contains(label)
         .find(|node| node.accesskit_node().label().is_some_and(|name| name.starts_with(label)))

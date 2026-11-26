@@ -809,7 +809,7 @@ fn snapshots() {
     h.state_mut().run("graph.wire.insertDot", json!({"to": out, "toPort": "input", "at": [210, -330]}));
     let wire = h.state().session.graph().unwrap().connections.iter().find(|c| c.to.0 != out).map(|c| (c.to, c.to_port.clone()));
     h.state_mut().graph.selected_wires =
-        wire.map(|wire| materialcraft_ui_egui::graph::Selection::single(materialcraft_ui_egui::graph::wire_id(&wire))).unwrap_or_default();
+        wire.map(|wire| craft_behavior::Selection::single(materialcraft_ui_egui::graph::wire_id(&wire))).unwrap_or_default();
     h.state_mut().run("view.3d", json!({"scene": "sphere"}));
     h.state_mut().ui.frame_all = true;
     settle(&mut h, 60);

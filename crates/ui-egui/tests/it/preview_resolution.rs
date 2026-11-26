@@ -40,7 +40,7 @@ fn node_resolution_explains_the_preview_cap() {
     let graph = h.state().session.graph().unwrap();
     let parent_size = graph.size_px();
     let bit_count = h.state().session.graph().unwrap().format.bits();
-    let limit = h.state().session.preview_size;
+    let limit = h.state().session.preview_size.expect("the preference caps previews");
     let rect = h.state().graph.rects.iter().find(|(node, _)| *node == id).unwrap().1;
     let node_label = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform"));
     let footer = format!("{node_label:?}");
