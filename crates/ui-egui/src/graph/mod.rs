@@ -15,9 +15,13 @@ mod instance_context_menu;
 #[cfg(test)]
 mod interaction_tests;
 mod library_drag;
-pub(crate) mod node_colors;
-mod node_kind; // P3(graph-w7): ge.A6
-pub(crate) mod node_search;
+#[cfg(test)]
+mod modality_tests;
+pub(crate) mod node_card;
+mod node_colors;
+mod node_kind;
+mod node_layout;
+mod node_search;
 pub(crate) mod node_selection;
 pub(crate) mod port_hit;
 pub(crate) mod subgraph_navigation;
@@ -27,7 +31,6 @@ pub use graph_view::{GraphView, wire_id};
 pub use library_drag::LibraryDrag;
 pub use navigation::{add_entry_in_view, add_node_near_selection};
 use node_search::NodeSearch;
-// `node_kind::NODE_W` is `pub(crate)`, and every reader is in this crate.
 pub(crate) use node_kind::NODE_W;
 pub use node_style::{node_label, shows_preview};
 pub use port_hit::PortHit;

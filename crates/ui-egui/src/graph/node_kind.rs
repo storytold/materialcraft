@@ -1,125 +1,196 @@
-//! The material graph's node kind and its data colours.
+//! Material graph node kinds and their data colours.
 
-use craft_theme::{Rgba, Tokens};
-use craft_ui::graph::NodeKind;
-use craft_ui::style::TokenGroup;
-use materialcraft_engine::core::{PatternNodeKind, ValueType};
+use craft_behavior::IconId;
+use craft_ui::{
+    graph::{NodeFooter, NodeHeader, NodeKind, NodeShape, PortDirection},
+    primitives::{Draw, IconSpec, Priority, SurfaceKind, TextRun, ThumbRequest},
+    style::{Corners, DataColor, StyleCx},
+};
+use materialcraft_engine::{core::Node, eval::Port, nodes::PortKind};
 
-use crate::MaterialCraftApp;
+use crate::{
+    MaterialCraftApp,
+    graph::node_colors::NodeColors,
+    thumbs::{NodeFace, NodeThumb},
+};
 
 /// The width of a node card.
-#[allow(dead_code)] // P3(graph-w7): ge.A6
-pub(crate) const NODE_W: f32 = super::node_card::WIDTH;
+pub(crate) const NODE_W: f32 = 100.0;
+pub(crate) const HEADER_HEIGHT: f32 = 18.0;
+pub(crate) const FOOTER_HEIGHT: f32 = 14.0;
+pub(crate) const PORT_GAP: f32 = 18.0;
+const PORT_PADDING: f32 = 8.0;
+pub(crate) const DOT_DIAMETER: f32 = 14.0;
+pub(crate) const BARE_BODY_HEIGHT: f32 = 26.0;
+pub(crate) const CARD_BODY_HEIGHT: f32 = 100.0;
 
-/// The data colours of the node canvases, one set for every theme: node headers, ports, Function nodes and FX-Map
-/// nodes.
-#[derive(Clone, Debug, TokenGroup)]
-#[group(path = "materialcraft.node")]
-#[allow(dead_code)] // P3(graph-w7): ge.A6
-pub(crate) struct NodeColors {
-    /// The header of an output node.
-    pub header_output: Rgba,
-    /// The header of a node of no known category.
-    pub header_fallback: Rgba,
-    /// A Function graph's output node.
-    pub function_output: Rgba,
-    /// A Function node whose operation is missing.
-    pub function_missing: Rgba,
-    /// An FX-Map node's symbol.
-    pub fx_symbol: Rgba,
-    /// An FX-Map node's port.
-    pub fx_port: Rgba,
-}
-
-#[allow(dead_code)] // P3(graph-w7): ge.A6
-impl NodeColors {
-    fn derive(tokens: &Tokens) -> Self {
-        let _ = tokens;
-        todo!("ge.A6")
-    }
-
-    /// The header colour of the node definition `def`.
-    pub(crate) fn header(&self, def: &str) -> Rgba {
-        let _ = def;
-        todo!("ge.A6")
-    }
-
-    /// The colour of a port of `kind`.
-    pub(crate) fn port(&self, kind: ValueType) -> Rgba {
-        let _ = kind;
-        todo!("ge.A6")
-    }
-
-    /// The header colour of a Function node of category `cat`.
-    pub(crate) fn function_category(&self, cat: &str) -> Rgba {
-        let _ = cat;
-        todo!("ge.A6")
-    }
-
-    /// The colour of a Function graph's output node.
-    pub(crate) fn function_output(&self) -> Rgba {
-        todo!("ge.A6")
-    }
-
-    /// The colour of a Function node whose operation is missing.
-    pub(crate) fn function_missing(&self) -> Rgba {
-        todo!("ge.A6")
-    }
-
-    /// The colour of an FX-Map node of `kind`.
-    pub(crate) fn fx_kind(&self, kind: PatternNodeKind) -> Rgba {
-        let _ = kind;
-        todo!("ge.A6")
-    }
-
-    /// The colour of an FX-Map node's symbol.
-    pub(crate) fn fx_symbol(&self) -> Rgba {
-        todo!("ge.A6")
-    }
-
-    /// The colour of the FX-Map's root node.
-    pub(crate) fn fx_root(&self) -> Rgba {
-        todo!("ge.A6")
-    }
-
-    /// The colour of an FX-Map node's port.
-    pub(crate) fn fx_port(&self) -> Rgba {
-        todo!("ge.A6")
-    }
-}
-
-/// A material graph node as the framework node graph draws it.
-#[allow(dead_code)] // P3(graph-w7): ge.A6
+/// A material graph node rendered by the framework graph.
 pub(crate) struct MaterialKind {
-    _private: (),
+    title: String,
+    def: String,
+    ins: Vec<Port>,
+    outs: Vec<Port>,
+    body_height: f32,
+    footer: Option<String>,
+    tooltip: Option<String>,
+    texture: Option<(egui::TextureId, egui::Rect)>,
+    value: Option<String>,
+    status: Option<String>,
+    dot: bool,
+    disabled: bool,
 }
 
-impl NodeKind<()> for MaterialKind {}
+impl NodeKind<()> for MaterialKind {
+    fn title(&self) -> &str {
+        &self.title
+    }
+    fn port_count(&self) -> usize {
+        self.ins.len() + self.outs.len()
+    }
+    fn port_name(&self, port: usize) -> String {
+        self.ins.get(port).or_else(|| self.outs.get(port.saturating_sub(self.ins.len()))).map_or_else(String::new, |p| p.label.clone())
+    }
+    fn port_direction(&self, port: usize) -> PortDirection {
+        if port < self.ins.len() { PortDirection::Input } else { PortDirection::Output }
+    }
+    fn port_offset(&self, port: usize, size: egui::Vec2) -> egui::Vec2 {
+        let input = port < self.ins.len();
+        let (count, index) = if input { (self.ins.len(), port) } else { (self.outs.len(), port - self.ins.len()) };
+        let y = if self.dot {
+            size.y * 0.5
+        } else {
+            HEADER_HEIGHT + (size.y - HEADER_HEIGHT - FOOTER_HEIGHT - count as f32 * PORT_GAP) * 0.5 + PORT_GAP * 0.5 + index as f32 * PORT_GAP
+        };
+        egui::vec2(if input { 0.0 } else { size.x }, y)
+    }
+    fn port_tone(&self, port: usize, cx: &StyleCx<'_>) -> Option<DataColor> {
+        let kind = self.ins.get(port).or_else(|| self.outs.get(port.saturating_sub(self.ins.len())))?.kind;
+        Some(DataColor::new(craft_ui::style::rgba_color(cx.token_group::<NodeColors>().port(kind))))
+    }
+    fn header(&self, cx: &StyleCx<'_>) -> Option<NodeHeader> {
+        if self.dot {
+            return None;
+        }
+        let mut header = NodeHeader::new(DataColor::new(craft_ui::style::rgba_color(cx.token_group::<NodeColors>().header(&self.def))), 18.0);
+        if self.def == "output" {
+            header = header.icon(IconSpec::svg(IconId::new("sign-out")));
+        }
+        Some(header)
+    }
+    fn footer(&self) -> Option<NodeFooter<'_>> {
+        self.footer.as_deref().map(|text| NodeFooter::new(text, 14.0))
+    }
+    fn shape(&self) -> NodeShape {
+        if self.dot { NodeShape::Dot } else { NodeShape::Card }
+    }
+    fn tooltip(&self) -> Option<String> {
+        self.tooltip.clone()
+    }
+    fn paint_body(&self, draw: &Draw<'_>, rect: egui::Rect, cx: &StyleCx<'_>) {
+        let image_inset = cx.tokens.space.gap.tight;
+        let text_inset = cx.tokens.space.gap.inline;
+        if let Some(texture) = self.texture {
+            let (id, uv) = texture;
+            draw.surface(rect.shrink(image_inset), SurfaceKind::Well, Corners::All);
+            if self.disabled {
+                draw.faded(1.0 - craft_theme::Opacity::DISABLED, |draw| draw.texture(rect.shrink(image_inset * 2.0), id, uv));
+            } else {
+                draw.texture(rect.shrink(image_inset * 2.0), id, uv);
+            }
+        } else if let Some(value) = &self.value {
+            draw.surface(rect.shrink(text_inset), SurfaceKind::Well, Corners::All);
+            draw.text(rect.shrink(text_inset * 2.0), &TextRun::new(value.clone()));
+        } else if let Some(status) = &self.status {
+            let icon = if status == "warning" { "warning" } else { "hourglass-medium" };
+            draw.icon(rect.shrink(text_inset), &IconSpec::svg(IconId::new(icon)));
+        }
+    }
+}
 
-#[allow(dead_code)] // P3(graph-w7): ge.A6
 impl MaterialKind {
-    /// The kind of `node`, with the ports `ports_with_connections` returned for it.
-    pub(crate) fn new(
-        app: &MaterialCraftApp,
-        ctx: &egui::Context,
-        node: &materialcraft_engine::core::Node,
-        ins: Vec<materialcraft_engine::eval::Port>,
-        outs: Vec<materialcraft_engine::eval::Port>,
-    ) -> MaterialKind {
-        let _ = (app, ctx, node, ins, outs);
-        todo!("ge.A6")
+    /// Build the graph face from a node and the evaluated port lists.
+    pub(crate) fn new(app: &MaterialCraftApp, ctx: &egui::Context, node: &Node, ins: Vec<Port>, outs: Vec<Port>) -> Self {
+        let preview = app.ui.prefs.thumbnails && super::node_style::shows_preview(&outs) && !app.graph.thumbnails_cleared;
+        let result = app.session.cooked.nodes.get(&node.id);
+        let image = result.and_then(|r| r.outputs.first()).and_then(materialcraft_engine::eval::NodeOutput::as_image);
+        let body_height = if preview { CARD_BODY_HEIGHT } else { BARE_BODY_HEIGHT }.max(ins.len().max(outs.len()) as f32 * PORT_GAP + PORT_PADDING);
+        let body_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(NODE_W, body_height));
+        let thumbnail_side = body_rect.width().min(body_rect.height());
+        let texture = image
+            .filter(|_| preview)
+            .map(|image| {
+                app.thumbs.nodes(ctx).state(
+                    ctx,
+                    &NodeFace { image },
+                    &NodeThumb { cook: result.map_or(0, |r| r.key), port: 0 },
+                    &ThumbRequest::for_cell(thumbnail_side, ctx.pixels_per_point()),
+                    Priority::VISIBLE,
+                )
+            })
+            .and_then(|state| state.shown())
+            .map(|texture| (texture.id, texture.uv()));
+        let graph = app.session.graph().ok();
+        let bits = result.map_or_else(|| graph.as_ref().map_or("16", |g| g.format.bits()), |r| r.base.format.bits());
+        let footer = result.and_then(|r| {
+            image.map(|image| {
+                if app.session.preview_size.is_some() {
+                    format!("{}x{} {}", image.width(), image.height(), crate::i18n::tr("Preview"))
+                } else {
+                    format!("{}x{} - {}{bits}", image.width(), image.height(), if image.is_gray() { "L" } else { "C" })
+                }
+            })
+        });
+        let value = result.and_then(|r| r.outputs.first()).and_then(materialcraft_engine::eval::NodeOutput::as_value).map(super::value_text::value_text);
+        let status = result
+            .map(|r| if r.error.is_some() { "warning".to_string() } else { "".to_string() })
+            .filter(|s| !s.is_empty())
+            .or_else(|| result.is_none().then(|| "hourglass".to_string()));
+        let title = super::node_style::node_label(node);
+        let tooltip = tooltip(app, node.id);
+        Self { title, def: node.def.clone(), ins, outs, body_height, footer, tooltip, texture, value, status, dot: node.def == "dot", disabled: node.disabled }
     }
 
-    /// The node card's rect with its top-left corner at `pos`.
+    /// The node card's document rectangle, with its top-left corner at `pos`.
     pub(crate) fn rect(&self, pos: [f32; 2]) -> egui::Rect {
-        let _ = pos;
-        todo!("ge.A6")
+        if self.dot {
+            return Self::bounds(pos, self.ins.len(), self.outs.len(), false, true);
+        }
+        egui::Rect::from_min_size(egui::pos2(pos[0], pos[1]), egui::vec2(NODE_W, HEADER_HEIGHT + self.body_height + FOOTER_HEIGHT))
+    }
+
+    fn bounds(position: [f32; 2], inputs: usize, outputs: usize, preview: bool, dot: bool) -> egui::Rect {
+        let position = egui::pos2(position[0], position[1]);
+        if dot {
+            return egui::Rect::from_center_size(position, egui::vec2(DOT_DIAMETER, DOT_DIAMETER));
+        }
+        let body = if preview { CARD_BODY_HEIGHT } else { BARE_BODY_HEIGHT };
+        let body = body.max(inputs.max(outputs) as f32 * PORT_GAP + PORT_PADDING);
+        egui::Rect::from_min_size(position, egui::vec2(NODE_W, HEADER_HEIGHT + body + FOOTER_HEIGHT))
     }
 }
 
-/// The tooltip of a node: its definition's description.
-#[allow(dead_code)] // P3(graph-w7): ge.A6
+/// The localized description of a node definition or its limited preview.
 pub(crate) fn tooltip(app: &MaterialCraftApp, node: materialcraft_engine::core::NodeId) -> Option<String> {
-    let _ = (app, node);
-    todo!("ge.A6")
+    let graph = app.session.graph().ok()?;
+    let node = graph.node(node).ok()?;
+    if let Some(error) = app.session.cooked.nodes.get(&node.id).and_then(|result| result.error.as_ref()) {
+        return Some(error.clone());
+    }
+    let result = app.session.cooked.nodes.get(&node.id);
+    let image = result.and_then(|result| result.outputs.first()).and_then(materialcraft_engine::eval::NodeOutput::as_image);
+    if let (Some(image), Some(limit), Some(result)) = (image, app.session.preview_size, result)
+        && let Some(graph) = app.session.graph().ok()
+        && let [width, height] = graph.size_px()
+    {
+        let bits = result.base.format.bits();
+        return Some(format!(
+            "{} x {} ({bits}bpc)\n{}: {width} x {height}\n{}: {limit} px\n{}",
+            image.width(),
+            image.height(),
+            crate::i18n::tr("Parent size"),
+            crate::i18n::tr("Preview limit"),
+            crate::i18n::tr("Change Preview size while editing in Edit > Preferences. Exports use each node's configured output size.")
+        ));
+    }
+    materialcraft_engine::nodes::find(&node.def).map(|definition| crate::i18n::tr(definition.description).to_string()).filter(|text| !text.is_empty())
 }

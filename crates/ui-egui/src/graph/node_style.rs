@@ -1,38 +1,8 @@
-use super::node_card;
 use crate::i18n::tr;
-use egui::{Color32, Rect};
 use materialcraft_engine::{
     core::{Node, Value},
     nodes::PortKind,
 };
-pub const NODE_W: f32 = node_card::WIDTH;
-pub(super) const PORT_RADIUS: f32 = 4.5;
-
-/// Header strip color of a node by its library category
-pub fn header_color(def: &str) -> Color32 {
-    let cat = materialcraft_engine::nodes::find(def).map_or("", |d| d.category);
-    match def {
-        "output" => Color32::from_rgb(0x2c, 0x8f, 0x5e),
-        "input_color" | "input_grayscale" | "input_value" => Color32::from_rgb(0x6d, 0x52, 0xb5),
-        "graph_instance" => Color32::from_rgb(0xa2, 0x3f, 0x4a),
-        _ if cat.starts_with("Atomic") => Color32::from_rgb(0x5c, 0x62, 0x6e),
-        _ if cat.contains("Noises") => Color32::from_rgb(0xa8, 0x3c, 0x34),
-        _ if cat.contains("Patterns") => Color32::from_rgb(0xb3, 0x5a, 0x2c),
-        _ if cat.starts_with("Material") => Color32::from_rgb(0x3a, 0x66, 0xb0),
-        _ if cat.starts_with("Filters") => Color32::from_rgb(0x3b, 0x7f, 0x4c),
-        _ => Color32::from_rgb(0x5c, 0x62, 0x6e),
-    }
-}
-
-pub fn port_color(kind: PortKind) -> Color32 {
-    match kind {
-        PortKind::Gray => Color32::from_rgb(0xc8, 0xc8, 0xc8),
-        PortKind::Color => Color32::from_rgb(0xe8, 0xa9, 0x3c),
-        PortKind::Value => Color32::from_rgb(0x8b, 0xc6, 0x74),
-        PortKind::Any => Color32::from_rgb(0x8c, 0xb4, 0xe0),
-    }
-}
-
 /// A node's display label
 pub fn node_label(n: &Node) -> String {
     if !n.label.is_empty() {
@@ -75,11 +45,6 @@ pub fn node_label(n: &Node) -> String {
 /// Whether a node with these outputs has a picture to show; a node that only outputs values shows its number in a short body
 pub fn shows_preview(outputs: &[materialcraft_engine::eval::Port]) -> bool {
     outputs.is_empty() || outputs.iter().any(|port| port.kind != PortKind::Value)
-}
-
-/// Graph-space rectangle of a node card
-pub fn node_rect(node: &Node, inputs: usize, outputs: usize, previews: bool) -> Rect {
-    node_card::bounds(node.pos, inputs, outputs, previews, node.def == "dot")
 }
 
 #[cfg(test)]
