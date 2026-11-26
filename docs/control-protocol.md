@@ -433,3 +433,24 @@ Function-library conversion preserves Category and Tags, including empty values.
 function tags select Library filters before category-path and package-path fallbacks; multiple
 recognized tags can place the function in multiple filters. The tag `Easing` maps to the
 `Functions/Easings` filter. This does not implement project-configurable Library filters.
+
+## Command line
+
+`materialcraft-cli` follows [RFC-0018](https://github.com/storytold/craft-contrib/blob/main/rfcs/0018-cli-conventions.md)
+(command-line conventions); `materialcraft-cli --help` and `<subcommand> --help` are the reference for every flag.
+Exit status: 0 success, 1 a command failed, 2 a usage error (an unknown or repeated flag, a bad value, flags that
+conflict or that the subcommand doesn't use, all checked before any file is touched), and 128 plus the signal number
+when a signal ends the process. Errors are `error: <message>` on stderr. `--version`/`-V` work on every subcommand,
+and no arguments print the help on stderr and exit 2. The listings (`info`, `commands`, `nodes`, `cook`, `render`)
+print JSON because agents read them; there is no `--json` flag to ask for it.
+
+- **Environment.** `MATERIALCRAFT_CONTROL_TOKEN` is the one variable the CLI reads for a flag (`mcp --bridge`'s
+  `--token`); the flag wins, an empty or blank variable counts as unset, and `--help` never shows its value. No
+  variable grants file access (roots come from `--read-root`/`--write-root`) or replaces a file. The app's own
+  `MATERIALCRAFT_NO_PREFS` is a setting of the engine, not a flag fallback.
+- **Replacing files.** `run -o` onto the file it opened needs `--in-place`; `publish` and `render` never replace
+  their input.
+- **Packages.** The Linux packages (deb, rpm, tar.gz) and the FreeBSD package install `materialcraft-cli`'s man pages
+  and its bash, zsh and fish completions. The Nightly builds rename the CLI (`materialcraft-nightly-cli`) and ship
+  none; macOS and Windows are outside RFC-0018's scope.
+- **Not yet.** The ast-grep scan of RFC-0018 section 3 is not switched on.

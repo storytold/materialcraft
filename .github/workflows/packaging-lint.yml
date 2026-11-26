@@ -21,3 +21,21 @@ jobs:
   lint:
     # Intentionally tracked at @main (not SHA-pinned) so org-wide CI improvements, security fixes, and build optimizations propagate without PR churn across all craftapp repos.
     uses: storytold/craft-common-actions/.github/workflows/packaging-lint.yml@main
+
+  freebsd-layout:
+    # The FreeBSD package layout, with stub binaries standing in for the build: RFC-0018 rule 1.9
+    # puts materialcraft-cli's man pages and its bash, zsh and fish completions in it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: FreeBSD package layout (dry run)
+        run: |
+          CARGO_TARGET_DIR="$RUNNER_TEMP/materialcraft-target" bash packaging/freebsd/package.sh --dry-run
+          listing="$(tar -tzf "$RUNNER_TEMP"/materialcraft-target/freebsd-package/materialcraft-*-freebsd-x86_64.tar.gz)"
+          for f in man/man1/materialcraft-cli.1 share/bash-completion/completions/materialcraft-cli \
+            share/zsh/site-functions/_materialcraft-cli share/fish/vendor_completions.d/materialcraft-cli.fish; do
+            grep -q "/$f$" <<<"$listing" || { echo "::error::$f is missing from the FreeBSD package"; exit 1; }
+          done
