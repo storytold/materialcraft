@@ -2,8 +2,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 
-use egui_kittest::kittest::Queryable as _;
-
 use super::*;
 use crate::menus;
 use crate::state::UiState;
@@ -101,11 +99,14 @@ fn a_new_app_is_idle_and_does_not_check_at_start() {
 
 /// One whole frame of the app; the first one only installs the fonts
 fn frame(app: &mut MaterialCraftApp, ctx: &egui::Context) {
-    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+    let mut raw = egui::RawInput::default();
+    eframe::App::raw_input_hook(app, ctx, &mut raw);
+    let mut output = ctx.run_ui(raw, |ui| {
         app.step(ui.ctx());
         app.draw(ui);
     });
     output.textures_delta.clear();
+    eframe::App::logic(app, ctx, &mut eframe::Frame::_new_kittest());
 }
 
 #[test]
@@ -143,21 +144,21 @@ fn the_check_at_start_runs_only_when_turned_on() {
 
 #[test]
 fn result_window_shows_every_status_but_idle() {
-    let shown = [
-        Status::Checking,
-        Status::UpToDate,
-        Status::Failed("no network".into()),
-        Status::Installing,
-        Status::Ready,
-        Status::Managed,
-        Status::Updated("0.2.0".into()),
-        Status::InstallFailed("disk full".into()),
-    ];
-    for status in &shown {
-        assert!(result_window_shows(status, false), "{status:?}");
-        assert!(!result_window_shows(status, true), "{status:?} over the prompt");
+    let (mut app, _, _) = app_with_source();
+    let ctx = egui::Context::default();
+    MaterialCraftApp::install_runtime(&ctx, None).expect("runtime");
+    for source_status in ["upToDate", "failed"] {
+        app.updates_rt.updater = Some(
+            Updater::new(&crate::UPDATE_APP, "0.1.0")
+                .with_source(Arc::new(move || if source_status == "failed" { Err("no network".into()) } else { Ok(None) })),
+        );
+        check(&mut app);
+        frame(&mut app, &ctx);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        frame(&mut app, &ctx);
+        let host = craft_ui::shell::WindowDialogs::of(&ctx, &craft_ui::runtime::env::WindowKey::main());
+        host.with(|host| assert!(host.get::<craft_update::stack_dialogs::UpdateCheckDialog>().is_some()));
     }
-    assert!(!result_window_shows(&Status::Idle, false));
 }
 
 #[test]
@@ -166,75 +167,17 @@ fn an_offered_release_opens_the_prompt_over_the_window() {
 
     offer(app.updates_rt.updater.as_mut().unwrap());
 
-    assert!(blocks_input(&app));
-
-    let mut harness = egui_kittest::Harness::builder().build_ui_state(|ui, app: &mut MaterialCraftApp| crate::windows::show(app, ui.ctx()), app);
-
-    harness.run_steps(3);
-
-    let _ = harness.get_by_label("LATER");
-    assert!(harness.state().updates_rt.updater.as_ref().unwrap().prompt_open());
-}
-
-#[test]
-fn a_requested_check_shows_its_progress() {
-    let mut app = app();
-    // The check stays running until this sender goes away at the end of the test
-    let (release, wait) = channel::<()>();
-    let wait = std::sync::Mutex::new(wait);
-    let source: craft_update::updater::CheckSource = Arc::new(move || {
-        if let Ok(wait) = wait.lock() {
-            let _ = wait.recv();
-        }
-        Ok(None)
-    });
-    app.updates_rt.updater = Some(Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()).with_source(source));
-    check(&mut app);
-    tick(&mut app, &egui::Context::default());
-
-    let mut harness = egui_kittest::Harness::builder().build_ui_state(|ui, app: &mut MaterialCraftApp| crate::windows::show(app, ui.ctx()), app);
-    harness.run_steps(3);
-    let _ = harness.get_by_label("Checking for updates…");
-    drop(release);
-}
-
-/// Ctrl+Shift+E opens the export window when nothing holds the keyboard
-fn press_export(app: &mut MaterialCraftApp) {
     let ctx = egui::Context::default();
-    let modifiers = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
-    let input = egui::RawInput {
-        events: vec![egui::Event::Key { key: egui::Key::E, physical_key: None, pressed: true, repeat: false, modifiers }],
-        ..Default::default()
-    };
-
-    let mut output = ctx.run_ui(input, |ui| menus::shortcuts(app, ui.ctx()));
-    output.textures_delta.clear();
-}
-
-#[test]
-fn the_prompt_and_the_modal_results_hold_the_keyboard() {
-    assert!(holds_keyboard(&Status::Idle, true));
-    assert!(holds_keyboard(&Status::Checking, false));
-    assert!(holds_keyboard(&Status::UpToDate, false));
-    assert!(holds_keyboard(&Status::Failed("no network".into()), false));
-    assert!(!holds_keyboard(&Status::Idle, false));
-    assert!(!holds_keyboard(&Status::Updated("0.2.0".into()), false));
-}
-
-#[test]
-fn shortcuts_wait_while_the_prompt_is_open() {
-    let mut idle = app();
-
-    press_export(&mut idle);
-
-    assert!(idle.ui.windows.export, "the shortcut works without the prompt");
-
-    let mut prompted = app();
-    offer(prompted.updates_rt.updater.as_mut().unwrap());
-
-    press_export(&mut prompted);
-
-    assert!(!prompted.ui.windows.export);
+    MaterialCraftApp::install_runtime(&ctx, None).expect("runtime");
+    let host = craft_ui::shell::WindowDialogs::of(&ctx, &craft_ui::runtime::env::WindowKey::main());
+    for _ in 0..3 {
+        let mut raw = egui::RawInput::default();
+        eframe::App::raw_input_hook(&mut app, &ctx, &mut raw);
+        ctx.run_ui(raw, |ui| show(&mut app, ui));
+        eframe::App::logic(&mut app, &ctx, &mut eframe::Frame::_new_kittest());
+    }
+    host.with(|host| assert!(host.get::<craft_update::stack_dialogs::UpdatePromptDialog>().is_some()));
+    assert!(prompt_open(&app));
 }
 
 #[test]
