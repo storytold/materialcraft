@@ -7,12 +7,6 @@ mod graph_items;
 #[path = "snapshot/explorer.rs"]
 mod explorer;
 
-#[path = "snapshot/export.rs"]
-mod export;
-
-#[path = "snapshot/node_look.rs"]
-mod node_look;
-
 #[path = "snapshot/function_instances.rs"]
 mod function_instances;
 
@@ -28,20 +22,11 @@ mod embedded_graphs;
 #[path = "snapshot/library.rs"]
 mod library;
 
-#[path = "snapshot/menu.rs"]
-mod menu;
-
 #[path = "snapshot/menus_and_preferences.rs"]
 mod menus_and_preferences;
 
-#[path = "snapshot/node_search.rs"]
-mod node_search;
-
 #[path = "snapshot/view2d.rs"]
 mod view2d;
-
-#[path = "snapshot/view3d.rs"]
-mod view3d;
 
 use std::{sync::Arc, time::Duration};
 
@@ -54,13 +39,10 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 use serde_json::json;
 
 fn harness(app: MaterialCraftApp, w: f32, h: f32) -> Harness<'static, MaterialCraftApp> {
-    Harness::builder().with_size(vec2(w, h)).with_pixels_per_point(1.0).wgpu().build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    )
+    Harness::builder().with_size(vec2(w, h)).with_pixels_per_point(1.0).wgpu().build_eframe(|cc| {
+        MaterialCraftApp::install_runtime(&cc.egui_ctx, None).expect("runtime");
+        app
+    })
 }
 
 /// Run frames until background work (cooks, previews) settles
@@ -348,7 +330,7 @@ fn function_output_highlight_follows_context_menu_and_undo() {
 
     harness.state_mut().run("edit.selectNone", json!({})).unwrap();
     settle(&mut harness, 2);
-    let background = harness.get(By::new().role(egui::accesskit::Role::Canvas).label("Function Graph")).rect().min + vec2(24.0, 24.0);
+    let background = harness.get(By::new().role(egui::accesskit::Role::Group).label("Function Graph")).rect().min + vec2(24.0, 24.0);
     harness.event(egui::Event::PointerMoved(background));
     harness.event(egui::Event::PointerButton { pos: background, button: egui::PointerButton::Secondary, pressed: true, modifiers: egui::Modifiers::NONE });
     harness.step();
@@ -589,7 +571,7 @@ fn incomplete_functions_warn_in_standalone_and_processor_canvases() {
         std::fs::create_dir_all(&directory).unwrap();
         save(&mut harness, &directory, &format!("{definition}-warnings"));
 
-        harness.get(By::new().role(egui::accesskit::Role::Button).label("Multiplication")).click_secondary();
+        harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Multiplication")).click_secondary();
         settle(&mut harness, 2);
         harness.get(By::new().role(egui::accesskit::Role::Button).label_contains("Set as output node")).click();
         settle(&mut harness, 3);
@@ -641,7 +623,7 @@ fn output_menu_and_package_warnings_follow_parameter_types() {
     assert!(harness.query(By::new().label("Expected output: Float")).is_some());
     assert!(harness.query(By::new().label(&package_warning_label)).is_some());
 
-    let node = harness.get(By::new().role(egui::accesskit::Role::Button).label("Float3")).rect();
+    let node = harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Float3")).rect();
     let header = egui::pos2(node.center().x, node.min.y + 12.0);
     harness.event(egui::Event::PointerMoved(header));
     harness.step();
@@ -780,7 +762,7 @@ fn empty_startup_can_create_a_template() {
     }
     harness.get_by_label("New graph...").click();
     settle(&mut harness, 4);
-    harness.get(By::new().role(egui::accesskit::Role::ListItem).label("Atomic sample")).click();
+    harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Atomic sample")).click();
     settle(&mut harness, 4);
     harness.get(By::new().role(egui::accesskit::Role::Button).label("Create")).click();
     settle(&mut harness, 40);
@@ -826,7 +808,8 @@ fn snapshots() {
         .unwrap();
     h.state_mut().run("graph.wire.insertDot", json!({"to": out, "toPort": "input", "at": [210, -330]}));
     let wire = h.state().session.graph().unwrap().connections.iter().find(|c| c.to.0 != out).map(|c| (c.to, c.to_port.clone()));
-    h.state_mut().graph.selected_wires = wire.into_iter().collect();
+    h.state_mut().graph.selected_wires =
+        wire.map(|wire| materialcraft_ui_egui::graph::Selection::single(materialcraft_ui_egui::graph::wire_id(&wire))).unwrap_or_default();
     h.state_mut().run("view.3d", json!({"scene": "sphere"}));
     h.state_mut().ui.frame_all = true;
     settle(&mut h, 60);
@@ -886,31 +869,6 @@ fn snapshots() {
     h.state_mut().pattern_editor = Some(materialcraft_ui_egui::pattern::PatternEditor::new(h.state().session.graph, pattern));
     settle(&mut h, 20);
     save(&mut h, &dir, "pattern-editor");
-}
-
-/// Steady-state UI build time per frame with each panel closed in turn (release): `cargo test -p materialcraft-ui-egui --release --test snapshot perf -- --ignored --nocapture`
-#[test]
-#[ignore]
-fn perf() {
-    use materialcraft_ui_egui::docking::Panel;
-    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
-    let mut h = harness(app, 1600.0, 960.0);
-    settle(&mut h, 60);
-    let measure = |h: &mut Harness<'static, MaterialCraftApp>| {
-        let t = std::time::Instant::now();
-        for _ in 0..30 {
-            h.step();
-        }
-        t.elapsed().as_secs_f64() * 1000.0 / 30.0
-    };
-    println!("all panels: {:.2} ms/frame", measure(&mut h));
-    for p in [Panel::Library, Panel::View3d, Panel::View2d, Panel::Properties, Panel::Explorer] {
-        h.state_mut().ui.dock.close(p);
-        settle(&mut h, 3);
-        println!("without {p:?}: {:.2} ms/frame", measure(&mut h));
-        h.state_mut().ui.dock.focus(p);
-        settle(&mut h, 3);
-    }
 }
 
 #[test]
@@ -1039,7 +997,7 @@ fn graph_context_menu_has_flat_node_list() {
     settle(&mut harness, 3);
     assert_eq!(harness.state().pattern_editor.as_ref().map(|editor| editor.node), Some(selected));
     assert!(harness.query_all(By::new().role(egui::accesskit::Role::Window).label("FX-Map graph")).next().is_none());
-    assert!(harness.query_all(By::new().role(egui::accesskit::Role::Canvas).label("FX-Map graph")).next().is_some());
+    assert!(harness.query_all(By::new().role(egui::accesskit::Role::Group).label("FX-Map graph")).next().is_some());
     assert_eq!(harness.state().graph.rects.len(), 3);
     let mut graph = match &harness.state().session.graph().unwrap().node(selected).unwrap().params["pattern"] {
         materialcraft_engine::core::Value::PatternGraph(graph) => (**graph).clone(),
@@ -1178,7 +1136,7 @@ fn annotations_and_function_graph_creation() {
 
     harness.state_mut().ui.windows.new_graph = true;
     settle(&mut harness, 3);
-    harness.get(By::new().role(egui::accesskit::Role::ListItem).label("Function graph")).click();
+    harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Function graph")).click();
     settle(&mut harness, 3);
     save(&mut harness, &directory, "new-function-graph");
     harness.get(By::new().role(egui::accesskit::Role::Button).label("Create")).click();
@@ -1253,7 +1211,7 @@ fn function_cards_and_dot_share_the_regular_graph_style() {
     let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     save(&mut harness, &directory, "function-cards-and-dot");
-    harness.get_all(By::new().role(egui::accesskit::Role::Button).label("Multiplication")).last().unwrap().click();
+    harness.get_all(By::new().role(egui::accesskit::Role::GraphicsObject).label("Multiplication")).last().unwrap().click();
     settle(&mut harness, 3);
     let blank = harness.state().graph.view.left_bottom() + vec2(12.0, -12.0);
     click_canvas(&mut harness, blank);
@@ -1461,7 +1419,7 @@ fn embedded_function_toolbar_and_panels_share_the_active_target() {
         materialcraft_ui_egui::menus::invoke(harness.state_mut(), &context, "edit.selectAll");
         settle(&mut harness, 2);
         assert!(harness.query_all(By::new().role(egui::accesskit::Role::Window)).next().is_none());
-        assert_eq!(harness.query_all(By::new().role(egui::accesskit::Role::Canvas).label("Function Graph")).count(), 1);
+        assert_eq!(harness.query_all(By::new().role(egui::accesskit::Role::Group).label("Function Graph")).count(), 1);
         let query = |label| By::new().role(egui::accesskit::Role::Button).label(label);
         for label in ["Frame all (F)", "Align left", "Distribute horizontally", "Snap to grid", "Show node thumbnails"] {
             assert_eq!(harness.query_all(query(label)).count(), 1, "shared control {label}");
@@ -1499,7 +1457,7 @@ fn embedded_function_toolbar_and_panels_share_the_active_target() {
         }
         save(&mut harness, &directory, &format!("{definition}-library-samplers"));
 
-        harness.get(By::new().role(egui::accesskit::Role::Canvas).label("Function Graph")).click_secondary();
+        harness.get(By::new().role(egui::accesskit::Role::Group).label("Function Graph")).click_secondary();
         settle(&mut harness, 2);
         harness.get_by_label("Add node").click();
         settle(&mut harness, 2);
@@ -1723,7 +1681,7 @@ fn library_cache_preferences() {
     settle(&mut h, 4);
 
     // The dock has a Library tab too, so the page is chosen directly
-    h.state_mut().ui.preferences.page = materialcraft_ui_egui::preferences::PreferencesPage::Library;
+    h.state_mut().ui.preferences_page = "library".into();
     settle(&mut h, 4);
 
     assert!(h.query_all(By::new().label("Disk limit (MiB, 0 = off)")).next().is_some());

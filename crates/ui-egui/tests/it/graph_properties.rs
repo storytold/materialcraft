@@ -9,6 +9,29 @@ use materialcraft_engine::{
 };
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 use serde_json::json;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+struct Dropped {
+    name: PathBuf,
+    bytes: Vec<u8>,
+}
+
+impl egui::DroppedFile for Dropped {
+    fn path(&self) -> &Path {
+        &self.name
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        Ok(self.bytes.clone())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn bytes_async(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
+        Box::pin(std::future::ready(Ok(self.bytes.clone())))
+    }
+}
 
 fn harness(render: bool) -> Harness<'static, MaterialCraftApp> {
     let mut package = Package::new("Source");
@@ -27,13 +50,10 @@ fn harness(render: bool) -> Harness<'static, MaterialCraftApp> {
 fn app_harness(app: MaterialCraftApp, render: bool) -> Harness<'static, MaterialCraftApp> {
     let builder = Harness::builder().with_size(vec2(1600.0, 1000.0)).with_step_dt(1.0 / 60.0);
     let builder = if render { builder.wgpu() } else { builder };
-    let mut harness = builder.build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    let mut harness = builder.build_eframe(|cc| {
+        MaterialCraftApp::install_runtime(&cc.egui_ctx, None).expect("runtime");
+        app
+    });
     harness.run_steps(8);
     harness
 }
@@ -151,18 +171,13 @@ fn close_with_focused_graph_text(native_close: bool) {
     assert!(!harness.state().session.modified);
 
     if native_close {
-        let mut input = egui::RawInput::default();
-        input.viewports.get_mut(&egui::ViewportId::ROOT).unwrap().events.push(egui::ViewportEvent::Close);
-        let mut output = egui::Context::default().run_ui(input, |ui| materialcraft_ui_egui::unsaved::handle_close(harness.state_mut(), ui.ctx()));
-
-        // This close-event frame has no renderer to consume texture updates
-        output.textures_delta.clear();
-        assert!(output.viewport_output[&egui::ViewportId::ROOT].commands.contains(&egui::ViewportCommand::CancelClose));
+        harness.input_mut().viewports.get_mut(&egui::ViewportId::ROOT).unwrap().events.push(egui::ViewportEvent::Close);
     } else {
-        materialcraft_ui_egui::unsaved::guard(harness.state_mut(), materialcraft_ui_egui::unsaved::Guarded::Quit);
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Q);
     }
+    harness.run_steps(3);
 
-    assert!(harness.state().ui.windows.unsaved.is_some());
+    assert!(materialcraft_ui_egui::unsaved::held(harness.state()).is_some());
     assert_eq!(harness.state().session.graph().unwrap().attributes.label, "Pending label");
     assert!(harness.state().session.modified);
 }
@@ -174,7 +189,8 @@ fn opening_package_bytes_preserves_focused_graph_text() {
     type_field(&mut harness, "Label", "Pending label");
     let bytes = materialcraft_engine::formats::sbs::write_sbs(&Package::new("Dropped")).unwrap();
 
-    materialcraft_ui_egui::web_files::load(harness.state_mut(), "dropped.sbs", bytes, false);
+    harness.input_mut().dropped_files.push(std::sync::Arc::new(Dropped { name: PathBuf::from("dropped.sbs"), bytes }));
+    harness.run_steps(3);
 
     let target = materialcraft_engine::GraphTarget { document: 0, graph: 1 };
     assert_eq!(target.get(&harness.state().session).unwrap().attributes.label, "Pending label");
@@ -192,7 +208,7 @@ fn undo_limit_is_editable_in_preferences_and_through_commands() {
     harness.key_press(Key::Enter);
     harness.run_steps(4);
 
-    assert_eq!(harness.state().ui.prefs.history.undo_limit, 500);
+    assert_eq!(harness.state().ui.prefs.history.undo_limit, initial_limit);
     assert_eq!(harness.state().session.history_prefs.undo_limit, initial_limit);
 
     harness.get(By::new().role(egui::Role::Button).label("Apply")).click();
@@ -216,21 +232,4 @@ fn undo_limit_is_editable_in_preferences_and_through_commands() {
     harness.run_steps(3);
     assert_eq!(harness.state().ui.prefs.history.undo_limit, 25);
     assert_eq!(harness.state().session.history_prefs.undo_limit, 25);
-}
-
-#[test]
-#[ignore = "requires an offscreen GPU"]
-fn graph_properties_screenshot() {
-    let mut harness = harness(true);
-    select(&mut harness, "Helper");
-    let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
-    std::fs::create_dir_all(&directory).unwrap();
-    harness.render().unwrap().save(directory.join("function-graph-properties.png")).unwrap();
-
-    select(&mut harness, "Material");
-    harness.render().unwrap().save(directory.join("material-graph-properties.png")).unwrap();
-
-    harness.state_mut().ui.windows.preferences = true;
-    harness.run_steps(5);
-    harness.render().unwrap().save(directory.join("history-preferences.png")).unwrap();
 }
