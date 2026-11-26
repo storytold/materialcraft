@@ -1,7 +1,7 @@
 //! The app's look as the framework resolves it: theme defaults, the root environment and the interface fonts.
 
 use craft_theme::{AppDefaults, AppSizes, ComponentSet, ModeChoice, Size, ThemeId, ThemePair};
-use craft_ui::fonts::{I18nScripts, UiFonts};
+use craft_ui::fonts::{FontRef, I18nScripts, Stack, UiFonts};
 use craft_ui::runtime::env::{RootEnv, Scale};
 
 use crate::i18n::{self, tr};
@@ -56,4 +56,14 @@ pub(crate) fn root_env(prefs: &Prefs) -> RootEnv {
 /// The interface fonts, with the interface language.
 pub(crate) fn ui_fonts() -> UiFonts<'static> {
     UiFonts::new(&I18nScripts).ui_language(i18n::current().code)
+}
+
+/// The interface font stack: [`ui_fonts`] with the Phosphor icon faces right after the proportional family's first
+/// face, ahead of the system fonts, so a system face with private-use glyphs never draws the app's icons.
+pub(crate) fn ui_font_stack() -> Stack {
+    let mut stack = ui_fonts().stack();
+    for (name, data) in crate::theme::icon_faces() {
+        stack.insert(&FontRef::proportional(), 1, &name, std::sync::Arc::unwrap_or_clone(data));
+    }
+    stack
 }

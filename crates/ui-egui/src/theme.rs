@@ -253,6 +253,13 @@ pub fn font_definitions() -> egui::FontDefinitions {
     fonts
 }
 
+/// The Phosphor icon faces the app's glyph labels draw from, by font name.
+pub fn icon_faces() -> std::collections::BTreeMap<String, std::sync::Arc<egui::FontData>> {
+    let mut fonts = egui::FontDefinitions { font_data: Default::default(), families: Default::default() };
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    fonts.font_data
+}
+
 /// Install the fonts.
 pub fn install(ctx: &egui::Context) {
     ctx.set_fonts(font_definitions());

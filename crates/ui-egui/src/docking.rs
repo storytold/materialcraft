@@ -180,11 +180,12 @@ impl PanelSpecs<Panel> for Specs {
     fn spec(&self, panel: &Panel) -> PanelSpec {
         let label = Panel::ALL.iter().position(|candidate| candidate == panel).and_then(|index| self.labels.get(index)).cloned().unwrap_or_default();
         let min = if *panel == Panel::Graph { vec2(240.0, 160.0) } else { vec2(120.0, 60.0) };
-        let spec = PanelSpec::new(label).limits(SizeLimits::at_least(min)).float_size(vec2(420.0, 320.0));
+        // Every body is the app's own egui code, which must run once per pass.
+        let spec = PanelSpec::new(label).limits(SizeLimits::at_least(min)).float_size(vec2(420.0, 320.0)).host_body();
         match panel {
             Panel::Graph | Panel::View2d | Panel::View3d => spec.window_kind(WindowKind::Document),
-            Panel::History => spec.host_body().footer(),
-            _ => spec.host_body(),
+            Panel::History => spec.footer(),
+            _ => spec,
         }
     }
 

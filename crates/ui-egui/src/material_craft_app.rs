@@ -146,7 +146,10 @@ impl MaterialCraftApp {
         if let Some(decision) = frame {
             spec = spec.frame(decision);
         }
-        craft_ui::shell::embed::install(ctx, spec, &appearance::ui_fonts())
+        craft_ui::install(ctx, spec)?;
+        let fonts = appearance::ui_font_stack();
+        fonts.install(ctx);
+        Ok(fonts)
     }
 
     /// The app in an eframe window: installs the runtime with `options.frame`, keeps the decision, and opens the
