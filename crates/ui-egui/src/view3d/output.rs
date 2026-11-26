@@ -18,7 +18,7 @@ pub(super) fn save_render(app: &mut MaterialCraftApp) {
     let Some(frame) = app.view3d.shown.clone() else { return };
 
     let name = format!("{}.png", materialcraft_engine::formats::safe_file_name(&super::frame::shown_label(app)));
-    let dialog = craft_dialogs::FileDialog::save().file_name(name).filter("PNG", &["png"]);
+    let dialog = craft_host::PickRequest::save("export").file_name(name).filter("PNG", &["png"]);
     crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::SaveRender(Box::new(frame)));
 }
 
@@ -36,7 +36,7 @@ pub(super) fn export_geometry(app: &mut MaterialCraftApp) {
         return;
     };
     let name = format!("{}.obj", materialcraft_engine::formats::safe_file_name(&super::frame::shown_label(app)));
-    let dialog = craft_dialogs::FileDialog::save().file_name(name).filter("Wavefront OBJ", &["obj"]);
+    let dialog = craft_host::PickRequest::save("export").file_name(name).filter("Wavefront OBJ", &["obj"]);
     crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::ExportGeometry(mesh));
 }
 
@@ -49,13 +49,13 @@ pub(crate) fn displayed_mesh(app: &MaterialCraftApp) -> Option<std::sync::Arc<ma
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) fn save_state(app: &mut MaterialCraftApp) {
     let extension = materialcraft_engine::VIEW_STATE_EXTENSION;
-    let dialog = craft_dialogs::FileDialog::save().file_name(format!("3d-view.{extension}")).filter(tr("3D view state"), &[extension]);
+    let dialog = craft_host::PickRequest::save("export").file_name(format!("3d-view.{extension}")).filter(tr("3D view state"), &[extension]);
     crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::SaveViewState);
 }
 
 /// Ask for a saved state to apply; `with_mesh` also switches to the mesh it was saved with
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) fn load_state(app: &mut MaterialCraftApp, with_mesh: bool) {
-    let dialog = craft_dialogs::FileDialog::open().filter(tr("3D view state"), &[materialcraft_engine::VIEW_STATE_EXTENSION]);
+    let dialog = craft_host::PickRequest::open("import").filter(tr("3D view state"), &[materialcraft_engine::VIEW_STATE_EXTENSION]);
     crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::LoadViewState { with_mesh });
 }

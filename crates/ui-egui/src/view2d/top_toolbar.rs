@@ -60,7 +60,7 @@ fn background_image(app: &mut MaterialCraftApp, ui: &mut Ui) {
     if in_use {
         app.run("view.2d", json!({"background": serde_json::Value::Null}));
     } else {
-        let dialog = craft_dialogs::FileDialog::open().filter("Images", &["png", "jpg", "jpeg", "tga", "bmp", "tif", "tiff", "exr", "hdr", "dds", "svg"]);
+        let dialog = craft_host::PickRequest::open("import").filter("Images", &["png", "jpg", "jpeg", "tga", "bmp", "tif", "tiff", "exr", "hdr", "dds", "svg"]);
         crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::BackgroundImage);
     }
 }
