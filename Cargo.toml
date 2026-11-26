@@ -228,9 +228,13 @@ unset_env = ["MATERIALCRAFT_BUILD_CHANNEL", "MATERIALCRAFT_VERSION", "MATERIALCR
 [patch."https://github.com/storytold/craft-libs"]
 craft-appkit = { path = "../craft-libs/crates/appkit" }
 craft-atomic = { path = "../craft-libs/crates/atomic" }
+craft-automation = { path = "../craft-libs/crates/automation" }
 craft-behavior = { path = "../craft-libs/crates/behavior" }
 craft-cloud-ui = { path = "../craft-libs/crates/cloud-ui" }
+craft-cms = { path = "../craft-libs/crates/cms" }
 craft-codepage = { path = "../craft-libs/crates/codepage" }
+craft-color-ui = { path = "../craft-libs/crates/color-ui" }
+craft-control = { path = "../craft-libs/crates/control" }
 craft-dds = { path = "../craft-libs/crates/dds" }
 craft-dialogs = { path = "../craft-libs/crates/dialogs" }
 craft-docpath = { path = "../craft-libs/crates/docpath" }
@@ -239,6 +243,7 @@ craft-fonts-build = { path = "../craft-libs/crates/fonts-build" }
 craft-host = { path = "../craft-libs/crates/host" }
 craft-i18n = { path = "../craft-libs/crates/i18n" }
 craft-image-codecs = { path = "../craft-libs/crates/image-codecs" }
+craft-imaging = { path = "../craft-libs/crates/imaging" }
 craft-jpeg = { path = "../craft-libs/crates/jpeg" }
 craft-keymap = { path = "../craft-libs/crates/keymap" }
 craft-materialx = { path = "../craft-libs/crates/materialx" }

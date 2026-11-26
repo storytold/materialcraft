@@ -17,42 +17,35 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
     let function = app.function_editor.is_some();
     let pattern = !function && crate::pattern::active(app);
     let selection = selection(app, function, pattern);
-    let graph = app.session.graph;
+    let center = crate::annotation::camera(app).center;
+    let actions = [
+        ("graph.frame.add", annotation_frame(app, &selection)),
+        ("graph.comment.add", json!({})),
+        ("graph.pin.add", json!({"at": {"x": center.x as f32, "y": center.y as f32}})),
+    ];
 
+    let mut frame_all = false;
     Bar::new(crate::i18n::tr("Graph tools"), BarKind::Options).trailing(|ui, _| trailing(app, ui, function, pattern)).show(ui, |ui, _| {
         let frame = IconButton::new(craft_ui::primitives::IconSpec::svg(IconId::new("frame_all"))).label(crate::i18n::tr("Frame all"));
-        if frame.show(ui).clicked() {
-            app.ui.frame_all = true;
-        }
+        frame_all = frame.show(ui).clicked();
 
         let align_items = ALIGN_MODES.iter().map(|mode| BarItem::new(CommandRef::with_params("graph.align", json!({"mode": mode})))).collect();
         BarItems::new(align_items).show(ui);
         BarItems::new(vec![BarItem::new(CommandRef::new("ui.graph.snapToGrid"))]).show(ui);
 
-        let actions = [
-            ("graph.frame.add", "frame_selection", "Add frame around the selection", annotation_frame(app, &selection)),
-            ("graph.comment.add", "note", "Add comment", json!({})),
-            (
-                "graph.pin.add",
-                "pin",
-                "Add navigation pin",
-                json!({"at": {
-                    "x": crate::annotation::camera(app).center.x as f32,
-                    "y": crate::annotation::camera(app).center.y as f32
-                }}),
-            ),
-        ];
-        let items = actions.iter().map(|(id, _, _, params)| BarItem::new(CommandRef::with_params(*id, params.clone())).section(1)).collect();
+        let items = actions.iter().map(|(id, params)| BarItem::new(CommandRef::with_params(*id, params.clone())).section(1)).collect();
         BarItems::new(items).show(ui);
-        let _ = graph;
     });
+    if frame_all {
+        app.ui.frame_all = true;
+    }
 
     if !pattern {
         let groups = if function { function_items(app) } else { atomic_items() };
         Bar::new(crate::i18n::tr("Quick nodes"), BarKind::Options).show(ui, |ui, _| {
-            for (section, group) in groups.into_iter().enumerate() {
+            for (section, group) in groups.iter().enumerate() {
                 let items = group
-                    .into_iter()
+                    .iter()
                     .map(|def| BarItem::new(CommandRef::with_params("ui.graph.quickAdd", json!({"def": def}))).section(section as u16))
                     .collect();
                 BarItems::new(items).show(ui);
@@ -141,7 +134,8 @@ fn annotation_frame(app: &MaterialCraftApp, selection: &[u64]) -> serde_json::Va
     json!({"rect": [start.x as f32 - 24.0, start.y as f32 - 44.0, size.x + 48.0, size.y + 68.0]})
 }
 
-const ATOMIC_QUICK: &[&[&str]] = &[
+/// The quick atomic nodes, by toolbar section; the command catalog reads it too.
+pub(crate) const ATOMIC_QUICK: &[&[&str]] = &[
     &[
         "bitmap",
         "blend",

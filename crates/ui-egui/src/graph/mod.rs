@@ -15,12 +15,8 @@ mod instance_context_menu;
 #[cfg(test)]
 mod interaction_tests;
 mod library_drag;
-#[cfg(test)]
-mod modality_tests;
-pub(crate) mod node_card;
 pub(crate) mod node_colors;
 mod node_kind;
-mod node_layout;
 pub(crate) mod node_search;
 pub(crate) mod node_selection;
 pub(crate) mod port_hit;
@@ -31,8 +27,8 @@ pub use graph_view::{GraphView, wire_id};
 pub use library_drag::LibraryDrag;
 pub use navigation::{add_entry_in_view, add_node_near_selection};
 use node_search::NodeSearch;
-// `node_kind::NODE_W` is `pub(crate)`, and every reader is in this crate.
-pub(crate) use node_kind::NODE_W;
+// The card metrics are `pub(crate)`, and every reader is in this crate.
+pub(crate) use node_kind::{FOOTER_HEIGHT, HEADER_HEIGHT, NODE_W};
 pub use node_style::{node_label, shows_preview};
 pub use port_hit::PortHit;
 pub type WireRef = (materialcraft_engine::core::NodeId, String);

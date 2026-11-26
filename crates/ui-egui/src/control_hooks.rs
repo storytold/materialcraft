@@ -92,18 +92,6 @@ const NO_ITEM: &str = "no open package has that Explorer item";
 
 const TOOLS: [(Tool, &str); 3] = [(Tool::Camera, "camera"), (Tool::Light, "light"), (Tool::Select, "select")];
 
-fn preference_page_id(page: crate::preferences::PreferencesPage) -> &'static str {
-    use crate::preferences::PreferencesPage;
-    match page {
-        PreferencesPage::General => "general",
-        PreferencesPage::Projects => "projects",
-        PreferencesPage::Graph => "graph",
-        PreferencesPage::View3d => "view3d",
-        PreferencesPage::Library => "library",
-        PreferencesPage::Shortcuts => "shortcuts",
-    }
-}
-
 const SUBJECTS: [(Subject, &str); 5] = [
     (Subject::Material, "material"),
     (Subject::Lights, "lights"),
@@ -135,9 +123,7 @@ impl SetKeys {
         let flag = |value: &Value, key: &str| value.as_bool().ok_or(format!("`{key}` must be true or false"));
         let mut keys = SetKeys::default();
         if let Some(page) = patch.remove("preferencesPage") {
-            let name = page.as_str().and_then(|name| {
-                crate::preferences::PreferencesPage::ALL.iter().find(|page| preference_page_id(**page) == name).map(|page| preference_page_id(*page))
-            });
+            let name = page.as_str().filter(|name| crate::preferences::PAGES.contains(name));
             keys.page = Some(name.ok_or(format!("unknown preferencesPage `{page}`"))?.to_owned());
         }
         if let Some(hold) = patch.remove("cookHold") {
@@ -192,7 +178,7 @@ impl SetKeys {
         }
         match self.inspected {
             Some(Some(subject)) => crate::view3d::inspect(app, subject),
-            Some(None) => crate::view3d::uninspect(app),
+            Some(None) => app.view3d.inspected = None,
             None => {}
         }
     }
@@ -418,7 +404,7 @@ fn expose(app: &mut MaterialCraftApp, p: &Value) -> Answer {
         Some("group") => true,
         Some(other) => return Err(format!("unknown list `{other}` (group)")),
     };
-    crate::property::expose(app, node, param)?;
+    crate::properties::expose(app, node, param)?;
     let text = |key: &str| p.get(key).and_then(Value::as_str);
     let dialog = app.expose_parameter_dialog.as_mut().ok_or("the Expose Parameter dialog did not open")?;
     dialog.preset_fields(text("identifier"), text("label"), text("group"), text("description"));

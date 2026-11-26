@@ -23,9 +23,9 @@ craft-theme = { workspace = true }
 craft-tracked = { workspace = true }
 craft-menu = { workspace = true }
 craft-platform = { workspace = true }
-craft-automation = { workspace = true }
-craft-imaging = { workspace = true }
-craft-color-ui = { workspace = true }
+craft-automation = { workspace = true, features = ["ui"] }
+craft-imaging = { workspace = true, features = ["ui"] }
+craft-color-ui = { workspace = true, features = ["ui"] }
 craft-window = { workspace = true, features = ["ui"] }
 egui-phosphor = { version = "0.14", features = ["regular"] }
 serde = { workspace = true }

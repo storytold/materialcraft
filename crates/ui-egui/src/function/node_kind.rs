@@ -14,12 +14,10 @@ use materialcraft_engine::nodes::function as functions;
 
 use super::node_face::{self, MIN_EDIT_ZOOM, PADDING, ROW_GAP, ROW_HEIGHT, SYMBOL_HEIGHT};
 use super::port_label::port_label;
-use crate::graph::NODE_W;
 use crate::graph::node_colors::NodeColors;
+use crate::graph::{FOOTER_HEIGHT, HEADER_HEIGHT, NODE_W};
 
-/// The card's header and footer heights and the spacing of its inputs, in graph units.
-use crate::graph::node_card::{FOOTER_HEIGHT, HEADER_HEIGHT};
-
+/// The spacing of the card's inputs, in graph units.
 const PORT_GAP: f32 = 18.0;
 /// The side of a Dot, centred on its position.
 const DOT_SIDE: f32 = 14.0;

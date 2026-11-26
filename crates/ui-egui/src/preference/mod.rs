@@ -19,6 +19,7 @@ use craft_ui::form::{SliderField, SliderFieldLayout};
 use craft_ui::patterns::preferences::{PageSpec, PrefValue, PreferencesDraft, PreferencesMode, PreferencesModel, PreferencesWindow};
 use egui::Ui;
 
+pub(crate) use preferences_page::PAGES;
 pub(crate) use preferences_state::{Draft, State};
 
 use crate::MaterialCraftApp;

@@ -13,6 +13,8 @@ pub(crate) const VIEW3D: &str = "view3d";
 pub(crate) const LIBRARY: &str = "library";
 /// Shortcuts: node creation shortcuts.
 pub(crate) const SHORTCUTS: &str = "shortcuts";
+/// Every page id, in list order.
+pub(crate) const PAGES: [&str; 6] = [GENERAL, PROJECTS, GRAPH, VIEW3D, LIBRARY, SHORTCUTS];
 
 /// The General page's title.
 pub(super) const GENERAL_TITLE: &str = "General";

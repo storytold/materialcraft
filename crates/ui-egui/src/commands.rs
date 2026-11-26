@@ -142,9 +142,8 @@ fn kind(id: &str) -> CommandKind {
 
 /// The graph toolbar's quick nodes: atomic node definitions and Function operations, each once.
 fn quick_nodes() -> Vec<(&'static str, &'static str)> {
-    // PLAN: graph-w13 keeps `ATOMIC_QUICK` (`graph/toolbar.rs:109`) as `pub(crate)`, its (icon, definition) rows, so the
-    // catalog and the toolbar read one list.
-    let atomic = crate::graph::toolbar::ATOMIC_QUICK.iter().flat_map(|group| group.iter().copied()).map(|(_, def): (&'static str, &'static str)| {
+    // The catalog and the graph toolbar read one list.
+    let atomic = crate::graph::toolbar::ATOMIC_QUICK.iter().flat_map(|group| group.iter().copied()).map(|def: &'static str| {
         let label: &'static str = materialcraft_engine::nodes::find(def).map_or(def, |definition| definition.label);
         (def, label)
     });
@@ -284,7 +283,7 @@ fn enabled(app: &MaterialCraftApp, now: &Now, command: &CommandRef) -> bool {
             let Some(node) = param("def") else { return false };
             match now.editor {
                 EditorTarget::Function => now.available.contains(&node),
-                EditorTarget::Material => now.graph && crate::graph::toolbar::ATOMIC_QUICK.iter().any(|group| group.iter().any(|(_, def)| *def == node)),
+                EditorTarget::Material => now.graph && crate::graph::toolbar::ATOMIC_QUICK.iter().any(|group| group.contains(&node)),
                 EditorTarget::Pattern => false,
             }
         }
@@ -393,7 +392,7 @@ fn add_at_pointer(app: &mut MaterialCraftApp, ctx: &egui::Context, entry: &str) 
 
     let at = app.ui.graph_camera.view(app.graph.view).to_doc(pointer);
     // The node's title row sits under the pointer, centred across the card
-    let at = [at.x as f32 - crate::graph::node_card::WIDTH * 0.5, at.y as f32 - 20.0];
+    let at = [at.x as f32 - crate::graph::NODE_W * 0.5, at.y as f32 - 20.0];
     app.run("library.add", json!({"entry": entry, "at": at, "snapToGrid": app.ui.prefs.snap_to_grid}));
 }
 
