@@ -39,19 +39,19 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 # Standard Base64 output; strict SBS decoding remains app-local
-craft-mime = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", version = "0.1.0" }
+craft-mime = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", version = "0.1.0" }
 # Read 3D meshes through craft-mesh; keep mesh processing app-local
-craft-mesh = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", default-features = false, features = ["obj", "gltf"] }
+craft-mesh = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", default-features = false, features = ["obj", "gltf"] }
 # Shared XML escaping and bounded XML parsing; SBS model and serialization policy stay app-local
-craft-xml = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
+craft-xml = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # Shared SBS package/schema parsing, sniffing, embedded codec, and envelope writing (storytold/craft-libs#2496)
-craft-sbs = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "380a2f79f6a195c090a5372e819cbcda2b703c09" }
+craft-sbs = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # Shared bounded ZIP archive reader and deterministic writer (storytold/craft-libs#2411)
-craft-zip = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "512a1b8e8b59a7b325e7f69f6131aa8628470288" }
+craft-zip = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # Bound SVG parsing and drawing through craft-svg
-craft-svg = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", features = ["tree-render"] }
+craft-svg = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", features = ["tree-render"] }
 # Shared raster image codecs
-craft-image-codecs = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
+craft-image-codecs = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # internal
 materialcraft-core = { path = "crates/core" }
 materialcraft-geom = { path = "crates/geom" }
@@ -91,43 +91,43 @@ getrandom = "0.3"
 # Shared Craft egui components from storytold/craft-libs
 # MIT OR Apache-2.0
 egui_kittest = "0.37"
-craft-materialx = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
+craft-materialx = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # MCMAT v3 uses its merged archive revision and the matching ZIP crate
-craft-mcmat = { git = "https://github.com/storytold/craft-libs", rev = "7a7a18cb40ac4cd5fca29c0dc224ac5178d40a89" }
-craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", features = ["serde"] }
+craft-mcmat = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
+craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", features = ["serde"] }
 # Keyboard bindings (chords, dispatch and display text): storytold/craft-libs, MIT OR Apache-2.0
-craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", features = ["egui"] }
+craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", features = ["egui"] }
 # Native dialogs that do not block the event loop: storytold/craft-libs, MIT OR Apache-2.0
-craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
-craft-platform = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
+craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
+craft-platform = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # The platform quit and the macOS Quit menu item: storytold/craft-libs, MIT OR Apache-2.0
-craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", features = ["egui"] }
-craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
+craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", features = ["egui"] }
+craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # Who draws the window frame, and an app-drawn strip as the title bar: storytold/craft-libs, MIT OR Apache-2.0
-craft-window = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", features = ["egui"] }
+craft-window = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", features = ["egui"] }
 # Release checks and self-updates for the desktop app: storytold/craft-libs, MIT OR Apache-2.0
-craft-update = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc", features = ["egui"] }
+craft-update = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", features = ["egui"] }
 # Atomic persistence, at the suite's current revision
-craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
-craft-png = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "c42c34bfa127b095fb0a8d5ccaba0c168c254062" }
+craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
+craft-png = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # Parse the optional shared font catalog at build time; the font repository is not a dependency
-craft-fonts-build = { git = "https://github.com/storytold/craft-libs", rev = "453b0da782ccef39be9a6dac8d27c80b553ef1cc" }
+craft-fonts-build = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541" }
 # Float image planes and texture sampling for node cooking: storytold/craft-libs, MIT OR Apache-2.0
-craft-texture = { git = "https://github.com/storytold/craft-libs", rev = "5a913a42abc9fed0cfc588114788e400229f5108", features = ["parallel"] }
+craft-texture = { git = "https://github.com/storytold/craft-libs", rev = "0b8bbaf4c842da2d47de7b3fddd7170ba6115541", features = ["parallel"] }
 
 # egui 0.37 and winit: the suite's forks (storytold/egui, storytold/winit), as craft-libs pins them.
 [patch.crates-io]
-ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+ecolor = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+emath = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+epaint = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui-winit = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_glow = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+eframe = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
-egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 # egui-phosphor has no release for egui 0.37 (vendor/egui-phosphor/VENDORED.md).
 egui-phosphor = { path = "vendor/egui-phosphor" }
 
