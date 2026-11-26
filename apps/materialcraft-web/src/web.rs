@@ -60,7 +60,7 @@ async fn run(canvas: web_sys::HtmlCanvasElement) -> Result<(), String> {
             canvas,
             options,
             Box::new(|cc| {
-                let mut app = MaterialCraftApp::new(cc, session);
+                let mut app = MaterialCraftApp::new(cc, session, materialcraft_ui_egui::StartOptions::default()); // P3(shell-w4): sh.A1
 
                 // One thread cooks in the browser, so keep previews small
                 app.ui.prefs.preview_size = app.ui.prefs.preview_size.clamp(128, 256);

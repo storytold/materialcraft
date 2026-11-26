@@ -88,13 +88,15 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
     }
 
     if app.ui.windows.new_graph {
-        crate::new_graph_dialog::show(app, ctx);
+        // P3(shell-w9): sh.A28: `show` takes a `Ui`; `windows::show` becomes `show(app, ui)` and drops this area
+        egui::Area::new(egui::Id::unique("new-graph-stand-in")).show(ctx, |ui| crate::new_graph_dialog::show(app, ui));
     }
     if app.ui.windows.export {
         crate::export::show(app, ctx);
     }
     if app.ui.windows.preferences {
-        crate::preferences::show(app, ctx);
+        // P3(shell-w9): sh.A10: as above
+        egui::Area::new(egui::Id::unique("preferences-stand-in")).show(ctx, |ui| crate::preferences::show(app, ui));
     }
     if app.ui.windows.about {
         about(app, ctx);
@@ -103,19 +105,24 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
         shortcuts(app, ctx);
     }
     if app.ui.windows.home {
-        crate::home_screen::show(app, ctx);
+        // P3(shell-w9): sh.A27: as above
+        egui::Area::new(egui::Id::unique("home-stand-in")).show(ctx, |ui| crate::home_screen::show(app, ui));
     }
     if app.ui.windows.plugin_manager {
-        crate::plugin_manager::show(app, ctx);
+        // P3(shell-w9): sh.A26: as above
+        egui::Area::new(egui::Id::unique("plugins-stand-in")).show(ctx, |ui| crate::plugin_manager::show(app, ui));
     }
 
-    crate::unsaved::show(app, ctx);
+    // P3(shell-w9): sh.A6: `unsaved::show` takes a `Ui`; `windows::show` becomes `show(app, ui)` and drops this area
+    egui::Area::new(egui::Id::unique("unsaved-stand-in")).show(ctx, |ui| crate::unsaved::show(app, ui));
     crate::explorer::dialogs(app, ctx);
     crate::properties::ExposeParameterDialog::show(app, ctx);
     #[cfg(target_arch = "wasm32")]
-    crate::web_files::save_dialog(app, ctx);
+    // P3(shell-w9): sh.A29: as above
+    egui::Area::new(egui::Id::unique("save-stand-in")).show(ctx, |ui| crate::web_files::save_dialog(app, ui));
     #[cfg(not(target_arch = "wasm32"))]
-    crate::updates_ui::show(app, ctx);
+    // P3(shell-w9): sh.A24: `updates_ui::show` takes a `Ui`; `windows::show` becomes `show(app, ui)` and drops this area
+    egui::Area::new(egui::Id::unique("updates-ui-stand-in")).show(ctx, |ui| crate::updates_ui::show(app, ui));
 }
 
 pub(crate) fn modal(ctx: &egui::Context, id: &str, title: &str, open: &mut bool, size: egui::Vec2, body: impl FnOnce(&mut Ui)) {
@@ -222,6 +229,13 @@ pub fn console(app: &mut MaterialCraftApp, ui: &mut Ui) {
             ui.label(console_line(text, tk.warning));
         }
     });
+}
+
+/// The dock's footer: the Undo and Redo buttons, drawn by `docking.rs` through `DockPanels::footer`.
+#[allow(dead_code)] // P3(shell-w9): sh.A16
+pub(crate) fn history_footer(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    let _ = (app, ui);
+    todo!("sh.A16")
 }
 
 pub fn history(app: &mut MaterialCraftApp, ui: &mut Ui) {

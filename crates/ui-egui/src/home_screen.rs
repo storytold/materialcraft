@@ -21,7 +21,9 @@ const LINKS: [(&str, &[(&str, &str)]); 2] = [
     ("Community", &[("Community (Discord)", "ui.help.discord"), ("Report a bug", "ui.help.bug"), ("All Craft apps", "ui.help.apps")]),
 ];
 
-pub(crate) fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
+    // P3(shell-w13): sh.A27: `show` takes the `Ui`; the body still draws through the context
+    let ctx = &ui.ctx().clone();
     let size = crate::windows::dialog_size(ctx, WINDOW_SIZE);
     let mut open = true;
     crate::windows::modal(ctx, "home", tr("Home"), &mut open, size, |ui| {

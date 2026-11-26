@@ -42,7 +42,9 @@ fn choose(app: &mut MaterialCraftApp, card: &TemplateCard) {
     app.ui.new_graph_template = card.id.to_string();
 }
 
-pub(crate) fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
+    // P3(shell-w13): sh.A28: `show` takes the `Ui`; the body still draws through the context
+    let ctx = &ui.ctx().clone();
     let size = crate::windows::dialog_size(ctx, WINDOW_SIZE);
     let mut open = true;
     let mut create = false;

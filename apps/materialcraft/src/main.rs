@@ -240,10 +240,12 @@ fn main() {
     }));
     let session = initial_session(&args);
     let window_frame = craft_window::Choice::probe(craft_window::Prefix::new("MATERIALCRAFT")).into_frame();
-    let mut viewport = craft_window::decorate(
-        egui::ViewportBuilder::default().with_title(os_window::name_for(os_window::identity())).with_inner_size(DEFAULT_SIZE).with_min_inner_size(MIN_SIZE),
-        &window_frame,
-    );
+    // P3(shell-w4): removed upstream: `craft_window::decorate`; sh.A1 decides the frame with `policy::decide_for` + `policy::apply`
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title(os_window::name_for(os_window::identity()))
+        .with_inner_size(DEFAULT_SIZE)
+        .with_min_inner_size(MIN_SIZE)
+        .with_decorations(window_frame.decorations());
     // Stable keeps eframe's implicit app id, so its saved layout stays where it is; a Nightly
     // carries its own id so docks, compositor rules and the taskbar list it separately.
     if nightly {
@@ -282,7 +284,7 @@ fn main() {
         os_window::name_for(os_window::identity()),
         options,
         Box::new(move |cc| {
-            let mut app = MaterialCraftApp::new(cc, session);
+            let mut app = MaterialCraftApp::new(cc, session, materialcraft_ui_egui::StartOptions::default()); // P3(shell-w4): sh.A1
             app.build_version = BUILT_VERSION.to_owned();
             app.build_commit = BUILD_SHA.to_owned();
             // macOS quits inside AppKit's terminate, so the record is finished from the exit hook.

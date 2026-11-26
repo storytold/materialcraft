@@ -61,6 +61,15 @@ pub struct UiState {
     /// Frame the whole graph on the next frame
     #[serde(skip)]
     pub frame_all: bool,
+    /// The Preferences window's open page (`"general"`, `"graph"`, ...)
+    pub preferences_page: String,
+    /// The user's changes to the node-creation shortcuts, over the app catalog's defaults
+    pub shortcut_overrides: craft_keymap::Overrides,
+}
+
+impl craft_settings::Settings for UiState {
+    const APP_ID: &'static str = "materialcraft";
+    const SCHEMA_VERSION: u32 = 1;
 }
 
 impl Default for UiState {
@@ -96,6 +105,8 @@ impl Default for UiState {
             preferences: Default::default(),
             plugin_filter: String::new(),
             frame_all: true,
+            preferences_page: "general".into(),
+            shortcut_overrides: Default::default(),
         }
     }
 }

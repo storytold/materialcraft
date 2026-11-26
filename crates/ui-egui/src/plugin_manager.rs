@@ -11,7 +11,9 @@ const WINDOW_SIZE: egui::Vec2 = vec2(700.0, 460.0);
 const LOADED_WIDTH: f32 = 110.0;
 const BUTTON_WIDTH: f32 = 130.0;
 
-pub(crate) fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
+    // P3(shell-w14): sh.A26: `show` takes the `Ui`; the body still draws through the context
+    let ctx = &ui.ctx().clone();
     let mut open = true;
     crate::windows::modal(ctx, "plugin-manager", tr("Plugin Manager"), &mut open, WINDOW_SIZE, |ui| {
         let tokens = Tokens::get(ui.ctx());

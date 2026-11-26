@@ -46,7 +46,30 @@ pub(super) fn number_row<T: egui::emath::Numeric>(ui: &mut Ui, label: &str, valu
     .inner
 }
 
-pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+/// The staged copy of the preferences the open window edits until Apply or OK.
+#[allow(dead_code)] // P3(shell-w11): sh.A10
+pub(crate) struct PrefsDraft {
+    _private: (),
+}
+
+/// What the open Preferences window keeps between frames (the open page is `UiState::preferences_page`).
+#[derive(Clone, Debug, Default, PartialEq)]
+#[allow(dead_code)] // P3(shell-w11): sh.A10
+pub(crate) struct State {
+    /// The Shortcuts page's search over command names.
+    shortcut_search: String,
+    /// The Shortcuts page's search over keys.
+    shortcut_key_search: String,
+    /// The Shortcuts page lists only commands with a shortcut.
+    only_assigned: bool,
+    /// The command whose shortcut field waits for keys.
+    capturing: Option<String>,
+}
+
+/// The Preferences window: staged mode, where `apply` writes `ui.prefs` and `ui.shortcut_overrides`.
+pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    // P3(shell-w11): sh.A10: `show` takes the `Ui`; the body still draws through the context
+    let ctx = &ui.ctx().clone();
     if app.ui.preferences.applied.is_none() {
         app.ui.preferences.applied = Some(app.ui.prefs.clone());
     }

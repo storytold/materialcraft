@@ -8,15 +8,16 @@
 //! cannot close or float. The layout persists with `UiState` as a craft-ui `Workspace`; a layout
 //! that does not load or validate becomes the default.
 
-use craft_ui::docking::{Action, DockArea, DockContent, DockStyle, Layout, Location, Node, PanelLimits, PanelState, Permissions, Placement};
-use craft_ui::layout::{SplitAxis, SplitSize};
+// P3(shell-w8): removed upstream: the dock model is now `craft_behavior::dock`; `DockArea`, `DockContent`,
+// `DockStyle`, `PanelLimits` and `cancel_drag` are gone, so the drawing half stands in.
+use craft_behavior::Axis as SplitAxis;
+use craft_behavior::dock::{Action, DockPlacement, Layout, Location, Node, PanelState, Permissions, SplitSize};
 use egui::{Id, Margin, RichText, Ui, vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::MaterialCraftApp;
 use crate::i18n::tr;
-use crate::theme::Tokens;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Panel {
@@ -75,56 +76,49 @@ impl Panel {
 }
 
 /// The saved panel arrangement: craft-ui's workspace over MaterialCraft's panels.
-pub type Workspace = craft_ui::docking::Workspace<Panel>;
+pub type Workspace = craft_behavior::dock::Workspace<Panel>;
 
 /// The graph never moves, floats, closes or takes tabs; panels dock beside it.
 pub fn permissions(panel: &Panel) -> Permissions {
-    if *panel == Panel::Graph { Permissions { accepts_splits: true, ..Permissions::PROTECTED } } else { Permissions::default() }
+    if *panel == Panel::Graph { Permissions::PROTECTED.accepts_splits(true) } else { Permissions::default() }
 }
 
 fn tabs(panels: &[Panel]) -> Node<Panel> {
-    Node::Tabs { panels: panels.to_vec(), active: 0 }
+    Node::tabs(panels.to_vec(), 0)
 }
 
 fn split(axis: SplitAxis, ratio: f32, first: Node<Panel>, second: Node<Panel>) -> Node<Panel> {
-    Node::Split { axis, size: SplitSize::Ratio(ratio), first: Box::new(first), second: Box::new(second) }
+    Node::split(axis, SplitSize::Ratio(ratio), first, second)
 }
 
 /// The default: explorer over library on the left; the graph over the 3D and 2D views in the
 /// middle; properties on the right. Console and history are closed and open floating.
 pub fn default_workspace() -> Workspace {
     use Panel::*;
-    let left = split(SplitAxis::Vertical, 0.36, tabs(&[Explorer]), tabs(&[Library]));
-    let views = split(SplitAxis::Horizontal, 0.5, tabs(&[View3d]), tabs(&[View2d]));
-    let center = split(SplitAxis::Vertical, 0.52, tabs(&[Graph]), views);
-    let root = split(SplitAxis::Horizontal, 0.15, left, split(SplitAxis::Horizontal, 0.8, center, tabs(&[Properties])));
-    let mut workspace = Workspace::new(Layout { root: Some(root), floating: Vec::new() });
+    let left = split(SplitAxis::Y, 0.36, tabs(&[Explorer]), tabs(&[Library]));
+    let views = split(SplitAxis::X, 0.5, tabs(&[View3d]), tabs(&[View2d]));
+    let center = split(SplitAxis::Y, 0.52, tabs(&[Graph]), views);
+    let root = split(SplitAxis::X, 0.15, left, split(SplitAxis::X, 0.8, center, tabs(&[Properties])));
+    let mut hidden = Vec::new();
     for panel in Panel::ALL {
-        if let Some(rect) = panel.float_rect() {
-            let location = Location {
-                floating: Some(rect),
-                anchor: None,
-                placement: Placement::Tab { before: None },
-                size: None,
-                stack: None,
-                sibling: Vec::new(),
-                group: None,
-            };
-            workspace.hidden.push((panel, location));
+        if let Some([x, y, w, h]) = panel.float_rect() {
+            let mut location = Location::new(None, DockPlacement::tab(None));
+            location.floating = Some(egui::Rect::from_min_size(egui::pos2(x, y), vec2(w, h)));
+            hidden.push((panel, location));
         }
     }
-    workspace
+    Workspace::from_parts(Layout::new(Some(root), Vec::new()), hidden, Vec::new())
 }
 
 /// craft-ui's checks plus the graph's: a saved or hand-edited file cannot hide, float, group
 /// or collapse it.
 pub fn validate(workspace: &Workspace) -> Result<(), String> {
     workspace.validate().map_err(|error| error.to_string())?;
-    let layout = &workspace.layout;
-    if layout.floating.iter().any(|window| window.contains(&Panel::Graph)) {
+    let layout = workspace.layout();
+    if layout.floating.iter().any(|window| window.column.panels().any(|panel| *panel == Panel::Graph)) {
         return Err("The graph cannot float".into());
     }
-    if workspace.hidden.iter().any(|(panel, _)| *panel == Panel::Graph) {
+    if workspace.hidden().iter().any(|(panel, _)| *panel == Panel::Graph) {
         return Err("The graph cannot be hidden".into());
     }
     let mut found = false;
@@ -141,7 +135,7 @@ pub fn validate(workspace: &Workspace) -> Result<(), String> {
                 }
                 found = true;
             }
-            Node::Stack { entries } if entries.iter().any(|entry| entry.panel == Panel::Graph) => {
+            Node::Stack { entries, .. } if entries.iter().any(|entry| entry.panel == Panel::Graph) => {
                 return Err("The graph cannot be collapsed".into());
             }
             Node::Dock { columns, .. } if columns.iter().flat_map(|column| &column.groups).any(|group| group.panels.contains(&Panel::Graph)) => {
@@ -162,11 +156,25 @@ pub struct Dock {
     workspace: Workspace,
     /// A panel to bring in front of the other floating windows on the next frame.
     raise: Option<Panel>,
+    /// What the dock reads of each panel; not saved.
+    #[allow(dead_code)] // P3(shell-w8): sh.A17
+    pub(crate) specs: craft_tracked::Tracked<Specs>,
+}
+
+/// Each panel's label, limits and float size, as the dock reads them.
+#[derive(Clone, Debug, Default, PartialEq, craft_ui::contract::PlainData)]
+pub(crate) struct Specs;
+
+impl craft_ui::docking::PanelSpecs<Panel> for Specs {
+    fn spec(&self, panel: &Panel) -> craft_ui::docking::PanelSpec {
+        let _ = panel;
+        todo!("sh.A17")
+    }
 }
 
 impl Default for Dock {
     fn default() -> Self {
-        Dock { workspace: default_workspace(), raise: None }
+        Dock { workspace: default_workspace(), raise: None, specs: Default::default() }
     }
 }
 
@@ -199,7 +207,7 @@ impl Dock {
         if validate(&workspace).is_err() {
             return Dock::default();
         }
-        Dock { workspace, raise: None }
+        Dock { workspace, raise: None, specs: Default::default() }
     }
 
     pub fn workspace(&self) -> &Workspace {
@@ -207,12 +215,12 @@ impl Dock {
     }
 
     pub fn is_open(&self, p: Panel) -> bool {
-        self.workspace.layout.contains(&p)
+        self.workspace.layout().contains(&p)
     }
 
     /// Open and the front tab of its group.
     pub fn is_visible(&self, p: Panel) -> bool {
-        self.workspace.layout.panel_state(&p) == PanelState::Front
+        self.workspace.layout().panel_state(&p) == PanelState::Front
     }
 
     /// Hide a visible panel, otherwise bring it up.
@@ -221,7 +229,7 @@ impl Dock {
     }
 
     pub fn close(&mut self, p: Panel) {
-        if let Err(error) = self.workspace.set_visible(p, false, None, permissions) {
+        if let Err(error) = self.workspace.set_visible(p, false, None, false, permissions) {
             log::warn!("panel {p:?} was not closed: {error}");
         }
     }
@@ -230,7 +238,7 @@ impl Dock {
     /// front.
     pub fn focus(&mut self, p: Panel) {
         let mut next = self.workspace.clone();
-        match next.set_visible(p, true, None, permissions) {
+        match next.set_visible(p, true, None, false, permissions) {
             Ok(()) if validate(&next).is_ok() => {
                 self.workspace = next;
                 self.raise = Some(p);
@@ -242,9 +250,10 @@ impl Dock {
 
     /// One change from the dock area's gestures. A change that is rejected leaves the layout as
     /// it was.
+    #[allow(dead_code)] // P3(shell-w8): removed upstream: the area that produced these actions is gone
     fn apply(&mut self, action: Action<Panel>) {
         let mut next = self.workspace.clone();
-        match next.apply(action, permissions) {
+        match next.apply(action, false, permissions) {
             Ok(_) if validate(&next).is_ok() => self.workspace = next,
             Ok(_) => log::warn!("a panel move would break the graph's rules"),
             Err(error) => log::warn!("a panel move was not applied: {error}"),
@@ -259,54 +268,11 @@ fn area_id() -> Id {
     Id::unique("materialcraft-docking")
 }
 
-/// The dock look: every panel group is a card on the window's frame colour, its tab strip
-/// without hard lines, the shown tab a pill, uppercase captions.
-fn style(ui: &Ui, t: &Tokens) -> DockStyle {
-    let mut s = DockStyle::from_ui(ui);
-    s.gap = 6.0;
-    // Smallest panel extent a divider drag leaves.
-    s.min_pane = 60.0;
-    s.background = t.panel;
-    s.tab_background = t.panel;
-    s.active_background = t.button;
-    s.text = t.text_strong;
-    s.inactive_text = t.text_dim;
-    s.border = egui::Stroke::NONE;
-    s.accent = t.accent;
-    s.floating_background = t.panel;
-    s.floating_stroke = egui::Stroke::new(1.0, t.button_border);
-    s.font = egui::FontId::proportional(10.5);
-    s.min_tab_width = 54.0;
-    s.tab_height = 30.0;
-    // Panels arrange in a split tree around the graph; floating title bars only move windows.
-    s.new_dock_zones = false;
-    s.title_bar_docks = false;
-    s
-}
-
 /// Draw the dock (graph and panels) into `ui`.
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
-    let ctx = ui.ctx().clone();
-    let tk = Tokens::get(&ctx);
-    let style = style(ui, &tk);
-    let layout = app.ui.dock.workspace.layout.clone();
-    let mut area = DockArea::new(area_id()).input_blocked(crate::shell::modality::Modality::capture(app, &ctx).is_blocked());
-    if let Some(panel) = app.ui.dock.raise.take() {
-        area = area.raise_panel(panel);
-    }
-    let output = area.show_content(ui, &layout, &style, &mut Panels { app });
-    if let Some(error) = &output.error {
-        log::warn!("docking: {error}");
-    }
-    // A body that changed the layout (a panel opened from its own menu) wins over this frame's
-    // gestures, which were made against the old one.
-    if app.ui.dock.workspace.layout != layout {
-        craft_ui::docking::cancel_drag::<Panel>(&ctx, area_id());
-        return;
-    }
-    for action in output.actions {
-        app.ui.dock.apply(action);
-    }
+    // P3(shell-w8): removed upstream: `DockArea` is gone; shell-w8 draws the dock through `DockPanels` (sh.A17).
+    let _ = (app.ui.dock.raise, &*ui, area_id());
+    todo!("shell-w8")
 }
 
 /// The panels' contents, names and limits for the dock area.
@@ -314,7 +280,9 @@ struct Panels<'a> {
     app: &'a mut MaterialCraftApp,
 }
 
-impl DockContent<Panel> for Panels<'_> {
+// P3(shell-w8): removed upstream: `DockContent` is gone; the bodies stay as plain methods.
+#[allow(dead_code)]
+impl Panels<'_> {
     fn body(&mut self, ui: &mut Ui, panel: &Panel) {
         let app = &mut *self.app;
         match panel {
@@ -352,9 +320,8 @@ impl DockContent<Panel> for Panels<'_> {
         permissions(panel)
     }
 
-    fn limits(&self, panel: &Panel) -> PanelLimits {
-        let min = if *panel == Panel::Graph { vec2(240.0, 160.0) } else { vec2(120.0, 60.0) };
-        PanelLimits { min, ..PanelLimits::default() }
+    fn limits(&self, panel: &Panel) -> egui::Vec2 {
+        if *panel == Panel::Graph { vec2(240.0, 160.0) } else { vec2(120.0, 60.0) }
     }
 
     fn floating_size(&self, _panel: &Panel) -> Option<egui::Vec2> {
@@ -371,7 +338,7 @@ mod tests {
         let w = default_workspace();
         assert!(validate(&w).is_ok());
         for panel in Panel::ALL {
-            assert!(w.layout.contains(&panel) || w.hidden.iter().any(|(p, _)| *p == panel), "{panel:?} is neither shown nor hidden");
+            assert!(w.layout().contains(&panel) || w.hidden().iter().any(|(p, _)| *p == panel), "{panel:?} is neither shown nor hidden");
         }
     }
 

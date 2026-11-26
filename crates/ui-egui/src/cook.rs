@@ -63,6 +63,8 @@ pub struct Cooker {
     epoch: u64,
     /// Tools ▸ Suspend engine: nothing cooks until it is resumed
     pub suspended: bool,
+    /// `busy` reports true while this is set (`ui.set {cookHold}`), so thumbnails hold too.
+    pub hold: bool,
     /// Tools ▸ Cancel rendering stopped the running cook: it does not start again until the next edit
     stopped_by_user: bool,
     /// The retained preview cannot supply parameter values at this epoch

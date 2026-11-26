@@ -234,6 +234,13 @@ fn merge_json(dst: &mut Value, patch: &Value) {
     }
 }
 
+/// The UI phase of the control channel: answers what needs the pass.
+#[allow(dead_code)] // P3(shell-w6): sh.A18
+pub(crate) fn ui_pass(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+    let _ = (app, ctx);
+    todo!("sh.A18")
+}
+
 pub fn handle(app: &mut MaterialCraftApp, ctx: &egui::Context, method: &str, p: &Value) -> Value {
     match crate::cook::guard("control request", || Ok(handle_inner(app, ctx, method, p))) {
         Ok(v) => v,

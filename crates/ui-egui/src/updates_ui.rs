@@ -2,7 +2,6 @@
 //! the prompts that report them. A Nightly has no updater: the Launcher installs it.
 
 use craft_update::updater::{Action, Status, Updater};
-use craft_update::{CheckResultDialog, CheckResultResponse};
 
 use crate::MaterialCraftApp;
 
@@ -69,10 +68,11 @@ pub(crate) fn tick(app: &mut MaterialCraftApp, ctx: &egui::Context) {
     let rt = &mut app.updates_rt;
     rt.repaint = Some(ctx.clone());
     let Some(updater) = rt.updater.as_mut() else { return };
+    // P3(shell-w14): removed upstream: `check_now` and `check_at_start` no longer take the context
     if std::mem::take(&mut rt.check_requested) {
-        updater.check_now(ctx);
+        updater.check_now();
     } else if rt.startup_check {
-        updater.check_at_start(ctx);
+        updater.check_at_start();
     }
     updater.tick(ctx);
 }
@@ -84,26 +84,26 @@ fn result_window_shows(status: &Status, prompt_open: bool) -> bool {
     !prompt_open && !matches!(status, Status::Idle)
 }
 
-pub(crate) fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
-    let Some(updater) = app.updates_rt.updater.as_mut() else { return };
-    // An installation, and the close for a ready update, wait until nothing is unsaved
-    let clean = !crate::unsaved::needs_confirmation(&app.session);
-    match updater.show_if(ctx, clean) {
-        Action::OpenUrl(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
-        Action::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-        Action::None => {}
-    }
-    // A found update opens the startup prompt and leaves the status idle, which ends the result dialog
-    if result_window_shows(updater.status(), updater.prompt_open()) {
-        match CheckResultDialog::new(&crate::UPDATE_APP, materialcraft_engine::VERSION).with_translator(translate).show(ctx, updater.status()) {
-            CheckResultResponse::None => {}
-            // Closing the dialog dismisses the outcome it showed
-            CheckResultResponse::Close => updater.dismiss_status(),
-            CheckResultResponse::CheckAgain => app.updates_rt.check_requested = true,
-            // The next `show_if` asks the window to close once nothing is unsaved
-            CheckResultResponse::RestartToUpdate => updater.restart_to_update(),
-        }
-    }
+/// The software-update prompt, dispatched by `windows::show`.
+pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
+    // P3(shell-w14): sh.A24 (removed upstream: `Updater::show_if` and `CheckResultDialog`): the prompt is
+    // drawn through `run_with_save` and `UpdateCheckDialog` on the main window's dialog host.
+    let _ = (app, ui, Action::None);
+}
+
+/// Installs a fresh updater with a scripted check source and requests a check (`ui.set {updateStatus}`); `available`
+/// offers a release, and the browser build answers an error.
+#[allow(dead_code)] // P3(shell-w14): sh.A19
+pub(crate) fn scripted_status(app: &mut MaterialCraftApp, status: &str, version: Option<&str>, message: Option<&str>) -> Result<(), String> {
+    let _ = (app, status, version, message);
+    todo!("sh.A19")
+}
+
+/// Whether the update prompt shows; it is the updates source of `Modality::capture`.
+#[allow(dead_code)] // P3(shell-w14): sh.A24
+pub(crate) fn prompt_open(app: &MaterialCraftApp) -> bool {
+    let _ = app;
+    todo!("sh.A24")
 }
 
 /// Opens the update prompt for a test in another module

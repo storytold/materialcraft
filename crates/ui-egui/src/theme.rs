@@ -334,8 +334,19 @@ pub fn apply(ctx: &egui::Context, b: Brightness, accent: Accent) {
         v.selection.stroke = Stroke::new(1.0, t.accent);
         v.hyperlink_color = t.accent;
         let w = &mut v.widgets;
-        craft_ui::theme::WidgetPalette { noninteractive: t.panel, inactive: t.button, hovered: t.row_hover, active: t.tool_active, open: t.row_hover }
-            .apply_to(w, t.cr(), Stroke::new(1.0, t.text));
+        // P3(shell-w12): removed upstream: `craft_ui::theme::WidgetPalette`
+        for (state, fill) in [
+            (&mut w.noninteractive, t.panel),
+            (&mut w.inactive, t.button),
+            (&mut w.hovered, t.row_hover),
+            (&mut w.active, t.tool_active),
+            (&mut w.open, t.row_hover),
+        ] {
+            state.bg_fill = fill;
+            state.weak_bg_fill = fill;
+            state.corner_radius = t.cr();
+            state.fg_stroke = Stroke::new(1.0, t.text);
+        }
         // Hovered and pressed lettering, and `RichText::strong` (captions), in the strong colour.
         w.hovered.fg_stroke.color = t.text_strong;
         w.active.fg_stroke.color = t.text_strong;

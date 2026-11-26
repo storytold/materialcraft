@@ -12,6 +12,7 @@ fn label(button: Button) -> &'static str {
         Button::Minimize => "Minimize",
         Button::Maximize => "Maximize",
         Button::Close => "Close",
+        _ => "", // P3(shell-w4): `craft_window::Button` is now non-exhaustive
     }
 }
 
@@ -20,6 +21,7 @@ fn glyph(button: Button) -> &'static str {
         Button::Minimize => icon::MINUS,
         Button::Maximize => icon::SQUARE,
         Button::Close => icon::X,
+        _ => icon::X, // P3(shell-w4): `craft_window::Button` is now non-exhaustive
     }
 }
 
@@ -28,6 +30,7 @@ fn command(button: Button, maximized: bool) -> ViewportCommand {
         Button::Minimize => ViewportCommand::Minimized(true),
         Button::Maximize => ViewportCommand::Maximized(!maximized),
         Button::Close => ViewportCommand::Close,
+        _ => ViewportCommand::Focus, // P3(shell-w4): `craft_window::Button` is now non-exhaustive
     }
 }
 

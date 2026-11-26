@@ -29,6 +29,18 @@ pub static LANGUAGES: [Language; COUNT] =
 static MAPS: [OnceLock<HashMap<&'static str, &'static str>>; COUNT] = [const { OnceLock::new() }; COUNT];
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
 
+/// The catalogs the Host carries: English keys and the translated tables.
+#[allow(dead_code)] // P3(shell-w12): sh.A9
+pub(crate) fn host_i18n() -> std::sync::Arc<craft_i18n::I18n> {
+    todo!("sh.A9")
+}
+
+/// The current UI language as the catalogs name it.
+#[allow(dead_code)] // P3(shell-w12): sh.A9
+pub(crate) fn lang() -> craft_i18n::Lang {
+    todo!("sh.A9")
+}
+
 /// Switch the UI language (unknown codes fall back to English).
 pub fn set_language(code: &str) {
     CURRENT.store(LANGUAGES.iter().position(|l| l.code == code).unwrap_or(0), Ordering::Relaxed);
@@ -41,7 +53,8 @@ pub fn current() -> &'static Language {
 
 /// Returns true if `code` is a right-to-left language (e.g. Arabic `"ar"`).
 pub fn is_rtl_code(code: &str) -> bool {
-    craft_ui::direction::resolve(code, craft_ui::direction::Setting::Language) == craft_ui::direction::Direction::Rtl
+    // P3(shell-w12): removed upstream: `craft_ui::direction`; direction is `I18n::rtl` through the Host (sh.A9)
+    matches!(code.split(['-', '_']).next(), Some("ar" | "he" | "fa" | "ur" | "yi" | "ps" | "sd" | "ug" | "dv"))
 }
 
 /// Returns true if the current UI language is right-to-left.

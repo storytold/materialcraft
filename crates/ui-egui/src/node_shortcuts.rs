@@ -6,6 +6,13 @@ use egui::{Event, InputState};
 /// The library categories whose entries can have a creation shortcut
 pub(crate) const CATEGORIES: [&str; 2] = ["Atomic nodes", "Graph items"];
 
+/// The saved node-shortcut map as overrides for `node.add.<id>`, dropping a chord the app catalog already holds.
+#[allow(dead_code)] // P3(shell-w5): sh.A14
+pub(crate) fn migrate(old: &std::collections::BTreeMap<String, String>, platform: Platform) -> craft_keymap::Overrides {
+    let _ = (old, platform);
+    todo!("sh.A14")
+}
+
 /// The chord on a fresh key press, using the event's own modifiers
 pub(crate) fn event_chord(event: &Event, platform: Platform) -> Option<Chord> {
     let Event::Key { key, pressed: true, repeat: false, modifiers, .. } = event else { return None };

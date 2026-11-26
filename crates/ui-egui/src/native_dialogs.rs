@@ -63,13 +63,20 @@ impl GraphRef {
 
 /// A queue for an app that has no window to wake yet (offscreen snapshots and tests)
 pub(crate) fn unattached() -> Dialogs {
-    craft_dialogs::Dialogs::new(std::sync::Arc::new(|| {}))
+    craft_dialogs::Dialogs::new(craft_dialogs::Wake::none()) // P3(shell-w9): sh.A7 `Dialogs::new` takes a `Wake`
 }
 
 /// A queue whose answers wake the window
 pub(crate) fn attached(ctx: &egui::Context) -> Dialogs {
     let ctx = ctx.clone();
-    craft_dialogs::Dialogs::new(std::sync::Arc::new(move || ctx.request_repaint()))
+    craft_dialogs::Dialogs::new(craft_dialogs::Wake::new(move || ctx.request_repaint())) // P3(shell-w9): sh.A7
+}
+
+/// Whether a file dialog is open or waiting: the file-dialog source of `Modality::capture`.
+#[allow(dead_code)] // P3(shell-w9): sh.A7
+pub(crate) fn pending(app: &MaterialCraftApp) -> bool {
+    let _ = app;
+    todo!("sh.A7")
 }
 
 /// Queue a dialog unless one is already open or waiting, in which case the open one comes forward
@@ -141,6 +148,8 @@ pub(crate) fn poll(app: &mut MaterialCraftApp) {
                 Some(path) => chosen(app, then, &path),
                 None => cancelled(app, then),
             },
+            // P3(shell-w9): sh.A7: a Save panel now answers `Saved`
+            Answer::Saved { path, .. } => chosen(app, then, &path),
             Answer::Cancelled | Answer::Message(_) => cancelled(app, then),
             Answer::Unavailable(why) => {
                 app.toast(format!("{}: {why}", tr("The file dialog could not be shown")), true);

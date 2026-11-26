@@ -282,8 +282,9 @@ mod web {
         super::PackageSave::request(app, copy);
     }
 
-    pub fn save_dialog(app: &mut MaterialCraftApp, ctx: &egui::Context) {
-        super::PackageSave::show(app, ctx, download);
+    pub fn save_dialog(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
+        // P3(shell-w10): sh.A29: `save_dialog` takes the `Ui`; `PackageSave::show` still takes the context
+        super::PackageSave::show(app, &ui.ctx().clone(), download);
     }
 
     pub(crate) fn save_then(app: &mut MaterialCraftApp, action: crate::unsaved::Guarded) {

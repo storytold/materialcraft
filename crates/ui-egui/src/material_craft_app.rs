@@ -1,16 +1,102 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::user_dir;
-use crate::{ControlRequest, Toast, UiState, now_ms};
+use crate::{ControlRequest, UiState, now_ms};
 use crate::{control, cook, docking, fonts, function, graph, i18n, menus, pattern, state, theme, thumbs, toolbar, view2d, view3d, web_files, windows};
 use materialcraft_engine::Session;
 use serde_json::Value;
 use std::collections::VecDeque;
 
+/// P3(shell-w5): removed upstream: stands in for `craft_keymap::egui::Dispatcher`, which the framework
+/// dropped; sh.A2 removes the `dispatcher` field and sh.A13 dispatches through the framework keymap.
+pub(crate) struct Dispatcher;
+
+impl Dispatcher {
+    pub(crate) fn new() -> Self {
+        Dispatcher
+    }
+
+    pub(crate) fn with_repeat(self, _repeat: bool) -> Self {
+        self
+    }
+
+    pub(crate) fn with_clipboard_events(self, _clipboard: bool) -> Self {
+        self
+    }
+
+    pub(crate) fn dispatch_filtered(
+        &mut self,
+        _input: &mut egui::InputState,
+        _keymap: &craft_keymap::Keymap,
+        _active: &craft_keymap::Active,
+        _allow: impl FnMut(&craft_keymap::Hit) -> bool,
+    ) -> Vec<craft_keymap::Hit> {
+        todo!("shell-w5")
+    }
+}
+
+/// One message of the outbox: `step` posts each to the window's notice center and empties the outbox.
+pub struct Toast {
+    /// The message.
+    pub text: String,
+    /// Whether it reports an error.
+    pub error: bool,
+}
+
+/// How a window opens: the frame decision, where the settings live and the eframe-era file to import once.
+pub struct StartOptions {
+    /// Who draws the window frame; `None` when the app has no say (browser, tests).
+    pub frame: Option<craft_window::policy::Decision>,
+    /// Where the settings store lives.
+    pub settings: craft_settings::Location,
+    /// The old eframe storage file (or the browser's localStorage key), read once.
+    pub legacy_settings: Option<std::path::PathBuf>,
+}
+
+// `Location` has no `Default`, so the derive the contract names cannot compile: written by hand.
+impl Default for StartOptions {
+    fn default() -> Self {
+        StartOptions { frame: None, settings: craft_settings::Location::Auto, legacy_settings: None }
+    }
+}
+
+#[allow(dead_code)] // P3(shell-w4): sh.A2: the new fields are read once shell-w4 writes `step`
 pub struct MaterialCraftApp {
     pub session: Session,
     pub ui: UiState,
     pub control: Option<std::sync::mpsc::Receiver<ControlRequest>>,
     pub toasts: Vec<Toast>,
+    /// Who draws the window frame.
+    pub(crate) frame: Option<craft_window::policy::Decision>,
+    /// The command states the runtime reads each frame.
+    pub(crate) command_states: craft_tracked::Tracked<craft_ui::runtime::commands::CommandStates>,
+    /// The app's commands.
+    pub(crate) catalog: craft_ui::runtime::commands::AppCatalog,
+    /// The user's shortcut changes over the catalog's defaults.
+    pub(crate) overrides: std::sync::Arc<craft_keymap::Overrides>,
+    /// The menu bar the shell draws.
+    pub(crate) menu: craft_tracked::Tracked<craft_menu::MenuBar>,
+    /// The native menu bar (macOS).
+    #[cfg(target_os = "macos")]
+    pub(crate) native_menu: Option<craft_menu::NativeMenu>,
+    /// The shared services, replaced as a whole on a language change.
+    pub(crate) host: std::sync::Arc<craft_host::Host>,
+    /// The open Shortcuts list.
+    pub(crate) shortcuts: Option<craft_menu::shortcuts::DialogState>,
+    /// The window's notices.
+    pub(crate) notices: craft_ui::notices::NoticeCenter,
+    /// The settings document.
+    pub(crate) settings: craft_settings::SettingsStore<UiState>,
+    /// The commands fired since the last frame.
+    pub(crate) fired: Vec<craft_ui::runtime::commands::Fired>,
+    /// Requests the control hooks leave for panels.
+    pub(crate) hooks: crate::control_hooks::Hooks,
+    /// The file picks in flight and what each does.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) picks: std::collections::HashMap<craft_host::PickId, crate::native_dialogs::Then>,
+    /// The unsaved-changes prompt, while it is open.
+    pub(crate) unsaved: Option<crate::unsaved::Pending>,
+    /// Autosave of a modified package.
+    pub(crate) autosave: crate::autosave::State,
     /// Background cooking of the open graph
     pub cooker: cook::Cooker,
     /// Node output thumbnails and library previews
@@ -63,7 +149,7 @@ pub struct MaterialCraftApp {
     pub window_layout: Option<craft_window::Layout>,
     /// Keyboard shortcuts and their dispatch
     pub(crate) keymap: craft_keymap::Keymap,
-    pub(crate) dispatcher: craft_keymap::egui::Dispatcher,
+    pub(crate) dispatcher: Dispatcher,
     /// What Copy or Cut put on the clipboard this frame, for the system clipboard
     pub(crate) system_clipboard: Option<String>,
     /// Fallback fonts for Arabic
@@ -82,7 +168,18 @@ pub struct MaterialCraftApp {
 }
 
 impl MaterialCraftApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, session: Session) -> MaterialCraftApp {
+    /// Installs the framework runtime on `ctx`: the app's root environment, fonts and window frame. Returns the
+    /// installed font stack.
+    pub fn install_runtime(ctx: &egui::Context, frame: Option<craft_window::policy::Decision>) -> Result<craft_ui::fonts::Stack, craft_ui::InstallError> {
+        let _ = (ctx, frame);
+        todo!("sh.A1")
+    }
+
+    /// The app in an eframe window: installs the runtime with `options.frame`, keeps the decision, and opens the
+    /// settings store at `options.settings`, importing `options.legacy_settings` once.
+    pub fn new(cc: &eframe::CreationContext<'_>, session: Session, options: StartOptions) -> MaterialCraftApp {
+        // P3(shell-w4): sh.A1: `options` is read once `new` installs the runtime and opens the settings store
+        let _ = options;
         let ui = cc.storage.and_then(|s| eframe::get_value::<UiState>(s, "ui")).unwrap_or_default();
         theme::install(&cc.egui_ctx);
         let mut app = MaterialCraftApp::headless(session, ui);
@@ -108,6 +205,25 @@ impl MaterialCraftApp {
             ui,
             control: None,
             toasts: Vec::new(),
+            frame: None,
+            command_states: Default::default(),
+            catalog: craft_ui::runtime::commands::AppCatalog::new(Vec::new(), 0).unwrap_or_else(|error| todo!("sh.A2: {error:?}")),
+            overrides: Default::default(),
+            menu: Default::default(),
+            #[cfg(target_os = "macos")]
+            native_menu: None,
+            host: std::sync::Arc::new(
+                craft_host::Host::builder(craft_host::AppInfo { id: "materialcraft", name: "MaterialCraft", version: materialcraft_engine::VERSION }).build(),
+            ),
+            shortcuts: None,
+            notices: Default::default(),
+            settings: craft_settings::SettingsStore::open(craft_settings::Location::Memory).0,
+            fired: Vec::new(),
+            hooks: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            picks: Default::default(),
+            unsaved: None,
+            autosave: Default::default(),
             cooker: cook::Cooker::default(),
             thumbs: thumbs::Thumbs::default(),
             template_previews: windows::TemplatePreviews::default(),
@@ -148,7 +264,7 @@ impl MaterialCraftApp {
             keymap: menus::keymap(craft_keymap::Platform::current()),
 
             // Accept clipboard events without duplicating web key commands
-            dispatcher: craft_keymap::egui::Dispatcher::new().with_repeat(true).with_clipboard_events(true),
+            dispatcher: Dispatcher::new().with_repeat(true).with_clipboard_events(true),
             system_clipboard: None,
             fonts: fonts::UiFonts::default(),
             fonts_ready: false,
@@ -412,7 +528,8 @@ impl MaterialCraftApp {
 
     pub(crate) fn toast_only(&mut self, text: String, error: bool) {
         self.status = text.clone();
-        self.toasts.push(Toast { text, error, until: self.last_time + if error { 6.0 } else { 3.0 } });
+        // P3(shell-w4): sh.A3: the outbox has no expiry; `step` posts it to the notice center
+        self.toasts.push(Toast { text, error });
     }
 
     /// Every `prefs.autosave_minutes`, write a modified package to the autosave folder
@@ -474,7 +591,8 @@ impl eframe::App for MaterialCraftApp {
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         #[cfg(not(target_arch = "wasm32"))]
-        self.step_then(ctx, craft_quit::on_close_request);
+        // P3(shell-w4): removed upstream: `craft_quit::on_close_request`; sh.A6 `unsaved::close_requested` takes over
+        self.step_then(ctx, |ctx| craft_quit::intercept_close(ctx, false));
         #[cfg(target_arch = "wasm32")]
         self.step(ctx);
     }
@@ -549,7 +667,10 @@ impl MaterialCraftApp {
         self.reconcile_editors();
         menus::shortcuts(self, ctx);
         self.publish_clipboard(ctx);
-        self.toasts.retain(|t| t.until > now);
+        // P3(shell-w4): sh.A3: `Toast` has no `until`; until `step` posts the outbox, the old expiry is a count cap
+        let _ = now;
+        let excess = self.toasts.len().saturating_sub(8);
+        self.toasts.drain(..excess);
         if !self.input_queue.is_empty() {
             ctx.request_repaint();
         }

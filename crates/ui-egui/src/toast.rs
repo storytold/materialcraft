@@ -1,5 +1,6 @@
 use crate::{MaterialCraftApp, theme};
 
+#[allow(dead_code)] // P3(shell-w4): sh.A3: the outbox type is `material_craft_app::Toast`; this one goes with the file
 pub struct Toast {
     pub text: String,
     pub error: bool,

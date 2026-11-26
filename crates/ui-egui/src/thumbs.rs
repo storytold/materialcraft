@@ -40,6 +40,106 @@ mod preview_cache_settings;
 #[path = "preview_disk_cache.rs"]
 mod preview_disk_cache;
 
+/// The key of a node output's picture: the cook hash and the output port.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NodeThumb {
+    /// The cook result's key.
+    pub cook: u64,
+    /// The output port.
+    pub port: usize,
+}
+
+/// A node output's image as a thumbnail source: it renders `ThumbRender::Ready` on the UI thread.
+pub struct NodeFace<'a> {
+    /// The cooked output.
+    pub image: &'a Image,
+}
+
+impl craft_ui::primitives::ThumbSource<NodeThumb> for NodeFace<'_> {
+    fn revision(&self, key: &NodeThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::Revision {
+        let _ = (key, request);
+        todo!("sh.A12")
+    }
+
+    fn render(&self, key: &NodeThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::ThumbRender {
+        let _ = (key, request);
+        todo!("sh.A12")
+    }
+}
+
+/// The key of a library picture: a node's preview or a library graph's.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LibraryThumb {
+    /// The preview of the node definition with this id.
+    Node(String),
+    /// The preview of a graph of a package in the library.
+    Graph {
+        /// The package.
+        package: String,
+        /// The graph.
+        graph: String,
+    },
+}
+
+/// Renders the library's pictures in the background.
+pub struct LibrarySource {
+    library: std::sync::Arc<materialcraft_engine::NodeLibrary>,
+}
+
+impl craft_ui::primitives::ThumbSource<LibraryThumb> for LibrarySource {
+    fn revision(&self, key: &LibraryThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::Revision {
+        let _ = (&self.library, key, request);
+        todo!("sh.A12")
+    }
+
+    fn render(&self, key: &LibraryThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::ThumbRender {
+        let _ = (key, request);
+        todo!("sh.A12")
+    }
+}
+
+/// The one source of template pictures, for Home and the New graph dialog alike; the function template is blank.
+pub struct TemplateSource;
+
+impl craft_ui::primitives::ThumbSource<craft_ui::shell::ThumbKey> for TemplateSource {
+    fn revision(&self, key: &craft_ui::shell::ThumbKey, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::Revision {
+        let _ = (key, request);
+        todo!("sh.A12")
+    }
+
+    fn render(&self, key: &craft_ui::shell::ThumbKey, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::ThumbRender {
+        let _ = (key, request);
+        todo!("sh.A12")
+    }
+}
+
+#[allow(dead_code)] // P3(shell-w15): sh.A12
+impl Thumbs {
+    /// The store of node output pictures, kept in the context.
+    pub fn nodes(&self, ctx: &egui::Context) -> craft_ui::primitives::Thumbnails<NodeThumb> {
+        let _ = ctx;
+        todo!("sh.A12")
+    }
+
+    /// The store of the library's pictures, kept in the context.
+    pub fn templates(&self, ctx: &egui::Context) -> craft_ui::primitives::Thumbnails<craft_ui::shell::ThumbKey> {
+        let _ = ctx;
+        todo!("sh.A12")
+    }
+
+    /// The source that renders the library's pictures from `library`.
+    pub fn library_source(&self, library: &std::sync::Arc<materialcraft_engine::NodeLibrary>) -> LibrarySource {
+        let _ = library;
+        todo!("sh.A12")
+    }
+
+    /// Once per frame from `step`: advances the stores; library pictures hold while `busy`. Returns a cache error to report.
+    pub fn frame(&mut self, ctx: &egui::Context, busy: bool) -> Option<String> {
+        let _ = (ctx, busy);
+        todo!("sh.A12")
+    }
+}
+
 impl Thumbs {
     /// Opt in only for a native app window; offscreen harnesses never use the user's cache.
     #[cfg(not(target_arch = "wasm32"))]

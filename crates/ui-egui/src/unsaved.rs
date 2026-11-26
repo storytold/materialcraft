@@ -21,6 +21,34 @@ pub use choice::Choice;
 pub use guarded::Guarded;
 pub use step::Step;
 
+/// The held action and where its prompt stands, kept at `app.unsaved` while the unsaved-changes prompt is open.
+#[allow(dead_code)] // P3(shell-w10): sh.A6
+pub(crate) struct Pending {
+    /// The documents the prompt asks about, one at a time.
+    pub(crate) guard: craft_quit::CloseGuard<u64>,
+    /// The action the prompt holds.
+    pub(crate) then: Guarded,
+    /// Where the guard stands.
+    pub(crate) step: craft_quit::GuardStep<u64>,
+    /// The action waits for a Save dialog.
+    pub(crate) saving: bool,
+}
+
+/// The window's close decision: `Hold` (starting a quit guard) while unsaved work or a held save exists, `Close` once
+/// the quit is confirmed.
+#[allow(dead_code)] // P3(shell-w10): sh.A6
+pub fn close_requested(app: &mut MaterialCraftApp) -> craft_ui::shell::embed::CloseDecision {
+    let _ = app;
+    todo!("sh.A6")
+}
+
+/// What the prompt holds, for readers outside the crate.
+#[allow(dead_code)] // P3(shell-w10): sh.A6
+pub fn held(app: &MaterialCraftApp) -> Option<&Guarded> {
+    let _ = app;
+    todo!("sh.A6")
+}
+
 /// Does throwing this session away lose work?
 pub fn needs_confirmation(session: &materialcraft_engine::Session) -> bool {
     session.open_packages().iter().any(|entry| entry.3)
@@ -140,7 +168,9 @@ pub fn handle_close(app: &mut MaterialCraftApp, ctx: &Context) {
 }
 
 /// The Save / Discard / Cancel dialog, while an action is held
-pub fn show(app: &mut MaterialCraftApp, ctx: &Context) {
+pub fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
+    // P3(shell-w10): sh.A6: `show` takes the `Ui`; the body still draws through the context
+    let ctx = &ui.ctx().clone();
     if app.ui.windows.unsaved.is_none() {
         return;
     }

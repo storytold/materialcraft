@@ -2,7 +2,11 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod annotation;
+mod appearance;
+mod autosave;
+mod commands;
 pub mod control;
+mod control_hooks;
 pub mod cook;
 pub mod data_root;
 pub mod docking;
@@ -27,7 +31,9 @@ pub mod os_window;
 mod preview_resolution;
 #[path = "property/mod.rs"]
 pub mod properties;
+mod settings;
 mod shell;
+mod shortcuts_list;
 pub mod state;
 pub mod theme;
 pub mod thumbs;
@@ -69,8 +75,8 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
 
 pub use control::ControlRequest;
 pub use material_craft_app::MaterialCraftApp;
+pub use material_craft_app::StartOptions;
 pub use materialcraft_engine::eval::now_ms;
 pub use state::UiState;
-pub use toast::Toast;
 #[cfg(not(target_arch = "wasm32"))]
 pub use user_directory::user_dir;

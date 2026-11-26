@@ -1,7 +1,6 @@
 //! Compact widgets matching the app's look: labelled slim sliders, icon buttons, section
 //! headers, channel toggle chips and color swatches.
 
-use craft_ui::buttons::{ButtonVisuals, IconButton, IconButtonStyle};
 use egui::{Color32, CornerRadius, Response, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::theme::Tokens;
@@ -181,22 +180,21 @@ pub fn elided(painter: &egui::Painter, text: impl Into<String>, size: f32, color
 /// A square icon button (Phosphor glyph) in a rounded tool well: `selected` sits in the accent
 /// tinted well (the shared Craft icon button, `craft_ui::buttons`).
 pub fn icon_button(ui: &mut Ui, icon: &str, tooltip: &str, selected: bool, size: f32) -> Response {
+    // P3(shell-w12): removed upstream: `craft_ui::buttons::{ButtonVisuals, IconButton, IconButtonStyle}`; a plain
+    // painted well stands in until this file is deleted.
     let tk = Tokens::get(ui.ctx());
-    let well = |fill, icon| ButtonVisuals { fill, stroke: Stroke::NONE, icon };
-    let style = IconButtonStyle {
-        normal: well(Color32::TRANSPARENT, tk.text),
-        hovered: well(tk.row_hover, tk.text_strong),
-        pressed: Some(well(tk.tool_active, tk.text_strong)),
-        selected: well(tk.tool_active, tk.text_strong),
-        corner_radius: CornerRadius::same(6),
-        focus_stroke: Stroke::new(1.0, tk.accent),
+    let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::click());
+    let (fill, color) = if selected || response.is_pointer_button_down_on() {
+        (tk.tool_active, tk.text_strong)
+    } else if response.hovered() {
+        (tk.row_hover, tk.text_strong)
+    } else {
+        (Color32::TRANSPARENT, tk.text)
     };
-    IconButton::new(tooltip, vec2(size, size), &style)
-        .selected(selected)
-        .show(ui, |ui, rect, color| {
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(size * 0.62), color);
-        })
-        .on_hover_text(tooltip)
+    ui.painter().rect_filled(rect, CornerRadius::same(6), fill);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(size * 0.62), color);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tooltip));
+    response.on_hover_text(tooltip)
 }
 
 /// A flat button filled with the accent, white lettering (a dialog's main action).

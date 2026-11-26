@@ -1,6 +1,6 @@
 //! Menu actions and shortcuts share stable command ids
 
-use craft_keymap::{Active, Bindable, Binding, Chord, Keymap, Platform, Scope, Scopes};
+use craft_keymap::{Active, Binding, Chord, CommandDef, Keymap, Platform, Scope, Scopes};
 use egui::class::HasClasses as _;
 use serde_json::Value;
 
@@ -318,7 +318,8 @@ pub(crate) fn shortcut_table() -> Vec<(&'static str, &'static str)> {
 pub(crate) fn keymap(platform: Platform) -> Keymap {
     let catalog = shortcut_table()
         .into_iter()
-        .filter_map(|(id, text)| Some(Bindable::new(id, id, Scope::app()).with_default(Binding::new(parse_shortcut(text)?))))
+        // P3(shell-w5): sh.A13: `Bindable` is now `CommandDef`; the catalog moves to `commands::catalog`
+        .filter_map(|(id, text)| Some(CommandDef::new(id, id, Scope::app()).with_default(Binding::new(parse_shortcut(text)?))))
         .collect();
     Keymap::new(catalog, Scopes::new(), platform)
 }
@@ -336,7 +337,7 @@ pub fn menu_bar(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
         let window_layout = app.window_layout.clone();
         #[cfg(not(target_arch = "wasm32"))]
         if window_layout.is_some() {
-            craft_window::title_bar::empty_area(ui, ui.max_rect());
+            // P3(shell-w5): removed upstream: `craft_window::title_bar::empty_area`; the app shell draws the title bar
         }
 
         egui::MenuBar::new().ui(ui, |ui| {
@@ -898,7 +899,7 @@ mod tests {
     #[test]
     fn a_web_copy_press_runs_edit_copy() {
         let mut app = app();
-        app.dispatcher = craft_keymap::egui::Dispatcher::new().with_repeat(true).with_clipboard_events(true);
+        app.dispatcher = crate::material_craft_app::Dispatcher::new().with_repeat(true).with_clipboard_events(true);
         app.run("edit.selectAll", serde_json::json!({}));
         let ctx = egui::Context::default();
         copy_event_kept(&mut app, &ctx, press_c(vec![egui::Event::Copy]));
@@ -908,7 +909,7 @@ mod tests {
     #[test]
     fn selected_label_text_keeps_its_copy_on_the_web() {
         let mut app = app();
-        app.dispatcher = craft_keymap::egui::Dispatcher::new().with_repeat(true).with_clipboard_events(true);
+        app.dispatcher = crate::material_craft_app::Dispatcher::new().with_repeat(true).with_clipboard_events(true);
         app.run("edit.selectAll", serde_json::json!({}));
         let ctx = egui::Context::default();
         select_label_text(&ctx);

@@ -45,6 +45,8 @@ pub struct Prefs {
     pub node_shortcuts: std::collections::BTreeMap<String, String>,
     /// Windows ▸ Main toolbar
     pub show_toolbar: bool,
+    /// The app's own theme, mode and size choice; the framework resolves it over the suite's.
+    pub appearance: craft_theme::AppChoice,
 }
 
 impl Prefs {
@@ -84,6 +86,7 @@ impl Default for Prefs {
             view_outputs_on_open: true,
             node_shortcuts: Default::default(),
             show_toolbar: true,
+            appearance: craft_theme::AppChoice::new(None, None, None),
         }
     }
 }
