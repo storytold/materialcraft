@@ -14,8 +14,10 @@ use crate::MaterialCraftApp;
 use crate::function::library::FunctionLibraryDrag;
 mod library_divider_action;
 mod library_target;
-use crate::graph::{LibraryDrag, header_color};
+use crate::graph::{LibraryDrag, node_colors::NodeColors};
 use crate::i18n::tr;
+use crate::thumbs::LibraryThumb;
+use craft_ui::primitives::{Priority, ThumbRequest};
 // PLAN: `theme` and `widgets` are gone from lib.rs (shell-w4); this file's readers of `Tokens` and `widgets::elided` are panels-w7's rewrite
 use crate::theme::Tokens;
 use library_divider_action::LibraryDividerAction;
@@ -415,18 +417,24 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
 /// The entry's thumbnail: a cooked preview for native nodes and library graphs, its category's icon otherwise
 fn preview(app: &mut MaterialCraftApp, ui: &Ui, ctx: &egui::Context, entry: &LibraryEntry, rect: Rect, fade: f32) {
     let painter = ui.painter();
+    let store = app.thumbs.library_thumbs(ctx);
+    let source = app.thumbs.library_source(&app.session.library, app.session.library_generation());
+    let request = ThumbRequest::for_cell(rect.width().max(rect.height()), ctx.pixels_per_point());
+    let picture = |key: LibraryThumb| store.state(ctx, &source, &key, &request, Priority::VISIBLE).shown();
     let (texture, color) = match &entry.item {
-        LibraryItem::Node { def } if entry.missing.is_none() && def != "dot" && ui.is_rect_visible(rect) => (app.thumbs.library(ctx, def), header_color(def)),
+        LibraryItem::Node { def } if entry.missing.is_none() && def != "dot" && ui.is_rect_visible(rect) => {
+            (picture(LibraryThumb::Node(def.clone())), header_color(ctx, def))
+        }
         // Only tiles on screen ask for their graph to be cooked
         LibraryItem::Instance { package, graph } if entry.missing.is_none() && ui.is_rect_visible(rect) => {
-            (app.thumbs.graph(ctx, &app.session.library, package, graph), category_color(&entry.category))
+            (picture(LibraryThumb::Graph { package: package.clone(), graph: graph.clone() }), category_color(&entry.category))
         }
         _ => (None, category_color(&entry.category)),
     };
 
     match texture {
         Some(texture) => {
-            painter.image(texture, rect, Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)), Color32::WHITE.gamma_multiply(fade));
+            painter.image(texture.id, rect, texture.uv(), Color32::WHITE.gamma_multiply(fade));
         }
         None => {
             painter.rect_filled(rect, 4.0, color.gamma_multiply(0.7 * fade));
@@ -454,6 +462,11 @@ fn preview(app: &mut MaterialCraftApp, ui: &Ui, ctx: &egui::Context, entry: &Lib
         painter.circle_filled(badge.center(), 7.0, Color32::from_black_alpha(160));
         painter.text(badge.center(), egui::Align2::CENTER_CENTER, icon::CLOCK, egui::FontId::proportional(10.0), Color32::WHITE);
     }
+}
+
+/// The header colour of node definition `def`, the accent of its tile.
+fn header_color(ctx: &egui::Context, def: &str) -> Color32 {
+    craft_ui::style::StyleCx::with_root(ctx, |cx| craft_ui::style::rgba_color(cx.token_group::<NodeColors>().header(def)))
 }
 
 /// Choose the preview accent for an entry category.
@@ -490,17 +503,17 @@ pub(crate) fn add_entry(app: &mut MaterialCraftApp, entry: &LibraryEntry) {
         let target = crate::annotation::target(app);
         crate::annotation::activate(app, target);
         let camera = crate::annotation::camera(app);
-        let at = [camera.pan[0] + app.graph.view.width() * 0.5 / camera.zoom, camera.pan[1] + app.graph.view.height() * 0.5 / camera.zoom];
+        let at = [camera.center.x as f32, camera.center.y as f32];
         if let Some(result) = app.run("library.add", serde_json::json!({"entry": entry.id, "at": at, "snapToGrid": app.ui.prefs.snap_to_grid})) {
             let id = result["result"]["id"].as_u64().and_then(|id| u32::try_from(id).ok());
             let selection = if app.session.annotation_selection.is_some() { Vec::new() } else { id.into_iter().collect() };
             if let Some(editor) = &mut app.function_editor {
                 editor.selection = selection.clone();
-                editor.selected_wires.clear();
+                editor.selected_wires = craft_behavior::Selection::default();
             }
             if let Some(editor) = &mut app.pattern_editor {
                 editor.selection = selection;
-                editor.selected_wires.clear();
+                editor.selected_wires = craft_behavior::Selection::default();
             }
         }
         return;
