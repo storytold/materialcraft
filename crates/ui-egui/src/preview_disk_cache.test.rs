@@ -19,7 +19,7 @@ fn previews_survive_process_restarts_without_rendering() {
     const CHILD: &str = "MATERIALCRAFT_TEST_DISK_PREVIEW";
     if let Some(root) = std::env::var_os(CHILD) {
         let cache = cache(Path::new(&root));
-        let actual = cache.get_or_render([2; 32], SIDE, &AtomicBool::new(false), || {
+        let actual = cache.get_or_render([2; 32], SIDE, &Cancel::new(), || {
             assert_eq!(std::env::var("MATERIALCRAFT_TEST_DISK_PHASE").unwrap(), "cold", "warm launch must not cook");
 
             Some(pixels())
@@ -55,16 +55,16 @@ fn real_library_previews_survive_relaunch() {
         let library = materialcraft_engine::NodeLibrary::shared();
         let phase = std::env::var("MATERIALCRAFT_TEST_DISK_PHASE").unwrap();
         let cache = PreviewDiskCache::open(PathBuf::from(root), PreviewCacheSettings::new(Default::default())).unwrap();
-        let cancel = AtomicBool::new(false);
+        let cancel = Cancel::new();
         for (package, graph) in
             [("sbs://blur_hq.sbs", "blur_hq"), ("sbs://noise_clouds_3_v2.sbs", "clouds_3"), ("sbs://materials/pbr/bricks_001.sbs", "bricks_001")]
         {
             let started = std::time::Instant::now();
-            let key = library.preview_fingerprint(package, graph, &cancel).unwrap();
+            let key = library.preview_fingerprint(package, graph, cancel.flag()).unwrap();
             let image = cache.get_or_render(key, 72, &cancel, || {
                 assert_eq!(phase, "cold", "warm launch must load {graph} without cooking");
 
-                materialcraft_engine::NodeLibrary::preview_cancellable(&library, package, graph, 72, &cancel)
+                materialcraft_engine::NodeLibrary::preview_cancellable(&library, package, graph, 72, cancel.flag())
                     .map(|image| image.resize(72, 72, true).to_rgba8_display())
             });
 
@@ -108,17 +108,18 @@ fn cancelled_failed_and_invalid_previews_never_persist() {
     let _serial = TESTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = tempfile::tempdir().unwrap();
     let cache = cache(root.path());
-    let cancel = AtomicBool::new(true);
+    let cancelled = Cancel::new();
+    cancelled.cancel();
 
-    assert!(cache.get_or_render([1; 32], SIDE, &cancel, || panic!("cancelled cook ran")).is_none());
+    assert!(cache.get_or_render([1; 32], SIDE, &cancelled, || panic!("cancelled cook ran")).is_none());
 
-    cancel.store(false, Ordering::Relaxed);
+    let cancel = Cancel::new();
 
     assert!(cache.get_or_render([1; 32], SIDE, &cancel, || None).is_none());
     assert!(
         cache
             .get_or_render([1; 32], SIDE, &cancel, || {
-                cancel.store(true, Ordering::Relaxed);
+                cancel.cancel();
                 Some(pixels())
             })
             .is_none()
@@ -139,7 +140,7 @@ fn corrupt_oversized_and_wrong_size_files_are_misses_and_repaired() {
         fs::write(&path, bytes).unwrap();
 
         assert!(cache.read(&path, SIDE).is_none());
-        assert_eq!(cache.get_or_render([1; 32], SIDE, &AtomicBool::new(false), || Some(pixels())), Some(pixels()));
+        assert_eq!(cache.get_or_render([1; 32], SIDE, &Cancel::new(), || Some(pixels())), Some(pixels()));
         assert_eq!(cache.read(&path, SIDE), Some(pixels()));
         assert!(cache.read(&path, SIDE + 1).is_none());
     }
@@ -221,13 +222,13 @@ fn unavailable_or_busy_cache_still_returns_rendered_pixels() {
     let blocked = root.path().join("file");
     fs::write(&blocked, b"not a directory").unwrap();
 
-    assert_eq!(cache(&blocked).get_or_render([1; 32], SIDE, &AtomicBool::new(false), || Some(pixels())), Some(pixels()));
+    assert_eq!(cache(&blocked).get_or_render([1; 32], SIDE, &Cancel::new(), || Some(pixels())), Some(pixels()));
 
     let lock = File::options().read(true).write(true).create_new(true).open(root.path().join("cache.lock")).unwrap();
     lock.lock().unwrap();
     let cache = cache(root.path());
 
-    assert_eq!(cache.get_or_render([1; 32], SIDE, &AtomicBool::new(false), || Some(pixels())), Some(pixels()));
+    assert_eq!(cache.get_or_render([1; 32], SIDE, &Cancel::new(), || Some(pixels())), Some(pixels()));
     assert!(!cache.path([1; 32], SIDE).exists());
 }
 
@@ -274,7 +275,7 @@ fn changed_limits_trim_a_warm_cache_without_another_render() {
 
     assert!(cache.maintain(cache.settings.get()).unwrap());
     assert_eq!(count(), 0);
-    assert_eq!(cache.get_or_render([9; 32], SIDE, &AtomicBool::new(false), || Some(pixels())), Some(pixels()));
+    assert_eq!(cache.get_or_render([9; 32], SIDE, &Cancel::new(), || Some(pixels())), Some(pixels()));
     assert_eq!(count(), 0, "disabled persistence must still render without writing");
 }
 
@@ -314,7 +315,7 @@ fn running_preview_observes_limits_changed_during_its_render() {
     let cache = cache(root.path());
 
     assert_eq!(
-        cache.get_or_render([1; 32], SIDE, &AtomicBool::new(false), || {
+        cache.get_or_render([1; 32], SIDE, &Cancel::new(), || {
             cache.settings.update(PreviewCacheLimits { budget_bytes: 0, max_entries: 4096 }, false);
             Some(pixels())
         }),

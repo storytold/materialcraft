@@ -4,9 +4,9 @@ use std::fs::{self, File};
 use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
+use craft_host::queue::Cancel;
 use image::ImageDecoder;
 use sha2::{Digest, Sha256};
 
@@ -55,18 +55,18 @@ impl PreviewDiskCache {
         Some(Self { root, renderer: renderer?, settings, epoch })
     }
 
-    pub fn get_or_render(&self, key: [u8; 32], side: u32, cancel: &AtomicBool, render: impl FnOnce() -> Option<Vec<u8>>) -> Option<Vec<u8>> {
-        if cancel.load(Ordering::Relaxed) {
+    pub fn get_or_render(&self, key: [u8; 32], side: u32, cancel: &Cancel, render: impl FnOnce() -> Option<Vec<u8>>) -> Option<Vec<u8>> {
+        if cancel.is_cancelled() {
             return None;
         }
 
         let path = self.path(key, side);
         if let Some(pixels) = self.read(&path, side) {
-            return (!cancel.load(Ordering::Relaxed)).then_some(pixels);
+            return (!cancel.is_cancelled()).then_some(pixels);
         }
 
         let pixels = render()?;
-        if cancel.load(Ordering::Relaxed) {
+        if cancel.is_cancelled() {
             return None;
         }
 

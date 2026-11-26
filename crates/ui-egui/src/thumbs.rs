@@ -1,27 +1,24 @@
-use std::collections::{BTreeMap, HashMap};
+//! The app's thumbnail sources: node faces, library previews and template pictures, each over its own framework
+//! `Thumbnails` store kept in the context.
 
-use egui::{ColorImage, TextureHandle, TextureOptions};
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use craft_host::queue::Cancel;
+use craft_ui::primitives::{LoadFailure, LoadedPicture, Revision, ThumbRender, ThumbRequest, ThumbSource, ThumbnailOptions, Thumbnails};
+use craft_ui::shell::ThumbKey;
+use egui::ColorImage;
+use materialcraft_engine::NodeLibrary;
 use materialcraft_engine::image::{Image, Kind};
 use materialcraft_engine::nodes::{CookContext, catalog, resolve_params};
 
-/// Rendered previews by id: (id, RGBA8 pixels).
-pub type Previews = Vec<(String, Vec<u8>)>;
-
-/// Side of node thumbnails and library previews, in pixels
-pub const THUMB: u32 = 96;
-const LIBRARY_PREVIEW_SIZE: u32 = 72;
-const NODE_TEXTURE_TRIM_THRESHOLD: usize = 256;
-const NODE_TEXTURE_IDLE_FRAMES: u64 = 120;
-
+/// The persistence and clear epoch of the app's picture stores; the stores themselves live in the context, so the
+/// app builds this without one.
 #[derive(Default)]
 pub struct Thumbs {
-    /// (cook key, port) → texture and the frame it was last used
-    nodes: HashMap<(u64, usize), (TextureHandle, u64)>,
     #[cfg(not(target_arch = "wasm32"))]
     persistence: Option<preview_cache_settings::PreviewCacheMaintenance>,
     clear_epoch: u64,
-    graphs: GraphPreviews,
-    frame: u64,
 }
 
 /// An image as an egui texture image (sRGB display, `side` px)
@@ -30,9 +27,6 @@ pub fn color_image(img: &Image, side: u32) -> ColorImage {
     ColorImage::from_rgba_unmultiplied([side as usize, side as usize], &small.to_rgba8_display())
 }
 
-#[path = "graph_previews.rs"]
-mod graph_previews;
-use graph_previews::GraphPreviews;
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "preview_cache_settings.rs"]
 mod preview_cache_settings;
@@ -55,15 +49,14 @@ pub struct NodeFace<'a> {
     pub image: &'a Image,
 }
 
-impl craft_ui::primitives::ThumbSource<NodeThumb> for NodeFace<'_> {
-    fn revision(&self, key: &NodeThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::Revision {
-        let _ = (key, request);
-        todo!("sh.A12")
+impl ThumbSource<NodeThumb> for NodeFace<'_> {
+    // The key is the cook hash of the pixels, so one key never changes picture
+    fn revision(&self, _key: &NodeThumb, _request: &ThumbRequest) -> Revision {
+        Revision::new(0)
     }
 
-    fn render(&self, key: &NodeThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::ThumbRender {
-        let _ = (key, request);
-        todo!("sh.A12")
+    fn render(&self, _key: &NodeThumb, request: &ThumbRequest) -> ThumbRender {
+        ThumbRender::Ready(color_image(self.image, request.side))
     }
 }
 
@@ -83,73 +76,166 @@ pub enum LibraryThumb {
 
 /// Renders the library's pictures in the background.
 pub struct LibrarySource {
-    library: std::sync::Arc<materialcraft_engine::NodeLibrary>,
+    library: Arc<NodeLibrary>,
+    generation: u64,
+    #[cfg(not(target_arch = "wasm32"))]
+    persistence: Option<preview_cache_settings::PreviewCacheSettings>,
 }
 
-impl craft_ui::primitives::ThumbSource<LibraryThumb> for LibrarySource {
-    fn revision(&self, key: &LibraryThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::Revision {
-        let _ = (&self.library, key, request);
-        todo!("sh.A12")
+impl ThumbSource<LibraryThumb> for LibrarySource {
+    fn revision(&self, key: &LibraryThumb, _request: &ThumbRequest) -> Revision {
+        match key {
+            // Native node previews come from the built-in catalog, which a library reload does not change
+            LibraryThumb::Node(_) => Revision::new(0),
+            LibraryThumb::Graph { .. } => Revision::new(self.generation),
+        }
     }
 
-    fn render(&self, key: &LibraryThumb, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::ThumbRender {
-        let _ = (key, request);
-        todo!("sh.A12")
+    fn render(&self, key: &LibraryThumb, request: &ThumbRequest) -> ThumbRender {
+        // The browser has no library files to cook graphs from
+        #[cfg(target_arch = "wasm32")]
+        if matches!(key, LibraryThumb::Graph { .. }) {
+            return ThumbRender::Blank;
+        }
+
+        let (library, key, side) = (Arc::clone(&self.library), key.clone(), request.side);
+        #[cfg(not(target_arch = "wasm32"))]
+        let persistence = self.persistence.clone();
+        ThumbRender::Later(Box::new(move |cancel: &Cancel| {
+            #[cfg(not(target_arch = "wasm32"))]
+            let rgba = library_pixels(&library, &key, side, cancel, persistence);
+            #[cfg(target_arch = "wasm32")]
+            let rgba = library_render(&library, &key, side, cancel);
+            Ok(rgba.map_or(LoadedPicture::Blank, |rgba| LoadedPicture::Image(ColorImage::from_rgba_unmultiplied([side as usize; 2], &rgba))))
+        }))
+    }
+}
+
+/// Renders `key` at `side`, through the disk cache when persistence is on.
+#[cfg(not(target_arch = "wasm32"))]
+fn library_pixels(
+    library: &Arc<NodeLibrary>,
+    key: &LibraryThumb,
+    side: u32,
+    cancel: &Cancel,
+    persistence: Option<preview_cache_settings::PreviewCacheSettings>,
+) -> Option<Vec<u8>> {
+    let disk = persistence.and_then(preview_disk_cache::PreviewDiskCache::configured);
+    let fingerprint = disk.as_ref().filter(|disk| disk.enabled()).and_then(|_| match key {
+        LibraryThumb::Node(id) => {
+            use sha2::Digest;
+            Some(sha2::Sha256::digest(format!("materialcraft-atomic-preview-v1:{id}")).into())
+        }
+        LibraryThumb::Graph { package, graph } => library.preview_fingerprint(package, graph, cancel.flag()),
+    });
+    match (disk, fingerprint) {
+        (Some(disk), Some(fingerprint)) => disk.get_or_render(fingerprint, side, cancel, || library_render(library, key, side, cancel)),
+        _ => library_render(library, key, side, cancel),
+    }
+}
+
+/// Cooks `key`'s picture at `side`: display sRGB, straight alpha; `None` when cancelled or it makes no image.
+fn library_render(library: &Arc<NodeLibrary>, key: &LibraryThumb, side: u32, cancel: &Cancel) -> Option<Vec<u8>> {
+    if cancel.is_cancelled() {
+        return None;
+    }
+
+    match key {
+        LibraryThumb::Node(id) => render_native(id, side),
+        LibraryThumb::Graph { package, graph } => NodeLibrary::preview_cancellable(library, package, graph, side, cancel.flag())
+            .map(|image| image.resize(side, side, true).to_rgba8_display()),
     }
 }
 
 /// The one source of template pictures, for Home and the New graph dialog alike; the function template is blank.
 pub struct TemplateSource;
 
-impl craft_ui::primitives::ThumbSource<craft_ui::shell::ThumbKey> for TemplateSource {
-    fn revision(&self, key: &craft_ui::shell::ThumbKey, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::Revision {
-        let _ = (key, request);
-        todo!("sh.A12")
+impl ThumbSource<ThumbKey> for TemplateSource {
+    // Templates are built into the app, so their pictures never change within a run
+    fn revision(&self, _key: &ThumbKey, _request: &ThumbRequest) -> Revision {
+        Revision::new(0)
     }
 
-    fn render(&self, key: &craft_ui::shell::ThumbKey, request: &craft_ui::primitives::ThumbRequest) -> craft_ui::primitives::ThumbRender {
-        let _ = (key, request);
-        todo!("sh.A12")
+    fn render(&self, key: &ThumbKey, request: &ThumbRequest) -> ThumbRender {
+        match key {
+            ThumbKey::Template(id) if id != crate::template_card::FUNCTION_TEMPLATE => {
+                let (id, side) = (id.clone(), request.side);
+                ThumbRender::Later(Box::new(move |cancel: &Cancel| render_template(&id, side, cancel)))
+            }
+            _ => ThumbRender::Blank,
+        }
     }
 }
 
-#[allow(dead_code)] // P3(shell-w15): sh.A12
+/// Cooks template `id` and renders it on the studio sphere at `side`.
+fn render_template(id: &str, side: u32, cancel: &Cancel) -> Result<LoadedPicture, LoadFailure> {
+    let light = materialcraft_render::Lighting::new("studio");
+    let scene = materialcraft_render::Scene::builtin("sphere");
+    let settings = materialcraft_render::Settings { distance: 2.7, supersample: 2, ..Default::default() };
+    let mut session = materialcraft_engine::Session::new(materialcraft_engine::core::Package::new("t"));
+    session.pkg.graphs.push(materialcraft_engine::samples::template(id, "t", 8).map_err(|_| LoadFailure::Missing)?);
+    session.material_preview = materialcraft_engine::MaterialPreview::for_graph(&session.pkg, 0);
+    session.preview_size = Some(256);
+    session.cook();
+    let maps = materialcraft_render::Maps::from_usages(session.material_maps());
+    let rgba = materialcraft_render::render_cancellable(&scene, &maps, &light, &settings, side, side, cancel.flag()).ok_or(LoadFailure::Missing)?;
+    Ok(LoadedPicture::Image(ColorImage::from_rgba_unmultiplied([side as usize; 2], &rgba)))
+}
+
 impl Thumbs {
     /// The store of node output pictures, kept in the context.
-    pub fn nodes(&self, ctx: &egui::Context) -> craft_ui::primitives::Thumbnails<NodeThumb> {
-        let _ = ctx;
-        todo!("sh.A12")
+    pub fn nodes(&self, ctx: &egui::Context) -> Thumbnails<NodeThumb> {
+        Thumbnails::in_context(ctx, "materialcraft-node-thumbs", ThumbnailOptions::new().max_side(96))
     }
 
-    /// The store of the library's pictures, kept in the context.
-    pub fn templates(&self, ctx: &egui::Context) -> craft_ui::primitives::Thumbnails<craft_ui::shell::ThumbKey> {
-        let _ = ctx;
-        todo!("sh.A12")
+    /// The store of the library's pictures, kept in the context: one render at a time, so the foreground cook keeps
+    /// the other cores.
+    pub fn library_thumbs(&self, ctx: &egui::Context) -> Thumbnails<LibraryThumb> {
+        // The browser has no threads; zero lanes runs one job a frame inline
+        let lanes = if cfg!(target_arch = "wasm32") { 0 } else { 1 };
+        Thumbnails::in_context(ctx, "materialcraft-library-thumbs", ThumbnailOptions::new().max_side(80).lanes(lanes))
     }
 
-    /// The source that renders the library's pictures from `library`.
-    pub fn library_source(&self, library: &std::sync::Arc<materialcraft_engine::NodeLibrary>) -> LibrarySource {
-        let _ = library;
-        todo!("sh.A12")
+    /// The store of template pictures, kept in the context.
+    pub fn templates(&self, ctx: &egui::Context) -> Thumbnails<ThumbKey> {
+        Thumbnails::in_context(ctx, "materialcraft-template-thumbs", ThumbnailOptions::new().max_side(96))
     }
 
-    /// Once per frame from `step`: advances the stores; library pictures hold while `busy`. Returns a cache error to report.
+    /// The source that renders the library's pictures from `library`; `generation` is the session's
+    /// `library_generation`, so a reload re-renders graph pictures while the old ones stand in.
+    // PLAN: the K2 decision keys graph pictures on `library_generation`, which the library alone does not carry; callers (panels-w7 `library.rs`, shell-w11 `shortcuts_page.rs`) pass `app.session.library_generation()` as the second argument
+    pub fn library_source(&self, library: &Arc<NodeLibrary>, generation: u64) -> LibrarySource {
+        LibrarySource {
+            library: Arc::clone(library),
+            generation,
+            #[cfg(not(target_arch = "wasm32"))]
+            persistence: self.persistence.as_ref().map(|persistence| persistence.settings.clone()),
+        }
+    }
+
+    /// Once per frame from `step`: library pictures hold while `busy` or while a cache clear is pending. Returns a
+    /// cache error to report. Reads no input, so a second pass in the frame sets the same hold.
     pub fn frame(&mut self, ctx: &egui::Context, busy: bool) -> Option<String> {
-        let _ = (ctx, busy);
-        todo!("sh.A12")
-    }
-}
+        #[cfg(not(target_arch = "wasm32"))]
+        let clear_pending = self.persistence.as_ref().is_some_and(|persistence| persistence.settings.get().clear_pending);
+        #[cfg(target_arch = "wasm32")]
+        let clear_pending = false;
+        self.library_thumbs(ctx).hold(busy || clear_pending);
 
-impl Thumbs {
+        #[cfg(target_arch = "wasm32")]
+        return None;
+        #[cfg(not(target_arch = "wasm32"))]
+        self.persistence.as_mut().and_then(|persistence| persistence.tick(ctx))
+    }
+
     /// Opt in only for a native app window; offscreen harnesses never use the user's cache.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn enable_persistence(&mut self, prefs: materialcraft_engine::LibraryCachePrefs) {
-        let persistence = preview_cache_settings::PreviewCacheMaintenance::new(prefs);
-        self.graphs.persistence = Some(persistence.settings.clone());
-        self.persistence = Some(persistence);
+        self.persistence = Some(preview_cache_settings::PreviewCacheMaintenance::new(prefs));
     }
 
-    pub fn configure_cache(&mut self, _prefs: materialcraft_engine::LibraryCachePrefs, clear_epoch: u64) {
+    /// Applies the cache preferences; a new `clear_epoch` drops every library picture so they render again.
+    pub fn configure_cache(&mut self, ctx: &egui::Context, _prefs: materialcraft_engine::LibraryCachePrefs, clear_epoch: u64) {
         let clear = clear_epoch != self.clear_epoch;
         self.clear_epoch = clear_epoch;
         #[cfg(not(target_arch = "wasm32"))]
@@ -158,75 +244,29 @@ impl Thumbs {
         }
 
         if clear {
-            self.graphs.clear();
+            self.library_thumbs(ctx).cache().clear(ctx);
         }
     }
 
-    pub fn clear_nodes(&mut self) {
-        self.nodes.clear();
-    }
-
-    /// The thumbnail of a node output, uploaded on first use
-    pub fn node(&mut self, ctx: &egui::Context, key: u64, port: usize, img: &Image) -> egui::TextureId {
-        let frame = self.frame;
-        if let Some((texture, last_used_frame)) = self.nodes.get_mut(&(key, port)) {
-            *last_used_frame = frame;
-            return texture.id();
-        }
-
-        let texture = ctx.load_texture(format!("node-{key}-{port}"), color_image(img, THUMB), TextureOptions::LINEAR);
-        let id = texture.id();
-        self.nodes.insert((key, port), (texture, frame));
-        id
-    }
-
-    /// Once per frame: forget thumbnails unused for a few seconds; collect library previews
-    pub fn tick(&mut self, ctx: &egui::Context, library: &std::sync::Arc<materialcraft_engine::NodeLibrary>, foreground_busy: bool) -> Option<String> {
-        self.frame += 1;
-        let frame = self.frame;
-        if self.nodes.len() > NODE_TEXTURE_TRIM_THRESHOLD {
-            self.nodes.retain(|_, (_, used)| frame - *used < NODE_TEXTURE_IDLE_FRAMES);
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let error = self.persistence.as_mut().and_then(|persistence| persistence.tick(ctx));
-        #[cfg(target_arch = "wasm32")]
-        let error = None;
-        self.graphs.collect(ctx, library, foreground_busy);
-        error
-    }
-
-    /// The preview of library graph `graph` of `package`, cooked in the background on first use;
-    /// `None` until it is ready and for graphs that make no image
-    pub fn graph(
-        &mut self,
-        ctx: &egui::Context,
-        library: &std::sync::Arc<materialcraft_engine::NodeLibrary>,
-        package: &str,
-        graph: &str,
-    ) -> Option<egui::TextureId> {
-        self.graphs.get(ctx, library, package, graph)
-    }
-
-    /// The library preview of node `def` (generated in the background on first use)
-    pub fn library(&mut self, ctx: &egui::Context, def: &str) -> Option<egui::TextureId> {
-        self.graphs.native(ctx, def)
+    /// Drops every node output picture.
+    pub fn clear_nodes(&self, ctx: &egui::Context) {
+        self.nodes(ctx).cache().clear(ctx);
     }
 }
 
 /// Wave height used by native node previews
-fn sample_height() -> Image {
-    Image::generate_uv(LIBRARY_PREVIEW_SIZE, LIBRARY_PREVIEW_SIZE, Kind::Gray, |u, v| {
+fn sample_height(side: u32) -> Image {
+    Image::generate_uv(side, side, Kind::Gray, |u, v| {
         [0.5 + 0.25 * (u * std::f32::consts::TAU).sin() + 0.25 * (v * std::f32::consts::TAU).cos(), 0.0, 0.0, 0.0]
     })
 }
 
-fn render_native(id: &str) -> Option<Vec<u8>> {
+fn render_native(id: &str, side: u32) -> Option<Vec<u8>> {
     // Strong relief keeps normal inputs legible in small previews
     const NORMAL_INTENSITY: f32 = 4.0;
 
     let def = catalog().iter().find(|def| def.id == id && def.id != "graph_instance")?;
-    let gray = (!def.inputs.is_empty()).then(sample_height);
+    let gray = (!def.inputs.is_empty()).then(|| sample_height(side));
     let mut color = None;
     let mut normal = None;
     let no_resource = |_: &str| None;
@@ -258,8 +298,8 @@ fn render_native(id: &str) -> Option<Vec<u8>> {
     let params = resolve_params(def, &BTreeMap::new());
     let ctx = CookContext {
         format: materialcraft_engine::core::OutputFormat::U16,
-        w: LIBRARY_PREVIEW_SIZE,
-        h: LIBRARY_PREVIEW_SIZE,
+        w: side,
+        h: side,
         seed: 3,
         tile: true,
         inputs: &inputs,
@@ -269,5 +309,5 @@ fn render_native(id: &str) -> Option<Vec<u8>> {
     };
 
     let images = (def.cook)(&ctx).ok()?;
-    Some(images.first()?.resize(LIBRARY_PREVIEW_SIZE, LIBRARY_PREVIEW_SIZE, true).to_rgba8_display())
+    Some(images.first()?.resize(side, side, true).to_rgba8_display())
 }
