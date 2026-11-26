@@ -72,8 +72,9 @@ pub struct Cooker {
 }
 
 impl Cooker {
+    /// A cook is running, or a capture holds the Computing state (`hold`).
     pub fn busy(&self) -> bool {
-        self.rx.is_some()
+        self.rx.is_some() || self.hold
     }
 
     /// Ask the running cook to stop between nodes
