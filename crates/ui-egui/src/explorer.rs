@@ -58,7 +58,7 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
                 crate::export::open(app, crate::export::ExportTab::FromGraph);
             }
             if crate::widgets::icon_button(ui, icon::IMAGE, tr("Import bitmap..."), false, 22.0).clicked() {
-                crate::windows::import_resource(app, ui.ctx(), false);
+                crate::windows::import_resource(app, false);
             }
         });
     });

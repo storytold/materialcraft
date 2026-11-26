@@ -28,7 +28,7 @@ pub(super) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, target: Ex
     match command {
         "file.importBitmap" | "file.importVector" => {
             let folder = if target.is_resources() { folder.as_str() } else { "Resources" };
-            crate::windows::import_resource_into(app, ctx, command == "file.importVector", folder);
+            crate::windows::import_resource_into(app, command == "file.importVector", folder);
         }
         "ui.newGraph" | "ui.newFunctionGraph" => {
             let (kind, name) = if command == "ui.newFunctionGraph" { ("function", "Untitled_Function_Graph_1") } else { ("material", "Untitled_Graph_1") };
@@ -58,7 +58,7 @@ pub(super) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, target: Ex
             crate::unsaved::guard(app, crate::unsaved::Guarded::Package { document: target.document(), reload: command == "file.reload" })
         }
         "file.save" | "file.saveAs" | "file.saveCopyAs" | "file.exportMaterial" | "file.sendToTextureCraft" => {
-            crate::windows::file_action(app, ctx, command);
+            crate::windows::file_action(app, command);
         }
         crate::menus::EXPLORER_COMPUTE => compute_outputs(app, &target),
         crate::menus::EXPLORER_VIEW_OUTPUTS => {

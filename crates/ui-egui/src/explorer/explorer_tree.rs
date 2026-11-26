@@ -118,7 +118,7 @@ impl ExplorerTree<'_> {
                                 let response = tree_row::show(ui, &name, symbol, selected, None);
                                 response.context_menu(|ui| {
                                     if document == self.session.document_id
-                                        && let Some(parameters) = crate::material_preview_menu::show(ui, self.session, index, node.id)
+                                        && let Some(parameters) = preview_menu(ui, self.session, index, node.id)
                                     {
                                         self.assignment = Some(parameters);
                                     }
@@ -200,4 +200,44 @@ impl ExplorerTree<'_> {
         }
         response
     }
+}
+
+/// The 3D view assignment menu of an output node of graph `graph_index`, which need not be the open graph: the
+/// `view.3d.assign` parameters of the picked channel.
+fn preview_menu(ui: &mut Ui, session: &Session, graph_index: usize, node_id: NodeId) -> Option<Value> {
+    use crate::i18n::tr;
+    use materialcraft_engine::{MaterialSource, core::MaterialChannel};
+    let graph = session.pkg.graphs.get(graph_index)?;
+    let node = graph.node(node_id).ok()?;
+    let ports = if node.def == "output" {
+        vec![("output".to_string(), materialcraft_engine::eval::identifier(node))]
+    } else {
+        materialcraft_engine::eval::ports(&session.pkg, graph, node).1.into_iter().map(|port| (port.id, port.label)).collect()
+    };
+    let ports: Vec<_> =
+        ports.into_iter().filter(|(port, _)| MaterialSource { graph: graph_index, node: node_id, port: port.clone() }.is_image(&session.pkg)).collect();
+    let mut action = None;
+    ui.add_enabled_ui(!ports.is_empty(), |ui| {
+        for (label, reset) in [("View in 3D view", false), ("Reset and view in 3D view", true)] {
+            ui.menu_button(tr(label), |ui| {
+                for (port, label) in &ports {
+                    let mut channels = |ui: &mut Ui| {
+                        for channel in MaterialChannel::ALL {
+                            if ui.button(tr(channel.label())).clicked() {
+                                action =
+                                    Some(serde_json::json!({"graph": graph_index, "node": node_id.0, "port": port, "channel": channel.id(), "reset": reset}));
+                                ui.close();
+                            }
+                        }
+                    };
+                    if ports.len() == 1 {
+                        channels(ui);
+                    } else {
+                        ui.menu_button(label, channels);
+                    }
+                }
+            });
+        }
+    });
+    action
 }
