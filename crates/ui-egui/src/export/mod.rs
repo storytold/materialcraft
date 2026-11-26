@@ -48,11 +48,15 @@ pub(crate) fn open(app: &mut MaterialCraftApp, tab: ExportTab) {
 }
 
 /// Draw the window on a copy of the saved settings: Save settings and Export keep it, Close drops it
-pub(crate) fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    let ctx = ui.ctx().clone();
     let mut open = true;
     let mut action = None;
     let mut draft = app.ui.export_draft.take().unwrap_or_else(|| app.ui.export.clone());
-    crate::windows::modal(ctx, "export", tr("Export"), &mut open, vec2(640.0, 560.0), |ui| {
+    // owed by panels-w6: the egui window `windows::modal` drew (shell-w9 deletes it) until the framework dialog.
+    let window = egui::Window::new(tr("Export")).id(egui::Id::unique("export")).open(&mut open).collapsible(false).resizable(false);
+    let window = window.default_size(vec2(640.0, 560.0)).pivot(egui::Align2::CENTER_CENTER).default_pos(ctx.content_rect().center());
+    window.show(&ctx, |ui| {
         ui.set_min_width(600.0);
         tabs(ui, &mut app.ui.export_tab);
         ui.separator();
@@ -165,7 +169,7 @@ fn image_options(app: &mut MaterialCraftApp, ui: &mut Ui, settings: &mut ExportS
             form_label(ui, tr("Destination"));
             if path_field(ui, &mut settings.destination, width) {
                 let tab = app.ui.export_tab;
-                crate::native_dialogs::ask(app, craft_dialogs::FileDialog::folder(), crate::native_dialogs::Then::ExportDestination(tab));
+                crate::native_dialogs::ask(app, craft_host::PickRequest::folder("export"), crate::native_dialogs::Then::ExportDestination(tab));
             }
             ui.end_row();
         }
@@ -394,7 +398,7 @@ fn publish(app: &mut MaterialCraftApp, settings: &ExportSettings) -> bool {
     };
     #[cfg(not(target_arch = "wasm32"))]
     {
-        if app.material_export_job.is_some() {
+        if app.material_export.job.is_some() {
             app.toast(tr("A material export is running"), true);
             return false;
         }
@@ -415,7 +419,7 @@ fn publish(app: &mut MaterialCraftApp, settings: &ExportSettings) -> bool {
         });
         match worker {
             Ok(_) => {
-                app.material_export_job = Some(receiver);
+                app.material_export.job = Some(receiver);
                 app.toast(tr("Exporting material"), false);
                 true
             }
@@ -459,7 +463,7 @@ fn publish(app: &mut MaterialCraftApp, settings: &ExportSettings) -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn poll(app: &mut MaterialCraftApp) {
-    let Some(job) = &app.material_export_job else { return };
+    let Some(job) = &app.material_export.job else { return };
     let result = match job.try_recv() {
         Ok(result) => result,
         Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -468,7 +472,7 @@ pub(crate) fn poll(app: &mut MaterialCraftApp) {
         }
         Err(error) => Err(error.to_string()),
     };
-    app.material_export_job = None;
+    app.material_export.job = None;
     match result {
         Ok(report) => {
             app.toast(material_export_message(&report), false);
@@ -483,7 +487,8 @@ pub(crate) fn poll(app: &mut MaterialCraftApp) {
 #[derive(Default)]
 #[allow(dead_code)] // P3(panels-w6): pn.A28
 pub(crate) struct PublishJobs {
-    _private: (),
+    // owed by panels-w6: the running export's result channel, as `material_export_job` held it, until the host queue.
+    pub(crate) job: Option<std::sync::mpsc::Receiver<Result<Value, String>>>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]

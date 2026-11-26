@@ -63,9 +63,9 @@ fn ask_destination(app: &mut MaterialCraftApp, tab: ExportTab, root: &str) {
     let dialog = if tab == ExportTab::Mcmat {
         let graph = root.rsplit('/').next().unwrap_or(root);
         let file = format!("{}.{MATERIAL_EXT}", materialcraft_engine::formats::safe_file_name(graph));
-        craft_dialogs::FileDialog::save().file_name(file).filter("MaterialCraft material", &[MATERIAL_EXT])
+        craft_host::PickRequest::save("export").file_name(file).filter("MaterialCraft material", &[MATERIAL_EXT])
     } else {
-        craft_dialogs::FileDialog::folder()
+        craft_host::PickRequest::folder("export")
     };
     crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::ExportDestination(tab));
 }

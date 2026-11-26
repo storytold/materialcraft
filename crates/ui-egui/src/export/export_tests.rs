@@ -119,7 +119,7 @@ fn material_dialog_rejects_another_package_with_the_same_graph_path() {
         assert!(app.session.pkg.graph_by_name(&draft.material.root).is_some());
         assert!(!publish(&mut app, &draft));
         assert!(app.toasts.last().unwrap().text.contains("export package changed"));
-        assert!(app.material_export_job.is_none());
+        assert!(app.material_export.job.is_none());
 
         // Switching back preserves the original dialog and reaches destination validation
         app.run("package.activate", json!({"document": original})).unwrap();
