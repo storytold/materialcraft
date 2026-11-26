@@ -1,5 +1,5 @@
 use super::{ExplorerTarget, explorer_menu_state::ExplorerMenuState};
-use crate::menus::{self, ExplorerRow};
+use crate::menus::{self, Row};
 use crate::{i18n::tr, menus::shortcut_label};
 
 /// Rows the browser can't offer: it has no folders to show or package files to open
@@ -22,32 +22,43 @@ fn item(ui: &mut egui::Ui, label: &str, command: &'static str, shortcut: Option<
 }
 
 /// Draw menu rows while respecting resource-folder and platform restrictions.
-fn rows(ui: &mut egui::Ui, rows: &[ExplorerRow], state: &ExplorerMenuState, resources: bool, action: &mut Option<&'static str>) {
-    for row in rows {
-        match *row {
-            ExplorerRow::Separator => {
+/// Consecutive rows that share a submenu draw as that submenu.
+fn rows(ui: &mut egui::Ui, rows: &[Row], state: &ExplorerMenuState, resources: bool, action: &mut Option<&'static str>) {
+    let mut at = 0;
+    while at < rows.len() {
+        let row = rows[at];
+        let Some(label) = row.sub else {
+            if row.label == "-" {
                 ui.separator();
+            } else if !hidden(row.id) {
+                item(ui, row.label, row.id, row.shortcut, state.enabled(row.id), action);
             }
-            ExplorerRow::Item(label, command, shortcut) if !hidden(command) => item(ui, label, command, shortcut, state.enabled(command), action),
-            ExplorerRow::Item(..) => {}
-            ExplorerRow::Sub(label, entries) => {
-                let available = entries.iter().any(|(_, command)| !command.is_empty());
-                ui.add_enabled_ui(available, |ui| {
-                    let submenu = ui.menu_button(tr(label), |ui| {
-                        for (entry, command) in entries {
-                            // Resource folders hold folders and resources, not graphs
-                            if resources && label == "New" && *command != "folder.create" {
-                                continue;
-                            }
+            at += 1;
+            continue;
+        };
+        let end = rows[at..].iter().position(|entry| entry.sub != Some(label)).map_or(rows.len(), |len| at + len);
+        let entries = &rows[at..end];
+        at = end;
+        let available = entries.iter().any(|entry| !entry.id.is_empty());
+        ui.add_enabled_ui(available, |ui| {
+            let submenu = ui.menu_button(tr(label), |ui| {
+                for entry in entries {
+                    // Resource folders hold folders and resources, not graphs
+                    if resources && label == "New" && entry.id != "folder.create" {
+                        continue;
+                    }
 
-                            item(ui, entry, command, None, state.enabled(command), action);
-                        }
-                    });
-                    submenu.response.on_disabled_hover_text(tr("Not available yet"));
-                });
-            }
-        }
+                    item(ui, entry.label, entry.id, None, state.enabled(entry.id), action);
+                }
+            });
+            submenu.response.on_disabled_hover_text(tr("Not available yet"));
+        });
     }
+}
+
+/// A row of a resource folder's own menu.
+const fn folder_row(label: &'static str, id: &'static str, shortcut: &'static str) -> Row {
+    Row { menu: "explorer.folder", sub: None, label, id, shortcut: Some(shortcut) }
 }
 
 /// Build the context menu for a package, folder, graph or resource.
@@ -59,26 +70,22 @@ pub(super) fn show(ui: &mut egui::Ui, opener: &egui::Response, target: &Explorer
     match target {
         ExplorerTarget::Package { .. } => rows(ui, menus::EXPLORER_PACKAGE, state, false, &mut action),
         ExplorerTarget::Folder { .. } if resources => {
-            rows(ui, &[ExplorerRow::Sub("New", menus::EXPLORER_NEW), ExplorerRow::Sub("Import", menus::EXPLORER_IMPORT)], state, true, &mut action);
+            rows(ui, menus::EXPLORER_NEW, state, true, &mut action);
+            rows(ui, menus::EXPLORER_IMPORT, state, true, &mut action);
             if !target.is_resources_root() {
                 ui.separator();
-                rows(
-                    ui,
-                    &[ExplorerRow::Item("Rename", "folder.rename", Some("F2")), ExplorerRow::Item("Remove", "folder.remove", Some("Delete"))],
-                    state,
-                    true,
-                    &mut action,
-                );
+                rows(ui, &[folder_row("Rename", "folder.rename", "F2"), folder_row("Remove", "folder.remove", "Delete")], state, true, &mut action);
             }
         }
         ExplorerTarget::Folder { .. } => {
-            rows(ui, &[ExplorerRow::Sub("New", menus::EXPLORER_NEW), ExplorerRow::Separator], state, false, &mut action);
+            rows(ui, menus::EXPLORER_NEW, state, false, &mut action);
+            ui.separator();
             rows(ui, menus::EXPLORER_FOLDER, state, false, &mut action);
         }
         ExplorerTarget::Graph { .. } => rows(ui, menus::EXPLORER_GRAPH, state, false, &mut action),
         ExplorerTarget::Resource { .. } => {
-            for (label, command) in menus::EXPLORER_RESOURCE {
-                item(ui, label, command, None, true, &mut action);
+            for row in menus::EXPLORER_RESOURCE {
+                item(ui, row.label, row.id, None, true, &mut action);
             }
         }
         ExplorerTarget::Node { .. } => return None,
