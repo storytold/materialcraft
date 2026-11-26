@@ -3,7 +3,6 @@
 //! for text with `{name}` placeholders); each language is a static `(English, translation)`
 //! table, indexed into a hash map the first time the language is used. `Prefs::language` picks it.
 
-// Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::OnceLock;

@@ -1,5 +1,3 @@
-// Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
-// Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
 //! Russian UI text: (English key, translation). Keys are the English strings passed to `tr`.
 
 pub const TABLE: &[(&str, &str)] = &[
