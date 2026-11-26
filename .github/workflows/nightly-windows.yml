@@ -1,0 +1,102 @@
+name: Nightly Windows build
+
+# Compiles the unsigned Windows x86_64 MaterialCraft Nightly (packaging/windows/package.ps1 -Nightly
+# -BuildOnly) on a hosted runner and checks what it produced: x86_64 GUI PE, ProductName
+# `MaterialCraft Nightly`, ProductVersion equal to the feed identity, the `--version` answer, and a
+# ZIP holding only the GUI exe plus notices. No secrets and no environment: the real Nightly exe is
+# signed by the shared release-ref signer.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-windows-${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Nightly exe (x86_64, unsigned)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out craft-fonts
+        uses: storytold/craft-common-actions/actions/checkout-craft-fonts@f5141455aac7b2eb4708aa259d8ffcdf10fde939
+        with:
+          ref: c1db6d1a8ed772191241c3d185e2104be84d8691
+      - uses: storytold/craft-common-actions/actions/checkout-craft-i18n@f5141455aac7b2eb4708aa259d8ffcdf10fde939
+      - id: rust
+        uses: storytold/craft-common-actions/actions/rust-channel@f5141455aac7b2eb4708aa259d8ffcdf10fde939
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
+        with:
+          toolchain: ${{ steps.rust.outputs.toolchain }}
+          targets: ${{ steps.rust.outputs.targets }}
+          components: ${{ steps.rust.outputs.components }}
+      - name: Synthetic packaging fixtures
+        shell: pwsh
+        run: |
+          $env:CRAFT_FONTS_DIR = Join-Path ${{ github.workspace }} 'craft-fonts'
+          pwsh packaging/windows/nightly-package-tests.ps1 -FixtureRoot $env:RUNNER_TEMP
+          pwsh packaging/windows/nightly-signing-tests.ps1 -FixtureRoot $env:RUNNER_TEMP
+      - name: Prepare a Nightly identity for this commit
+        shell: pwsh
+        run: |
+          $base = (python -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version'].split('-')[0])").Trim()
+          $sha = (git rev-parse HEAD).Trim()
+          $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+          "MATERIALCRAFT_BUILD_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "MATERIALCRAFT_BUILD_DATE=$date" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "MATERIALCRAFT_VERSION=$base-nightly.$($date.Replace('-','')).$env:GITHUB_RUN_NUMBER.$env:GITHUB_RUN_ATTEMPT.g$($sha.Substring(0,12))" |
+            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Build the unsigned Nightly exe
+        shell: pwsh
+        env:
+          MATERIALCRAFT_BUILD_CHANNEL: nightly-v1
+          CARGO_TARGET_DIR: ${{ runner.temp }}/nightly-targets
+          DIST: ${{ runner.temp }}/nightly-dist
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+          CRAFT_FONTS_REQUIRED: "1"
+        run: pwsh packaging/windows/package.ps1 -Arch x64 -Nightly -BuildOnly
+      - name: Check the intermediate archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP "nightly-dist/materialcraft-$env:MATERIALCRAFT_VERSION-windows-x86_64-nightly.unsigned.zip"
+          if (-not (Test-Path $zip)) { throw "the intermediate archive is missing" }
+          $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            $names = @($archive.Entries | ForEach-Object { $_.FullName })
+          } finally { $archive.Dispose() }
+          if ('materialcraft.exe' -notin $names) { throw 'the archive does not hold the GUI exe' }
+          foreach ($forbidden in @('materialcraft-cli.exe', 'portable.txt', '.desktop')) {
+            if ($names | Where-Object { $_ -eq $forbidden -or $_.EndsWith($forbidden) }) { throw "the archive holds $forbidden" }
+          }
+          Write-Output "intermediate archive holds: $($names -join ', ')"
+      - name: Keep the unsigned archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: materialcraft-nightly-windows-x86_64-unsigned
+          path: ${{ runner.temp }}/nightly-dist/materialcraft-${{ env.MATERIALCRAFT_VERSION }}-windows-x86_64-nightly.unsigned.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

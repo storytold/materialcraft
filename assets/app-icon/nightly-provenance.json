@@ -1,0 +1,60 @@
+{
+  "title": "MaterialCraft nightly deep-background icons",
+  "author": "@skylartaylor",
+  "license": "MIT OR Apache-2.0",
+  "source_commit": null,
+  "inputs": [
+    {
+      "path": "assets/app-icon/hicolor/256x256/apps/ai.storyteller.materialcraft.png",
+      "sha256": "9277652831eddf91d36fb67f8f8926623d0a785f531307ad1090502821b529b9",
+      "purpose": "full-bleed 256 master (Windows/Linux, runtime window icon, nightly tar icon)"
+    },
+    {
+      "path": "assets/app-icon/materialcraft-1024.png",
+      "sha256": "27733f8d0eb938eaebb34411080e30ea942804c89db51f766c9fb12bf20f140b",
+      "purpose": "full-bleed 1024 master; the Mac slots are padded to Apple's 824/1024 grid from it, never upscaled"
+    }
+  ],
+  "method": {
+    "kind": "original code-generated derivative of the project-owned icon",
+    "original_palette": {
+      "ink": "#0b0b0c",
+      "paper": "#efe9dc",
+      "background": "#178a9c"
+    },
+    "nightly_background": "#0e3a41",
+    "transform": "Fit each pixel as a blend of the tile background and the nearer foreground colour (ink or paper); keep the background weight and replace only the background contribution, so foreground RGBA, alpha and the rounded corners are unchanged. Pack PNG frames into ICO/ICNS at native sizes. No crescent, letter or badge.",
+    "generator_sha256": "d34097d91e3467c0aff36147743e1437a12a62ce2954a3c4fb83474506de4e9b"
+  },
+  "outputs": {
+    "materialcraft-nightly.png": "79e69fd56eb7d76c73f22a5e35ac7a13dba8d4611d840c3265e3314af9f51179",
+    "materialcraft-nightly-1024.png": "fbbd011e01e15f614a6a8512ac6c5f01b1e4cef114d062710351bfb16fed5643",
+    "materialcraft-nightly.ico": "6db023828093307a40c4c7a60b584c354a397d186fb20c490b204a8068b7c0de",
+    "materialcraft-nightly.icns": "51fe2f610d90540e3b63815d77ed8a17dd115b3cffcebb2ef020b6504c22df94"
+  },
+  "ico_frame_sizes": [
+    16,
+    20,
+    24,
+    32,
+    40,
+    48,
+    64,
+    128,
+    256
+  ],
+  "icns_png_slots": {
+    "icp4": 16,
+    "icp5": 32,
+    "ic11": 32,
+    "icp6": 64,
+    "ic12": 64,
+    "ic07": 128,
+    "ic08": 256,
+    "ic13": 256,
+    "ic09": 512,
+    "ic14": 512,
+    "ic10": 1024
+  },
+  "validation": "Output hashes, PNG CRC/dimensions and exact container members checked; the recolour preserves every exact ink and paper pixel and replaces every exact background pixel. Visual comparison reviewed. Native Explorer/Finder/iconutil/app-package qualification remains unrun."
+}

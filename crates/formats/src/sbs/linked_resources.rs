@@ -53,12 +53,12 @@ pub(super) fn read(reader: &mut SbsReader<'_, '_>, content: Node<'_, '_>, pkg: &
         let result = (|| -> Result<(), String> {
             let bytes = linked(&file).ok_or("source package is unavailable")?;
             remaining = remaining.checked_sub(bytes.len()).ok_or("linked resource XML exceeds 64 MiB")?;
-            let text = std::str::from_utf8(&bytes).map_err(|_| "source package is not UTF-8")?;
-            let document = roxmltree::Document::parse_with_options(text, roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: MAX_XML_NODES })
-                .map_err(|_| "source package is not valid XML")?;
-            if !document.root_element().has_tag_name("package") {
-                return Err("source is not an SBS package".into());
-            }
+            let package_doc = craft_sbs::PackageDocument::parse_with_limits(&bytes, MAX_SOURCE_BYTES as u64, MAX_XML_NODES).map_err(|err| match err {
+                craft_sbs::Error::InvalidUtf8(_) => "source package is not UTF-8",
+                craft_sbs::Error::NotPackage => "source is not an SBS package",
+                _ => "source package is not valid XML",
+            })?;
+            let document = package_doc.document();
 
             for resource in document.descendants().filter(|node| node.has_tag_name("resource")) {
                 let path = resource_path(resource);

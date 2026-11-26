@@ -50,13 +50,15 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
         let points = if slot.is_some() { geometry::wire(source.pos, pointer) } else { geometry::wire(pointer, source.pos) };
         ui.painter_at(response.rect).add(egui::epaint::CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, Stroke::new(2.0, PORT_COLOR)));
     }
-    response.context_menu(|ui| super::context_menu::show(app, &mut editor, ui));
+    crate::graph::canvas_focus::context_menu(&response, |ui| super::context_menu::show(app, &mut editor, ui));
+    crate::graph::canvas_focus::settle(app, ui, false);
     editor.inspected_node = crate::graph::node_selection::inspected(&editor.selection, editor.inspected_node);
     app.pattern_editor = Some(editor);
 }
 
 fn paint(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) -> Option<PatternCanvas> {
-    let (bounds, response) = ui.allocate_exact_size(ui.available_size().max(vec2(100.0, 100.0)), Sense::click_and_drag());
+    let size = ui.available_size().max(vec2(100.0, 100.0));
+    let (bounds, response) = crate::graph::canvas_focus::allocate(app, ui, size);
     app.graph.view = bounds;
     let graph = editor.current(app)?;
     let selected: std::collections::BTreeSet<_> = editor.selection.iter().copied().collect();
@@ -87,7 +89,7 @@ fn paint(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) ->
     }
 
     let mut camera = GraphCamera { origin: bounds.min, pan: editor.pan, zoom: editor.zoom };
-    camera.zoom_from_input(ui, bounds);
+    camera.zoom_from_input(ui, bounds, app.ui.prefs.zoom_direction());
     editor.pan = camera.pan;
     editor.zoom = camera.zoom;
     crate::graph::grid::paint(&painter, &camera, bounds);

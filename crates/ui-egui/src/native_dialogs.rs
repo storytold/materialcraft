@@ -30,6 +30,19 @@ pub(crate) enum Then {
         document: u64,
     },
     SaveImage(Box<Image>),
+    /// The 3D view's frame to write as a PNG file: width, height and RGBA pixels
+    SaveRender(Box<(u32, u32, std::sync::Arc<Vec<u8>>)>),
+    /// The mesh the 3D view shows, to write as an OBJ file
+    ExportGeometry(std::sync::Arc<materialcraft_engine::geom::Mesh>),
+    SaveViewState,
+    /// Apply a saved 3D view state, also switching to its mesh when `with_mesh` is set
+    LoadViewState {
+        with_mesh: bool,
+    },
+    /// The image file the 2D view draws behind transparent pixels
+    BackgroundImage,
+    /// Help ▸ Export log: diagnostic events without message details
+    ExportLog(String),
     /// The parameters `graph.input.bind` runs with, before the path
     BindInput(Value, GraphRef),
 }
@@ -50,13 +63,13 @@ impl GraphRef {
 
 /// A queue for an app that has no window to wake yet (offscreen snapshots and tests)
 pub(crate) fn unattached() -> Dialogs {
-    craft_dialogs::Dialogs::new(std::sync::Arc::new(|| {}))
+    craft_dialogs::Dialogs::new(craft_dialogs::Wake::none())
 }
 
 /// A queue whose answers wake the window
 pub(crate) fn attached(ctx: &egui::Context) -> Dialogs {
     let ctx = ctx.clone();
-    craft_dialogs::Dialogs::new(std::sync::Arc::new(move || ctx.request_repaint()))
+    craft_dialogs::Dialogs::new(craft_dialogs::Wake::new(move || ctx.request_repaint()))
 }
 
 /// Queue a dialog unless one is already open or waiting, in which case the open one comes forward
@@ -83,6 +96,36 @@ pub(crate) fn save_package(app: &mut MaterialCraftApp, copy: bool) {
     ask(app, dialog, then);
 }
 
+/// Help ▸ Export log: ask where to write a diagnostic event log
+pub(crate) fn export_log(app: &mut MaterialCraftApp) {
+    let text = log_for_export(&app.session);
+    let dialog = craft_dialogs::FileDialog::save().file_name("materialcraft-log.txt").filter(tr("Text"), &["txt"]);
+    ask(app, dialog, Then::ExportLog(text));
+}
+
+fn log_for_export(session: &materialcraft_engine::Session) -> String {
+    use std::fmt::Write as _;
+
+    let mut text = format!("MaterialCraft {}\nMessage details omitted to protect document names and paths.\n", materialcraft_engine::VERSION);
+
+    // Raw Console messages can contain names and paths in platform-specific error formats
+    for message in &session.log {
+        let event = match message.as_str() {
+            message if message.starts_with(materialcraft_engine::WARNING_PREFIX) => "Package warning",
+            message if message.starts_with("Opened ") => "Opened package",
+            message if message.starts_with("Saved ") => "Saved file",
+            message if message.starts_with("Save all: ") => "Saved multiple packages",
+            message if message.starts_with("Exported ") => "Exported file",
+            _ => "Session message",
+        };
+        let _ = writeln!(text, "{event}");
+    }
+
+    let (failures, unsupported) = session.cook_failures();
+    let _ = writeln!(text, "Node errors in the active graph: {}\nUnsupported nodes: {unsupported}", failures.len());
+    text
+}
+
 /// Save in the unsaved-changes prompt, for a package without a path: waits behind any open dialog
 pub(crate) fn save_before_action(app: &mut MaterialCraftApp) {
     let then = Then::SavePackage { document: app.session.document_id, copy: false, before_action: true };
@@ -98,6 +141,7 @@ pub(crate) fn poll(app: &mut MaterialCraftApp) {
                 Some(path) => chosen(app, then, &path),
                 None => cancelled(app, then),
             },
+            Answer::Saved { path, .. } => chosen(app, then, &path),
             Answer::Cancelled | Answer::Message(_) => cancelled(app, then),
             Answer::Unavailable(why) => {
                 app.toast(format!("{}: {why}", tr("The file dialog could not be shown")), true);
@@ -155,11 +199,40 @@ fn chosen(app: &mut MaterialCraftApp, then: Then, path: &std::path::Path) {
             }
         }
         Then::SaveImage(image) => save_image(app, &image, path),
+        Then::SaveRender(frame) => {
+            let (width, height, pixels) = *frame;
+            let snapshot = materialcraft_engine::DisplaySnapshot::render_to(width, height, pixels, path.to_path_buf());
+            if app.run_with_display_snapshot("view.3d.saveRender", json!({}), snapshot).0.is_some() {
+                app.toast(format!("{} {picked}", tr("Saved")), false);
+            }
+        }
+        Then::ExportGeometry(mesh) => {
+            let snapshot = materialcraft_engine::DisplaySnapshot::geometry_to(mesh, path.to_path_buf());
+            if app.run_with_display_snapshot("view.3d.exportGeometry", json!({}), snapshot).0.is_some() {
+                app.toast(format!("{} {picked}", tr("Saved")), false);
+            }
+        }
+        Then::ExportLog(text) => match materialcraft_engine::formats::write_atomic(path, text.as_bytes()) {
+            Ok(()) => app.toast_only(format!("{} {picked}", tr("Saved")), false),
+            Err(error) => app.toast_only(format!("{}: {error}", tr("The log could not be saved")), true),
+        },
+        Then::SaveViewState => {
+            if app.run("view.3d.saveState", json!({"path": picked})).is_some() {
+                app.toast(format!("{} {picked}", tr("Saved")), false);
+            }
+        }
+        Then::LoadViewState { with_mesh } => {
+            app.run("view.3d.loadState", json!({"path": picked, "mesh": with_mesh}));
+        }
+        Then::BackgroundImage => {
+            app.run("view.2d", json!({"background": picked}));
+        }
         Then::BindInput(mut parameters, target) => {
             if GraphRef::active(app) != target {
                 not_applied(app);
                 return;
             }
+
             parameters["path"] = json!(picked);
             app.run("graph.input.bind", parameters);
         }
@@ -176,10 +249,12 @@ fn save_to(app: &mut MaterialCraftApp, document: u64, copy: bool, picked: &str) 
     if app.session.document_id != document && app.run("package.activate", json!({"document": document})).is_none() {
         return false;
     }
+
     let path = materialcraft_engine::file_cmds::package_path(picked);
     if app.run(if copy { "file.saveCopyAs" } else { "file.save" }, json!({"path": path})).is_none() {
         return false;
     }
+
     if !copy {
         app.ui.add_recent(&path);
     }

@@ -18,7 +18,8 @@ fn no_pins() -> std::path::PathBuf {
 
 fn app() -> MaterialCraftApp {
     let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
-    app.updates_rt.updater = Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins());
+    app.updates_rt.updater = Some(Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()));
+
     app
 }
 
@@ -34,7 +35,7 @@ fn app_with_source() -> (MaterialCraftApp, Receiver<()>, Arc<AtomicUsize>) {
         let _ = tx.send(());
         Ok(None)
     });
-    app.updates_rt.updater = Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()).with_source(source);
+    app.updates_rt.updater = Some(Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()).with_source(source));
     (app, rx, calls)
 }
 
@@ -48,9 +49,26 @@ fn release() -> craft_update::Release {
     }
 }
 
+/// Offers `release()` and ticks until the prompt is open.
+/// A fresh updater declines an offer only when the pins file holds a launcher choice, which sets
+/// `managed()`. A tick asks for another frame while the offer waits for its thread, so the wait
+/// fails when a tick leaves the prompt closed and asks for no frame, instead of ticking forever.
+fn offer(updater: &mut Updater) {
+    updater.offer(release());
+    let ctx = egui::Context::default();
+
+    while !updater.prompt_open() {
+        assert!(updater.managed().is_none(), "the offer was declined: {} holds a launcher choice", no_pins().display());
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| updater.tick(ctx));
+        assert!(updater.prompt_open() || updater.managed().is_some() || ctx.has_requested_repaint(), "the offer ended without opening the prompt");
+        std::thread::yield_now();
+    }
+}
+
 pub(super) fn open_prompt(app: &mut MaterialCraftApp) {
-    app.updates_rt.updater = Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins());
-    app.updates_rt.updater.offer(release());
+    app.updates_rt.updater = Some(Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()));
+    let Some(updater) = app.updates_rt.updater.as_mut() else { return };
+    offer(updater);
 }
 
 #[test]
@@ -76,8 +94,9 @@ fn a_new_app_is_idle_and_does_not_check_at_start() {
     let rt = Runtime::default();
     assert!(!rt.startup_check);
     assert!(!rt.check_requested);
-    assert!(!rt.updater.prompt_open());
-    assert_eq!(rt.updater.status(), &Status::Idle);
+    let updater = rt.updater.as_ref().expect("a stable build has its own updater");
+    assert!(!updater.prompt_open());
+    assert_eq!(updater.status(), &Status::Idle);
 }
 
 /// One whole frame of the app; the first one only installs the fonts
@@ -93,14 +112,15 @@ fn frame(app: &mut MaterialCraftApp, ctx: &egui::Context) {
 fn the_menu_command_starts_a_check_on_the_next_frame() {
     let (mut app, checks, _) = app_with_source();
     let ctx = egui::Context::default();
+    crate::framework::install_headless(&ctx);
     frame(&mut app, &ctx);
     menus::invoke(&mut app, &ctx, COMMAND);
     assert!(app.updates_rt.check_requested);
-    assert_eq!(app.updates_rt.updater.status(), &Status::Idle, "the check waits for the frame");
+    assert_eq!(app.updates_rt.updater.as_ref().unwrap().status(), &Status::Idle, "the check waits for the frame");
 
     frame(&mut app, &ctx);
     assert!(!app.updates_rt.check_requested);
-    assert_ne!(app.updates_rt.updater.status(), &Status::Idle);
+    assert_ne!(app.updates_rt.updater.as_ref().unwrap().status(), &Status::Idle);
     // Dropping the app ends the wait with an error if no check was started
     drop(app);
     checks.recv().unwrap();
@@ -115,7 +135,7 @@ fn the_check_at_start_runs_only_when_turned_on() {
 
     app.set_startup_update_check(true);
     tick(&mut app, &ctx);
-    assert_eq!(app.updates_rt.updater.status(), &Status::Idle, "the check at start is quiet");
+    assert_eq!(app.updates_rt.updater.as_ref().unwrap().status(), &Status::Idle, "the check at start is quiet");
     // Dropping the app ends the wait with an error if no check was started
     drop(app);
     checks.recv().unwrap();
@@ -144,13 +164,23 @@ fn result_window_shows_every_status_but_idle() {
 #[test]
 fn an_offered_release_opens_the_prompt_over_the_window() {
     let mut app = app();
-    app.updates_rt.updater.offer(release());
+
+    offer(app.updates_rt.updater.as_mut().unwrap());
+
     assert!(blocks_input(&app));
 
-    let mut harness = egui_kittest::Harness::builder().build_ui_state(|ui, app: &mut MaterialCraftApp| crate::windows::show(app, ui.ctx()), app);
+    let mut harness = egui_kittest::Harness::builder().with_context_setup(crate::framework::install_headless).build_ui_state(
+        |ui, app: &mut MaterialCraftApp| {
+            crate::windows::show(app, ui.ctx());
+            app.framework_dialogs.run(ui);
+        },
+        app,
+    );
+
     harness.run_steps(3);
-    let _ = harness.get_by_label("LATER");
-    assert!(harness.state().updates_rt.updater.prompt_open());
+
+    let _ = harness.get_by_label("Later");
+    assert!(harness.state().updates_rt.updater.as_ref().unwrap().prompt_open());
 }
 
 #[test]
@@ -165,11 +195,17 @@ fn a_requested_check_shows_its_progress() {
         }
         Ok(None)
     });
-    app.updates_rt.updater = Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()).with_source(source);
+    app.updates_rt.updater = Some(Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()).with_source(source));
     check(&mut app);
     tick(&mut app, &egui::Context::default());
 
-    let mut harness = egui_kittest::Harness::builder().build_ui_state(|ui, app: &mut MaterialCraftApp| crate::windows::show(app, ui.ctx()), app);
+    let mut harness = egui_kittest::Harness::builder().with_context_setup(crate::framework::install_headless).build_ui_state(
+        |ui, app: &mut MaterialCraftApp| {
+            crate::windows::show(app, ui.ctx());
+            app.framework_dialogs.run(ui);
+        },
+        app,
+    );
     harness.run_steps(3);
     let _ = harness.get_by_label("Checking for updates…");
     drop(release);
@@ -183,6 +219,7 @@ fn press_export(app: &mut MaterialCraftApp) {
         events: vec![egui::Event::Key { key: egui::Key::E, physical_key: None, pressed: true, repeat: false, modifiers }],
         ..Default::default()
     };
+
     let mut output = ctx.run_ui(input, |ui| menus::shortcuts(app, ui.ctx()));
     output.textures_delta.clear();
 }
@@ -200,11 +237,29 @@ fn the_prompt_and_the_modal_results_hold_the_keyboard() {
 #[test]
 fn shortcuts_wait_while_the_prompt_is_open() {
     let mut idle = app();
+
     press_export(&mut idle);
+
     assert!(idle.ui.windows.export, "the shortcut works without the prompt");
 
     let mut prompted = app();
-    prompted.updates_rt.updater.offer(release());
+    offer(prompted.updates_rt.updater.as_mut().unwrap());
+
     press_export(&mut prompted);
+
     assert!(!prompted.ui.windows.export);
+}
+
+#[test]
+fn a_nightly_build_has_no_updater_and_points_at_the_launcher() {
+    // The Nightly channel never constructs the updater: its installs belong to ArtCraft Launcher.
+    let mut app = app();
+    app.updates_rt.updater = None;
+    assert!(!app.updates_enabled());
+    let ctx = egui::Context::default();
+    menus::invoke(&mut app, &ctx, COMMAND);
+    assert!(!app.updates_rt.check_requested, "no check may start without an updater");
+    assert_eq!(app.status, crate::i18n::tr("Updates are managed by ArtCraft Launcher"));
+    // A frame without an updater must not panic or touch the pins file.
+    tick(&mut app, &ctx);
 }

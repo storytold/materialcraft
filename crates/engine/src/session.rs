@@ -9,61 +9,7 @@ use materialcraft_eval::{Cache, Cooked, Options};
 use serde::{Deserialize, Serialize};
 
 use crate::snapshot::Snapshot;
-use crate::{AnnotationSelection, Clip, EngineError, Result};
-
-/// The 3D view's scene and look.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct View3d {
-    /// Built-in mesh: `rounded_cube`, `cube`, `sphere`, `cylinder`, `plane`, `torus`, `material_ball`.
-    pub scene: String,
-    /// UV repeats of the material on the mesh.
-    pub tiling: f32,
-    /// Camera yaw and pitch (degrees) and distance (mesh radii).
-    pub yaw: f32,
-    pub pitch: f32,
-    pub distance: f32,
-    /// Where the camera orbits: offset from the mesh center (mesh radii, world axes).
-    pub target: [f32; 3],
-    /// Environment: `studio`, `sunset`, `overcast`, `night`.
-    pub environment: String,
-    pub env_rotation: f32,
-    pub exposure: f32,
-    /// Height relief in mesh radii
-    pub height_scale: f32,
-    pub height_level: f32,
-    pub normal_y_flip: bool,
-    pub show_axis: bool,
-    pub show_grid: bool,
-    /// See through the mesh where the material's alpha (opacity output, else base color alpha)
-    /// is below one.
-    pub transparency: bool,
-    /// Show the material's alpha channel on the mesh instead of the lit material.
-    pub alpha_view: bool,
-}
-
-impl Default for View3d {
-    fn default() -> Self {
-        View3d {
-            scene: "rounded_cube".into(),
-            tiling: 1.0,
-            yaw: 35.0,
-            pitch: 25.0,
-            distance: 3.2,
-            target: [0.0; 3],
-            environment: "studio".into(),
-            env_rotation: 0.0,
-            exposure: 0.0,
-            height_scale: 0.04,
-            height_level: 0.0,
-            normal_y_flip: true,
-            show_axis: false,
-            show_grid: false,
-            transparency: true,
-            alpha_view: false,
-        }
-    }
-}
+use crate::{AnnotationSelection, Clip, DisplaySnapshot, EngineError, Result, View2d, View3d};
 
 /// The 3D view's camera preferences. The app keeps them in its preferences (Edit ▸ Preferences)
 /// and pushes them in with [`Session::set_camera_prefs`]; headless sessions use the defaults.
@@ -97,20 +43,6 @@ impl CameraPrefs {
     }
 }
 
-/// What the 2D view shows.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct View2d {
-    pub node: Option<NodeId>,
-    pub port: usize,
-    /// Repeat the image 3×3 to check tiling.
-    pub tiled: bool,
-    /// `rgba`, `r`, `g`, `b`, `a`.
-    pub channel: String,
-    /// Overlay the luminance/channel histogram.
-    pub histogram: bool,
-}
-
 /// The prefix of warning lines in [`Session::log`].
 pub const WARNING_PREFIX: &str = "Warning: ";
 
@@ -134,6 +66,10 @@ pub struct Session {
     pub annotation_target: crate::AnnotationTarget,
     pub view2d: View2d,
     pub view3d: View3d,
+    /// The 3D view a reset goes back to, when the user saved one as the default
+    pub default_view3d: Option<View3d>,
+    /// Opening a material graph shows its outputs in the 3D view (Preferences ▸ Graph)
+    pub view_outputs_on_open: bool,
     pub material_preview: crate::MaterialPreview,
     pub(crate) cooked_graph: Option<usize>,
     pub(crate) material_cooked: std::collections::BTreeMap<usize, Cooked>,
@@ -162,6 +98,10 @@ pub struct Session {
     pub cache: Arc<Mutex<Cache>>,
     /// A mesh loaded for the 3D view (`scene: "custom"`): its file name and geometry.
     pub custom_mesh: Option<(String, Arc<materialcraft_geom::Mesh>)>,
+    /// Changes on each successful mesh load, including loads under the same name
+    pub custom_mesh_generation: u64,
+    pub(crate) display_snapshot: Option<DisplaySnapshot>,
+    pub(crate) display_output: Option<DisplaySnapshot>,
     /// The node library loaded from the SBS library folder
     pub library: Arc<crate::node_library::NodeLibrary>,
     pub(crate) history: crate::document_history::DocumentHistory,
@@ -202,8 +142,10 @@ impl Session {
             selection: Vec::new(),
             annotation_selection: None,
             annotation_target: Default::default(),
-            view2d: View2d { channel: "rgba".into(), ..View2d::default() },
+            view2d: View2d::default(),
             view3d: View3d::default(),
+            default_view3d: None,
+            view_outputs_on_open: true,
             preview_size: Some(512),
             camera: CameraPrefs::default(),
             history_prefs: crate::HistoryPrefs::default(),
@@ -220,6 +162,9 @@ impl Session {
             cook_epoch: 0,
             cache: Arc::new(Mutex::new(Cache::default())),
             custom_mesh: None,
+            custom_mesh_generation: 0,
+            display_snapshot: None,
+            display_output: None,
             library: Default::default(),
             history: Default::default(),
             group: None,
@@ -237,6 +182,18 @@ impl Session {
 
         session.library = library;
         session
+    }
+
+    /// Hand one immutable displayed snapshot to the next command
+    pub fn begin_display_handoff(&mut self, snapshot: DisplaySnapshot) {
+        self.display_snapshot = Some(snapshot);
+        self.display_output = None;
+    }
+
+    /// Release an unused input and return a clipboard result after the command finishes
+    pub fn finish_display_handoff(&mut self) -> Option<DisplaySnapshot> {
+        self.display_snapshot = None;
+        self.display_output.take()
     }
 
     /// The graph being edited.
@@ -520,12 +477,16 @@ impl Session {
     pub fn set_camera_prefs(&mut self, prefs: CameraPrefs) {
         self.camera = prefs.sanitized();
         self.view3d.target = self.camera.clamp_target(self.view3d.target);
+        if let Some(default_view) = &mut self.default_view3d {
+            default_view.target = self.camera.clamp_target(default_view.target);
+        }
     }
 
     /// Show a mesh file in the 3D view (OBJ, glTF, GLB).
     pub fn load_mesh_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
         let mesh = materialcraft_formats::mesh::load_mesh(name, bytes)?;
         self.custom_mesh = Some((name.to_string(), Arc::new(mesh)));
+        self.custom_mesh_generation = self.custom_mesh_generation.wrapping_add(1);
         self.view3d.scene = "custom".into();
         Ok(())
     }

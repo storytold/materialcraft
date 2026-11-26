@@ -1,7 +1,6 @@
 //! Compact widgets matching the app's look: labelled slim sliders, icon buttons, section
 //! headers, channel toggle chips and color swatches.
 
-use craft_ui::buttons::{ButtonVisuals, IconButton, IconButtonStyle};
 use egui::{Color32, CornerRadius, Response, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::theme::Tokens;
@@ -22,12 +21,24 @@ pub fn dnd_release<T: std::any::Any + Send + Sync>(resp: &Response) -> Option<st
 /// A labelled slider in two rows: "Label ........ value" over a slim track with a round knob.
 /// Returns the track response (`.changed()` on a drag or valid numeric edit).
 pub fn slider(ui: &mut Ui, label: &str, value: &mut f32, range: std::ops::RangeInclusive<f32>, decimals: usize) -> Response {
-    slider_with_settings(ui, label, value, range, decimals, None)
+    slider_with_settings(ui, label, value, range, decimals, None, None)
+}
+
+/// Keep a short slider track while allowing the full supported numeric range
+pub(crate) fn slider_with_numeric_range(
+    ui: &mut Ui,
+    label: &str,
+    value: &mut f32,
+    track_range: std::ops::RangeInclusive<f32>,
+    numeric_range: std::ops::RangeInclusive<f32>,
+    decimals: usize,
+) -> Response {
+    slider_with_settings(ui, label, value, track_range, decimals, None, Some(numeric_range))
 }
 
 pub(crate) fn input_slider(ui: &mut Ui, label: &str, value: &mut f32, input: &materialcraft_engine::core::ExposedParameter, decimals: usize) -> Response {
     let range = if input.clamp { input.min..=input.max } else { input.min.min(*value)..=input.max.max(*value) };
-    slider_with_settings(ui, label, value, range, decimals, Some(input))
+    slider_with_settings(ui, label, value, range, decimals, Some(input), None)
 }
 
 fn slider_with_settings(
@@ -37,13 +48,15 @@ fn slider_with_settings(
     range: std::ops::RangeInclusive<f32>,
     decimals: usize,
     settings: Option<&materialcraft_engine::core::ExposedParameter>,
+    numeric_range: Option<std::ops::RangeInclusive<f32>>,
 ) -> Response {
-    let tk = Tokens::get(ui.ctx());
+    let tokens = Tokens::get(ui.ctx());
 
     // Imported widget limits may be reversed or non-finite
     let first = if range.start().is_finite() { *range.start() } else { 0.0 };
     let last = if range.end().is_finite() { *range.end() } else { 1.0 };
     let (lo, hi) = (first.min(last), first.max(last));
+    let (numeric_lo, numeric_hi) = numeric_range.as_ref().map_or((lo, hi), |range| (*range.start(), *range.end()));
     let constrain = |value: f32, clamp: bool| {
         let value = if let Some(step) = settings.and_then(|input| input.step).filter(|step| step.is_finite() && *step > 0.0) {
             let snapped = ((f64::from(value) / f64::from(step)).round() * f64::from(step)) as f32;
@@ -51,30 +64,30 @@ fn slider_with_settings(
         } else {
             value
         };
-        if clamp { value.clamp(lo, hi) } else { value }
+        if clamp { value.clamp(numeric_lo, numeric_hi) } else { value }
     };
-    let w = ui.available_width();
+    let width = ui.available_width();
     let mut edited = false;
     ui.horizontal(|ui| {
-        ui.label(RichText::new(label).color(tk.text));
+        ui.label(RichText::new(label).color(tokens.text));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let id = ui.next_auto_id();
             // Keep incomplete input (such as "-") across frames while editing
             let draft = id.with("numeric-draft");
             let editing = ui.memory(|m| m.has_focus(id) || m.had_focus_last_frame(id));
             let mut text = editing.then(|| ui.data(|d| d.get_temp::<String>(draft))).flatten().unwrap_or_else(|| format!("{:.*}", decimals, value));
-            let r = ui.add(egui::TextEdit::singleline(&mut text).id(id).desired_width(44.0).align(egui::Align2::RIGHT_CENTER).frame(egui::Frame::NONE));
-            name(&r, egui::Role::TextInput, label);
-            if (r.changed() || r.lost_focus())
+            let response = ui.add(egui::TextEdit::singleline(&mut text).id(id).desired_width(44.0).align(egui::Align2::RIGHT_CENTER).frame(egui::Frame::NONE));
+            name(&response, egui::Role::TextInput, label);
+            if (response.changed() || response.lost_focus())
                 && !ui.input(|i| i.key_pressed(egui::Key::Escape))
-                && let Ok(v) = text.trim().parse::<f32>()
-                && v.is_finite()
+                && let Ok(parsed_value) = text.trim().parse::<f32>()
+                && parsed_value.is_finite()
             {
-                let v = constrain(v, settings.is_none_or(|input| input.clamp));
-                edited = v != *value;
-                *value = v;
+                let parsed_value = constrain(parsed_value, settings.is_none_or(|input| input.clamp));
+                edited = parsed_value != *value;
+                *value = parsed_value;
             }
-            let focused = r.has_focus();
+            let focused = response.has_focus();
             ui.data_mut(|d| {
                 if focused {
                     d.insert_temp(draft, text);
@@ -84,32 +97,32 @@ fn slider_with_settings(
             });
         });
     });
-    let (rect, mut resp) = ui.allocate_exact_size(vec2(w, 14.0), Sense::click_and_drag());
+    let (rect, mut response) = ui.allocate_exact_size(vec2(width, 14.0), Sense::click_and_drag());
     if edited {
-        resp.mark_changed();
+        response.mark_changed();
     }
-    let (v, l) = (*value as f64, label.to_string());
-    resp.widget_info(move || egui::WidgetInfo::slider(true, v, l.clone()));
-    if (resp.dragged() || resp.clicked())
-        && let Some(p) = resp.interact_pointer_pos()
+    let (accessible_value, accessible_label) = (*value as f64, label.to_string());
+    response.widget_info(move || egui::WidgetInfo::slider(true, accessible_value, accessible_label.clone()));
+    if (response.dragged() || response.clicked())
+        && let Some(pointer) = response.interact_pointer_pos()
     {
         let value_at = |x: f32| {
-            let t = ((x - rect.left() - 5.0) / (rect.width() - 10.0).max(1.0)).clamp(0.0, 1.0);
-            f64::from(lo) + (f64::from(hi) - f64::from(lo)) * f64::from(t)
+            let fraction = ((x - rect.left() - 5.0) / (rect.width() - 10.0).max(1.0)).clamp(0.0, 1.0);
+            f64::from(lo) + (f64::from(hi) - f64::from(lo)) * f64::from(fraction)
         };
 
         // Snap only within half a pixel so intermediate values remain reachable
         let radius = 0.5 / ui.ctx().pixels_per_point();
-        let v = egui::emath::smart_aim::best_in_range_f64(value_at(p.x - radius), value_at(p.x + radius)) as f32;
-        let v = constrain(v, true);
-        if (v - *value).abs() > f32::EPSILON {
-            *value = v;
-            resp.mark_changed();
+        let aimed_value = egui::emath::smart_aim::best_in_range_f64(value_at(pointer.x - radius), value_at(pointer.x + radius)) as f32;
+        let aimed_value = constrain(aimed_value, true);
+        if (aimed_value - *value).abs() > f32::EPSILON {
+            *value = aimed_value;
+            response.mark_changed();
         }
     }
-    let t = if hi > lo { ((*value - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 0.0 };
-    track(ui, &resp, rect.left() + 5.0..=rect.right() - 5.0, rect.center().y, t, 2.0, 4.5);
-    resp
+    let fraction = if hi > lo { ((*value - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 0.0 };
+    track(ui, &response, rect.left() + 5.0..=rect.right() - 5.0, rect.center().y, fraction, 2.0, 4.5);
+    response
 }
 
 /// A small inline slider for the top tool bar: "Label value" above a short track.
@@ -165,24 +178,33 @@ pub fn elided(painter: &egui::Painter, text: impl Into<String>, size: f32, color
 }
 
 /// A square icon button (Phosphor glyph) in a rounded tool well: `selected` sits in the accent
-/// tinted well (the shared Craft icon button, `craft_ui::buttons`).
+/// tinted well, a hovered one in the row-hover well and a pressed one in the tool well; keyboard
+/// focus draws an inset accent outline. `tooltip` is its accessible name and tooltip. A
+/// non-finite, non-positive or oversized (over 4096 points) size gives an inert zero-size response.
 pub fn icon_button(ui: &mut Ui, icon: &str, tooltip: &str, selected: bool, size: f32) -> Response {
     let tk = Tokens::get(ui.ctx());
-    let well = |fill, icon| ButtonVisuals { fill, stroke: Stroke::NONE, icon };
-    let style = IconButtonStyle {
-        normal: well(Color32::TRANSPARENT, tk.text),
-        hovered: well(tk.row_hover, tk.text_strong),
-        pressed: Some(well(tk.tool_active, tk.text_strong)),
-        selected: well(tk.tool_active, tk.text_strong),
-        corner_radius: CornerRadius::same(6),
-        focus_stroke: Stroke::new(1.0, tk.accent),
+    let valid = size.is_finite() && size > 0.0 && size <= 4096.0;
+    let (rect, response) = ui.allocate_exact_size(if valid { vec2(size, size) } else { egui::Vec2::ZERO }, if valid { Sense::click() } else { Sense::hover() });
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, valid && ui.is_enabled(), selected, tooltip));
+    if !valid {
+        return response;
+    }
+    let (fill, color) = if selected || response.is_pointer_button_down_on() {
+        (tk.tool_active, tk.text_strong)
+    } else if response.hovered() {
+        (tk.row_hover, tk.text_strong)
+    } else {
+        (Color32::TRANSPARENT, tk.text)
     };
-    IconButton::new(tooltip, vec2(size, size), &style)
-        .selected(selected)
-        .show(ui, |ui, rect, color| {
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(size * 0.62), color);
-        })
-        .on_hover_text(tooltip)
+    let radius = CornerRadius::same(6);
+    if fill != Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, radius, fill);
+    }
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(size * 0.62), color);
+    if response.has_focus() && rect.width() > 4.0 && rect.height() > 4.0 {
+        ui.painter().rect_stroke(rect.shrink(2.0), radius, Stroke::new(1.0, tk.accent), egui::StrokeKind::Inside);
+    }
+    response.on_hover_text(tooltip)
 }
 
 /// A flat button filled with the accent, white lettering (a dialog's main action).

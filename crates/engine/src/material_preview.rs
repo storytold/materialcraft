@@ -52,10 +52,33 @@ impl MaterialPreview {
     }
 }
 
+/// Scene units across a built-in mesh: a meter
+const MESH_SIZE: f32 = 100.0;
+
 impl Session {
+    /// The 3D view as it renders. With `physical_size` on, the material is sized by the physical
+    /// size of the graph it comes from: a graph a meter wide covers the mesh once, one half a
+    /// meter wide twice
+    pub fn rendered_view3d(&self) -> crate::View3d {
+        let mut view = self.view3d.clone();
+        if !view.physical_size {
+            return view;
+        }
+
+        let graph = self.material_preview.graph.or_else(|| self.material_preview.channels.values().next().map(|source| source.graph));
+        let Some([width, height, _]) = graph.and_then(|index| self.pkg.graphs.get(index)).map(|graph| graph.physical_size) else { return view };
+
+        // A graph without a physical size leaves the material as it is
+        let (lowest, highest) = (*crate::View3d::REPEATS.start(), *crate::View3d::REPEATS.end());
+        if width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0 {
+            view.uv_scale = [(view.uv_scale[0] * MESH_SIZE / width).clamp(lowest, highest), (view.uv_scale[1] * MESH_SIZE / height).clamp(lowest, highest)];
+        }
+        view
+    }
+
     /// Show a material graph on open, retaining the material while editing functions
     pub(crate) fn open_material_preview(&mut self) {
-        if self.graph().is_ok_and(|graph| graph.function.is_none()) {
+        if self.view_outputs_on_open && self.graph().is_ok_and(|graph| graph.function.is_none()) {
             self.material_preview = MaterialPreview::for_graph(&self.pkg, self.graph);
         }
     }

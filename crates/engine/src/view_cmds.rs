@@ -3,39 +3,61 @@
 use serde_json::{Value as J, json};
 
 use materialcraft_core::NodeId;
+use materialcraft_geom::view::View3d;
 
-use crate::commands::{CommandSpec, always, bad, boolp, f32p, has_graph, strp, u64p};
+use crate::commands::{CommandSpec, always, bad, has_graph, strp, u64p};
 use crate::{Result, Session, cmd};
 
-/// Built-in 3D view scenes: (id, label).
+/// Built-in 3D view scenes: (id, label), the plain shapes first.
 pub const SCENES: &[(&str, &str)] = &[
     ("cube", "Cube"),
     ("cylinder", "Cylinder"),
+    ("hollow_box", "Hollow box"),
+    ("inner_box", "Inner box"),
     ("plane", "Plane"),
+    ("plane_hi_res", "Plane (hi-res)"),
     ("sphere", "Sphere"),
+    ("cloth", "Cloth"),
     ("material_ball", "Mat ball"),
     ("rounded_cube", "Rounded cube"),
+    ("rounded_cylinder", "Rounded cylinder"),
+    ("sphere_2_tiles", "Sphere 2 tiles"),
     ("torus", "Torus"),
 ];
+
+/// How many of [`SCENES`] are the plain shapes; the menu draws a line after them
+pub const PLAIN_SCENES: usize = 7;
 
 /// Environments: (id, label).
 pub const ENVIRONMENTS: &[(&str, &str)] = &[("studio", "Studio"), ("sunset", "Sunset"), ("overcast", "Overcast"), ("night", "Night")];
 
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        cmd!("view.2d", "View output in 2D view", [], None, "{node?, port?, tiled?, channel? (rgba|r|g|b|a), histogram?}", has_graph, view2d),
+        cmd!(
+            "view.2d",
+            "View output in 2D view",
+            [],
+            None,
+            "{node?, port?, channel? (rgba|r|g|b|a), tiled? (repeat the image across the view), checkerboard? (behind transparent pixels), premultiplied? (colors already multiplied by alpha), srgb? (values are sRGB encoded; false shows them as linear), physicalSize? (proportions of the graph's physical size), maintainZoom? (keep the zoom when the image size changes), uv? (overlay the 3D mesh's UV layout), information? (pixel readout panel), sampler? ([x, y] in 0..1 from the top-left corner, or null), histogram?, histogramChannel? (luminance|red|green|blue|rgb|alpha), histogramBits? (8|16|32, 0 follows the image), histogramSqrt?, histogramSelection? ([low, high] in 0..1, or null), background? (image file path drawn behind transparent pixels, or null)}",
+            has_graph,
+            view2d
+        ),
         cmd!(
             "view.3d",
             "3D view settings",
             [],
             None,
-            "{scene? (cube|cylinder|plane|sphere|material_ball|rounded_cube|torus), tiling?, yaw?, pitch?, distance?, target? ([x, y, z] orbit point in mesh radii from its center, within the pan limit preference), environment? (studio|sunset|overcast|night), envRotation?, exposure?, heightScale? (displacement depth in mesh radii, 0..0.5), heightLevel? (height that stays on the surface, 0..1; 0 = rises out), normalYFlip? (DirectX normal maps; default true/DirectX), axis?, grid?, transparency? (see through where alpha < 1), alphaView? (show the alpha channel)}",
+            "{scene? (cube|cylinder|hollow_box|inner_box|plane|plane_hi_res|sphere|cloth|material_ball|rounded_cube|rounded_cylinder|sphere_2_tiles|torus|custom), tiling?, uvScale? ([u, v]), physicalSize? (size the material by the graph's physical size), yaw?, pitch?, distance?, target? ([x, y, z] orbit point in mesh radii from its center, within the pan limit preference), focalLength? (mm, 0.01..100), projection? (perspective|orthographic), background? (studio|color|environment; studio is a gray backdrop that darkens toward the corners), backgroundColor? ([r, g, b] linear), overrideResolution?, viewportResolution?, renderResolution? ([width, height]), renderScale? (25|50|100|200 percent), autoClip?, nearClip?, farClip? (scene units; a mesh is 100 across), environment? (studio|sunset|overcast|night), envEnabled?, envRotation?, exposure? (-10..10 stops), ambient? ({enabled?, color?}), light1?, light2? ({enabled?, color?, intensity?, yaw?, pitch?, distance?}), wireframe?, axis?, backfaceCulling?, boundingBox?, grid?, lightHelpers?, vertexTangentSpace?, resolution?, sceneStats?, fps?, shader? (openPbr|blinn|lambert|meshInfo|metallicRoughness|metallicRoughnessCoated|metallicRoughnessSss|specularGlossiness|unlit), technique? (tessellation|parallax), meshInfo? (normal|tangent|binormal|uv|uvTile|vertexColor|position), material? ({parameter: number|[r, g, b]|bool, or null for its default}), channels? ({parameter: bool} switches a parameter and its image on or off), heightScale? (displacement depth in mesh radii, 0..0.5), heightLevel? (height that stays on the surface, 0..1; 0 = rises out), tessellation? (1..8), normalYFlip? (DirectX normal maps; default false/OpenGL), samples? (1..4), ambientOcclusion? (rays, 0..32), shadows?, displacement?, viewChannels? (rgb|r|g|b), colorSpace? (aces|srgb), transparency? (see through where alpha < 1), alphaView? (show the alpha channel)}",
             always,
             view3d
         ),
         cmd!("view.3d.loadMesh", "Load mesh...", [], None, "{path} shows an OBJ, glTF or GLB mesh in the 3D view (scene \"custom\")", always, load_mesh),
-        cmd!("view.3d.reset", "Reset scene", [], None, "{}", always, |s, _| {
-            s.view3d = crate::View3d::default();
+        cmd!("view.3d.reset", "Reset scene", [], None, "{} back to the saved default view, or the built-in one", always, |s, _| {
+            let mut view = s.default_view3d.clone().unwrap_or_default();
+            if view.scene == "custom" && s.custom_mesh.is_none() {
+                view.scene = View3d::default().scene;
+            }
+            s.view3d = view;
             Ok(J::Null)
         }),
         cmd!("view.previewSize", "Preview size", [], None, "{size: 64..8192, or 0 for full size} caps node outputs while editing", always, preview_size),
@@ -61,121 +83,34 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
 }
 
 fn view2d(session: &mut Session, params: &J) -> Result<J> {
-    // Validate the channel before applying any part of the request
-    let channel = strp(params, "channel");
-    if channel.is_some_and(|c| !["rgba", "r", "g", "b", "a"].contains(&c)) {
-        return Err(bad("view.2d", "`channel` is rgba, r, g, b or a"));
-    }
+    let node = match u64p(params, "node") {
+        Some(id) => {
+            session.graph()?.node(NodeId(id)).map_err(|_| bad("view.2d", format!("no node {id}")))?;
+            Some(NodeId(id))
+        }
+        None => None,
+    };
 
-    if let Some(node) = u64p(params, "node") {
-        session.graph()?.node(NodeId(node)).map_err(|_| bad("view.2d", format!("no node {node}")))?;
-        session.view2d.node = Some(NodeId(node));
-        session.view2d.port = 0;
-    }
-    if let Some(port) = u64p(params, "port") {
-        session.view2d.port = port as usize;
-    }
-    if let Some(tiled) = boolp(params, "tiled") {
-        session.view2d.tiled = tiled;
-    }
-    if let Some(histogram) = boolp(params, "histogram") {
-        session.view2d.histogram = histogram;
-    }
-    if let Some(c) = channel {
-        session.view2d.channel = c.into();
-    }
-
+    // The settings are replaced as a whole, so a rejected parameter leaves all of them unchanged
+    session.view2d = session.view2d.updated(node, params)?;
     Ok(serde_json::to_value(&session.view2d).unwrap_or(J::Null))
 }
 
-fn view3d(session: &mut Session, params: &J) -> Result<J> {
-    // Validate up front so a bad target changes nothing
-    let target = match params.get("target") {
-        None => None,
-        Some(t) => {
-            let xyz: Option<Vec<f32>> =
-                t.as_array().filter(|a| a.len() == 3).map(|a| a.iter().filter_map(J::as_f64).map(|f| f as f32).filter(|f| f.is_finite()).collect());
-            match xyz.as_deref() {
-                Some(&[x, y, z]) => Some(session.camera.clamp_target([x, y, z])),
-                _ => return Err(bad("view.3d", "`target` is [x, y, z]")),
-            }
-        }
-    };
-
-    // A rejected environment must not leave a new scene applied
-    let environment = strp(params, "environment");
-    if let Some(environment) = environment
-        && !ENVIRONMENTS.iter().any(|(id, _)| *id == environment)
-    {
-        return Err(bad("view.3d", format!("unknown environment `{environment}`")));
-    }
-
-    if let Some(scene) = strp(params, "scene") {
-        if scene == "custom" && session.custom_mesh.is_none() {
-            return Err(bad("view.3d", "no mesh is loaded: use view.3d.loadMesh"));
-        }
-
-        let view = &mut session.view3d;
-        if scene != "custom" && !SCENES.iter().any(|(id, _)| *id == scene) {
-            return Err(bad("view.3d", format!("unknown scene `{scene}`")));
-        }
-
-        view.scene = scene.into();
-    }
-
-    let view = &mut session.view3d;
-    if let Some(environment) = environment {
-        view.environment = environment.into();
-    }
-    if let Some(tiling) = f32p(params, "tiling") {
-        view.tiling = tiling.clamp(0.1, 64.0);
-    }
-    if let Some(yaw) = f32p(params, "yaw") {
-        view.yaw = yaw.rem_euclid(360.0);
-    }
-    if let Some(pitch) = f32p(params, "pitch") {
-        view.pitch = pitch.clamp(-89.0, 89.0);
-    }
-    if let Some(distance) = f32p(params, "distance") {
-        view.distance = distance.clamp(1.2, 20.0);
-    }
-    if let Some(target) = target {
-        view.target = target;
-    }
-    if let Some(env_rotation) = f32p(params, "envRotation") {
-        view.env_rotation = env_rotation.rem_euclid(360.0);
-    }
-    if let Some(exposure) = f32p(params, "exposure") {
-        view.exposure = exposure.clamp(-10.0, 10.0);
-    }
-    if let Some(height_scale) = f32p(params, "heightScale") {
-        view.height_scale = height_scale.clamp(0.0, 0.5);
-    }
-    if let Some(height_level) = f32p(params, "heightLevel") {
-        view.height_level = height_level.clamp(0.0, 1.0);
-    }
-    if let Some(flip) = boolp(params, "normalYFlip") {
-        view.normal_y_flip = flip;
-    }
-    if let Some(show_axis) = boolp(params, "axis") {
-        view.show_axis = show_axis;
-    }
-    if let Some(show_grid) = boolp(params, "grid") {
-        view.show_grid = show_grid;
-    }
-    if let Some(transparency) = boolp(params, "transparency") {
-        view.transparency = transparency;
-    }
-    if let Some(alpha_view) = boolp(params, "alphaView") {
-        view.alpha_view = alpha_view;
-    }
-
+fn view3d(session: &mut Session, parameters: &J) -> Result<J> {
+    // The settings are replaced as a whole, so a rejected parameter leaves all of them unchanged
+    session.view3d = crate::view3d_update::updated(session, parameters)?;
     Ok(serde_json::to_value(&session.view3d).unwrap_or(J::Null))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn load_mesh(s: &mut Session, p: &J) -> Result<J> {
     let path = strp(p, "path").ok_or_else(|| bad("view.3d.loadMesh", "`path` is required"))?;
+
+    // Opening a named pipe may wait indefinitely for a writer
+    if !std::fs::metadata(path).map_err(|error| bad("view.3d.loadMesh", format!("{path}: {error}")))?.is_file() {
+        return Err(bad("view.3d.loadMesh", format!("{path}: not a regular file")));
+    }
+
     let bytes = std::fs::read(path).map_err(|e| bad("view.3d.loadMesh", format!("{path}: {e}")))?;
     let name = std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path).to_string();
     s.load_mesh_bytes(&name, &bytes)?;

@@ -15,6 +15,7 @@ pub struct MaterialCraftApp {
     pub cooker: cook::Cooker,
     /// Node output thumbnails and library previews
     pub thumbs: thumbs::Thumbs,
+    pub(crate) template_previews: windows::TemplatePreviews,
     /// The graph editor's gesture state
     pub graph: graph::GraphView,
     pub view3d: view3d::View3dState,
@@ -42,6 +43,10 @@ pub struct MaterialCraftApp {
     last_time: f64,
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     next_autosave: f64,
+    #[cfg(not(target_arch = "wasm32"))]
+    autosave_workspace: u64,
+    #[cfg(not(target_arch = "wasm32"))]
+    autosave_worker: Option<std::thread::JoinHandle<()>>,
     styled: Option<(theme::Brightness, theme::Accent)>,
     /// Release checks and the update prompt (desktop only)
     #[cfg(not(target_arch = "wasm32"))]
@@ -49,21 +54,36 @@ pub struct MaterialCraftApp {
     /// Native file dialogs (desktop only)
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) dialogs: crate::native_dialogs::Dialogs,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) material_export_job: Option<std::sync::mpsc::Receiver<Result<Value, String>>>,
     /// The held action waiting for the Save dialog the unsaved-changes prompt opened
     pub(crate) awaiting_save: Option<crate::unsaved::Guarded>,
-    /// The window buttons to draw when the app draws the window frame; `None` while the desktop draws it (desktop only)
-    #[cfg(not(target_arch = "wasm32"))]
-    pub window_layout: Option<craft_window::Layout>,
     /// Keyboard shortcuts and their dispatch
     pub(crate) keymap: craft_keymap::Keymap,
-    pub(crate) dispatcher: craft_keymap::egui::Dispatcher,
+    pub(crate) dispatcher: crate::shortcut_dispatch::Dispatcher,
+    /// The dock area's workspace and panel specs between passes
+    pub(crate) docks: docking::LiveDock,
+    /// The framework dialogs (the update dialogs), run once per pass after MaterialCraft's own UI
+    pub framework_dialogs: craft_ui::dialog::DialogHost,
+    /// Who MaterialCraft is to the framework's dialogs
+    pub(crate) framework_host: std::sync::Arc<craft_host::Host>,
     /// What Copy or Cut put on the clipboard this frame, for the system clipboard
     pub(crate) system_clipboard: Option<String>,
     /// Fallback fonts for Arabic
     pub fonts: fonts::UiFonts,
     /// The icon font is installed (it takes effect on the frame after `set_fonts`)
     fonts_ready: bool,
+    /// The frame that only installed the fonts: egui runs it again once they are loaded.
+    fonts_frame: Option<u64>,
     ui_gesture_active: bool,
+    /// The version this build names itself with: the Launcher's feed identity for a Nightly.
+    pub build_version: String,
+    /// The commit this build was made from, empty when the build could not tell.
+    pub build_commit: String,
+    /// The app binary's last step as the app leaves, run once at the end of `on_exit`. On macOS
+    /// every quit ends the process inside AppKit's terminate, after `on_exit`, so code after
+    /// `eframe::run_native` never runs there.
+    pub at_exit: Option<Box<dyn FnOnce()>>,
 }
 
 impl MaterialCraftApp {
@@ -95,6 +115,7 @@ impl MaterialCraftApp {
             toasts: Vec::new(),
             cooker: cook::Cooker::default(),
             thumbs: thumbs::Thumbs::default(),
+            template_previews: windows::TemplatePreviews::default(),
             graph: graph::GraphView::default(),
             view3d: view3d::View3dState::default(),
             view2d: view2d::View2dState::default(),
@@ -115,47 +136,97 @@ impl MaterialCraftApp {
             quit_confirmed: false,
             last_time: 0.0,
             next_autosave,
+            #[cfg(not(target_arch = "wasm32"))]
+            autosave_workspace: std::hash::BuildHasher::hash_one(&std::hash::RandomState::new(), ()),
+            #[cfg(not(target_arch = "wasm32"))]
+            autosave_worker: None,
             styled: None,
             #[cfg(not(target_arch = "wasm32"))]
             updates_rt: crate::updates_ui::Runtime::default(),
             #[cfg(not(target_arch = "wasm32"))]
             dialogs: crate::native_dialogs::unattached(),
-            awaiting_save: None,
             #[cfg(not(target_arch = "wasm32"))]
-            window_layout: None,
+            material_export_job: None,
+            awaiting_save: None,
             keymap: menus::keymap(craft_keymap::Platform::current()),
-            // The desktop sends Copy, Cut and Paste events in place of their key presses and the web sends both: the option lets them run their commands
-            dispatcher: craft_keymap::egui::Dispatcher::new().with_repeat(true).with_clipboard_events(true),
+            dispatcher: crate::shortcut_dispatch::Dispatcher::default(),
+            docks: docking::LiveDock::default(),
+            framework_dialogs: craft_ui::dialog::DialogHost::new(),
+            framework_host: crate::framework::host(),
             system_clipboard: None,
             fonts: fonts::UiFonts::default(),
             fonts_ready: false,
+            fonts_frame: None,
             ui_gesture_active: false,
+            build_version: materialcraft_engine::VERSION.to_owned(),
+            build_commit: String::new(),
+            at_exit: None,
         };
         i18n::set_language(&app.ui.prefs.language);
         app.apply_prefs();
+
+        // A session that has not touched its 3D view starts from the saved default
+        if let Some(view) = &app.session.default_view3d
+            && app.session.view3d == materialcraft_engine::View3d::default()
+        {
+            app.session.view3d = view.clone();
+        }
         app
     }
 
     /// Push application preferences into the session
     pub fn apply_prefs(&mut self) {
         self.ui.prefs.library_cache = self.ui.prefs.library_cache.sanitized();
-        if self.session.library_cache_prefs != self.ui.prefs.library_cache {
-            let _ = materialcraft_engine::execute(&mut self.session, "library.cache.configure", &serde_json::json!(self.ui.prefs.library_cache));
+        let library_cache = self.ui.committed_prefs().library_cache.sanitized();
+        if self.session.library_cache_prefs != library_cache {
+            let _ = materialcraft_engine::execute(&mut self.session, "library.cache.configure", &serde_json::json!(library_cache));
         }
-        self.thumbs.configure_cache(self.ui.prefs.library_cache, self.session.library_cache_clear_epoch);
+        self.thumbs.configure_cache(library_cache, self.session.library_cache_clear_epoch);
+
         self.ui.prefs.history = self.ui.prefs.history.sanitized();
-        if self.session.history_prefs != self.ui.prefs.history {
-            let _ = materialcraft_engine::execute(&mut self.session, "session.history", &serde_json::json!(self.ui.prefs.history));
+        let history = self.ui.committed_prefs().history.sanitized();
+        if self.session.history_prefs != history {
+            let _ = materialcraft_engine::execute(&mut self.session, "session.history", &serde_json::json!(history));
         }
 
-        if self.session.camera != self.ui.prefs.camera.sanitized() {
-            self.session.set_camera_prefs(self.ui.prefs.camera);
+        self.ui.recent.truncate(self.ui.committed_prefs().recent_limit.clamp(1, crate::state::Prefs::MAX_RECENT));
+        self.session.view_outputs_on_open = self.ui.committed_prefs().view_outputs_on_open;
+
+        let camera = self.ui.committed_prefs().camera.sanitized();
+        if self.session.camera != camera {
+            self.session.set_camera_prefs(camera);
         }
 
-        let p = if self.ui.prefs.preview_size == 0 { None } else { Some(self.ui.prefs.preview_size.clamp(64, 8192)) };
-        if self.session.preview_size != p {
-            let _ = materialcraft_engine::execute(&mut self.session, "view.previewSize", &serde_json::json!({"size": p.unwrap_or(0)}));
+        // Bound saved camera values before applying them
+        let default_view = self.ui.committed_prefs().default_view3d.clone().map(|view| {
+            let mut view = view.sanitized();
+            view.target = self.session.camera.clamp_target(view.target);
+            view
+        });
+        if self.session.default_view3d != default_view {
+            self.session.default_view3d = default_view;
         }
+
+        let preview_size = match self.ui.committed_prefs().preview_size {
+            0 => None,
+            size => Some(size.clamp(64, 8192)),
+        };
+        if self.session.preview_size != preview_size {
+            let _ = materialcraft_engine::execute(&mut self.session, "view.previewSize", &serde_json::json!({"size": preview_size.unwrap_or(0)}));
+        }
+    }
+
+    /// Run one command with a displayed snapshot and release the handoff before returning
+    pub(crate) fn run_with_display_snapshot(
+        &mut self,
+        id: &str,
+        params: Value,
+        snapshot: materialcraft_engine::DisplaySnapshot,
+    ) -> (Option<Value>, Option<materialcraft_engine::DisplaySnapshot>) {
+        self.session.begin_display_handoff(snapshot);
+        let result = self.run(id, params);
+        let output = self.session.finish_display_handoff();
+        (result, output)
     }
 
     /// Run an engine command, reporting errors as toasts. Returns the result on success
@@ -231,16 +302,7 @@ impl MaterialCraftApp {
                     self.ui.dock.focus(docking::Panel::Properties);
                 }
 
-                if id == "view.previewSize" {
-                    self.ui.prefs.preview_size = self.session.preview_size.unwrap_or(0);
-                }
-                if id == "library.cache.configure" {
-                    self.ui.prefs.library_cache = self.session.library_cache_prefs;
-                }
-                if id == "session.history" {
-                    self.ui.prefs.history = self.session.history_prefs;
-                }
-
+                self.sync_preferences_after_command(id);
                 self.close_subgraph_after(id);
                 if id == "graph.node.function.edit"
                     && let Ok(target) = serde_json::from_value::<materialcraft_engine::FunctionGraphTarget>(v["target"].clone())
@@ -265,6 +327,39 @@ impl MaterialCraftApp {
                 self.toast(e.to_string(), true);
                 None
             }
+        }
+    }
+
+    /// Commands commit explicit preferences even while the window presents a draft
+    pub(crate) fn sync_preferences_after_command(&mut self, id: &str) {
+        let prefs = &mut self.ui.prefs;
+        let applied = self.ui.preferences.applied.as_mut();
+        match id {
+            "view.previewSize" => {
+                prefs.preview_size = self.session.preview_size.unwrap_or(0);
+                if let Some(applied) = applied {
+                    applied.preview_size = prefs.preview_size;
+                }
+            }
+            "view.3d.saveDefault" => {
+                prefs.default_view3d.clone_from(&self.session.default_view3d);
+                if let Some(applied) = applied {
+                    applied.default_view3d.clone_from(&prefs.default_view3d);
+                }
+            }
+            "library.cache.configure" => {
+                prefs.library_cache = self.session.library_cache_prefs;
+                if let Some(applied) = applied {
+                    applied.library_cache = prefs.library_cache;
+                }
+            }
+            "session.history" => {
+                prefs.history = self.session.history_prefs;
+                if let Some(applied) = applied {
+                    applied.history = prefs.history;
+                }
+            }
+            _ => {}
         }
     }
 
@@ -311,48 +406,47 @@ impl MaterialCraftApp {
         if self.pattern_editor.as_ref().is_some_and(|editor| editor.current(self).is_none()) {
             self.pattern_editor = None;
         }
+        crate::view3d::clear_stale_inspection(self);
     }
 
     pub fn toast(&mut self, text: impl Into<String>, error: bool) {
         let text = text.into();
-        self.status = text.clone();
         self.session.log(text.clone());
+        self.toast_only(text, error);
+    }
+
+    pub(crate) fn toast_only(&mut self, text: String, error: bool) {
+        self.status = text.clone();
         self.toasts.push(Toast { text, error, until: self.last_time + if error { 6.0 } else { 3.0 } });
     }
 
     /// Every `prefs.autosave_minutes`, write a modified package to the autosave folder
     #[cfg(not(target_arch = "wasm32"))]
     fn autosave(&mut self, now: f64) {
-        let period = self.ui.prefs.autosave_minutes as f64 * 60.0;
+        let preferences = self.ui.committed_prefs();
+        let period = f64::from(preferences.autosave_minutes) * 60.0;
         if period <= 0.0 || !self.session.modified {
             self.next_autosave = now + period;
             return;
         }
 
-        if now < self.next_autosave {
+        // A slow disk must not accumulate multiple package snapshots
+        if now < self.next_autosave || self.autosave_worker.as_ref().is_some_and(|worker| !worker.is_finished()) {
             return;
         }
 
         self.next_autosave = now + period;
-        let dir = user_dir("autosave");
-        let path = dir.join(format!("{}.mcraft", materialcraft_engine::formats::safe_file_name(&self.session.pkg.name)));
-        let pkg = self.session.pkg.clone();
-        let spawned = std::thread::Builder::new().name("materialcraft-autosave".into()).spawn(move || {
-            let result = std::fs::create_dir_all(&dir)
-                .map_err(|e| e.to_string())
-                .and_then(|_| {
-                    materialcraft_engine::formats::project::ProjectFiles::build(&pkg, "autosave.mcraft", true)
-                        .and_then(|files| files.zip())
-                        .map_err(|e| e.to_string())
-                })
-                .and_then(|bytes| materialcraft_engine::formats::write_atomic(&path, &bytes).map_err(|e| e.to_string()));
-            match result {
-                Ok(()) => log::info!("autosaved {}", path.display()),
-                Err(e) => log::warn!("autosave to {} failed: {e}", path.display()),
-            }
-        });
-        if let Err(e) = spawned {
-            log::warn!("could not start autosave: {e}");
+        let folder = crate::autosave_versions::folder(&user_dir("autosave"), self.session.path.as_deref(), self.autosave_workspace, self.session.document_id);
+        let package = self.session.pkg.clone();
+        let keep = preferences.autosave_versions.clamp(1, crate::state::Prefs::MAX_AUTOSAVE_VERSIONS);
+        let worker =
+            std::thread::Builder::new().name("materialcraft-autosave".into()).spawn(move || match crate::autosave_versions::save(&folder, &package, keep) {
+                Ok(()) => log::info!("Saved a recovery copy"),
+                Err(error) => log::warn!("Could not save a recovery copy ({:?})", error.kind()),
+            });
+        match worker {
+            Ok(worker) => self.autosave_worker = Some(worker),
+            Err(error) => log::warn!("Could not start autosave ({:?})", error.kind()),
         }
     }
 }
@@ -363,21 +457,35 @@ impl eframe::App for MaterialCraftApp {
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        if let Some(applied) = self.ui.preferences.applied.as_mut() {
+            std::mem::swap(applied, &mut self.ui.prefs);
+        }
         eframe::set_value(storage, "ui", &self.ui);
+        if let Some(applied) = self.ui.preferences.applied.as_mut() {
+            std::mem::swap(applied, &mut self.ui.prefs);
+        }
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    /// The one exit path macOS has: its quit ends the process before `run_native` returns.
+    fn on_exit(&mut self) {
+        if let Some(at_exit) = self.at_exit.take() {
+            at_exit();
+        }
+    }
+
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         control::feed_input(self, raw);
+        self.before_input(ctx);
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(not(target_arch = "wasm32"))]
-        self.step_then(ctx, craft_quit::on_close_request);
-        #[cfg(target_arch = "wasm32")]
         self.step(ctx);
+        self.close_path(ctx);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::framework::before_ui(ui.ctx(), &*frame);
         self.draw(ui);
         #[cfg(not(target_arch = "wasm32"))]
         self.dialogs.show_pending(Some(&*frame));
@@ -387,17 +495,14 @@ impl eframe::App for MaterialCraftApp {
 }
 
 impl MaterialCraftApp {
-    /// [`Self::step`], then the platform's close handling, which sees a close `step` canceled
-    #[cfg(not(target_arch = "wasm32"))]
-    fn step_then(&mut self, ctx: &egui::Context, close: impl FnOnce(&egui::Context) -> bool) {
-        self.step(ctx);
-        close(ctx);
-    }
-
     /// Per-frame logic before drawing: styles, the control channel, cooking, shortcuts
     pub fn step(&mut self, ctx: &egui::Context) {
         if !self.fonts_ready {
             theme::install(ctx);
+            ctx.request_repaint();
+            return;
+        }
+        if self.reruns_fonts_frame(ctx) {
             ctx.request_repaint();
             return;
         }
@@ -425,11 +530,13 @@ impl MaterialCraftApp {
             self.session.finish_edit();
         }
 
-        crate::unsaved::handle_close(self, ctx);
+        crate::unsaved::finish_quit(self, ctx);
         control::poll(self, ctx);
         web_files::poll(self);
         #[cfg(not(target_arch = "wasm32"))]
         crate::native_dialogs::poll(self);
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::export::poll(self, ctx);
         if !crate::shell::modality::Modality::capture(self, ctx).is_blocked() {
             for f in ctx.input(|i| i.raw.dropped_files.clone()) {
                 web_files::dropped(self, ctx, &f);
@@ -458,31 +565,45 @@ impl MaterialCraftApp {
         }
     }
 
+    /// Whether this pass is egui's rerun of the frame that only installed the fonts
+    fn reruns_fonts_frame(&mut self, ctx: &egui::Context) -> bool {
+        self.fonts_frame = self.fonts_frame.filter(|frame| *frame == ctx.cumulative_frame_nr());
+        self.fonts_frame.is_some()
+    }
+
     /// Draw the whole window into `ui`
     pub fn draw(&mut self, ui: &mut egui::Ui) {
         crate::annotation::activate(self, crate::annotation::target(self));
+        let ctx = ui.ctx().clone();
         if !self.fonts_ready {
             self.fonts_ready = true;
+            self.fonts_frame = Some(ctx.cumulative_frame_nr());
+            return;
+        }
+        if self.reruns_fonts_frame(&ctx) {
             return;
         }
 
-        let ctx = ui.ctx().clone();
         let t0 = now_ms();
 
         // Tab can focus a menu or toolbar button while drawing; preserve keyboard ownership
-        self.graph.keyboard_was_focused = ctx.egui_wants_keyboard_input();
+        self.graph.keyboard_was_focused = crate::framework::widget_has_keyboard(&ctx);
         menus::menu_bar(self, ui);
-        toolbar::main_toolbar(self, ui);
+        if self.ui.prefs.show_toolbar {
+            toolbar::main_toolbar(self, ui);
+        }
         toolbar::status_bar(self, ui);
         self.ui.explorer.hovered = false;
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(theme::Tokens::get(&ctx).chrome)).show(ui, |ui| docking::show(self, ui));
         windows::show(self, &ctx);
+        self.framework_dialogs.run(ui);
+        crate::framework::release_keyboard(&ctx);
         #[cfg(not(target_arch = "wasm32"))]
-        if self.window_layout.is_some() {
+        if crate::window_controls::app_draws_frame(&ctx) {
             crate::window_controls::resize_zones(ui);
         }
 
-        let gesture_active = ctx.input(|input| input.pointer.any_down()) || ctx.egui_wants_keyboard_input();
+        let gesture_active = ctx.input(|input| input.pointer.any_down()) || crate::framework::widget_has_keyboard(&ctx);
         if !gesture_active && (self.ui_gesture_active || ctx.input(|input| input.pointer.any_released())) {
             self.session.finish_edit();
         }
@@ -494,6 +615,10 @@ impl MaterialCraftApp {
         self.ui_ms = if self.ui_ms == 0.0 { dt } else { self.ui_ms * 0.9 + dt * 0.1 };
     }
 }
+
+#[cfg(test)]
+#[path = "material_craft_app.exit_hook_test.rs"]
+mod exit_hook_tests;
 
 #[cfg(test)]
 #[path = "material_craft_app.test.rs"]

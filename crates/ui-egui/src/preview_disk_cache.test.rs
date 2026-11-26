@@ -193,6 +193,28 @@ fn cache_budget_evicts_old_files_and_preserves_unrelated_files() {
 }
 
 #[test]
+fn encoded_preview_keeps_legacy_bytes_and_budget_boundary() {
+    let _serial = TESTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(root.path());
+    let side = MAX_SIDE;
+    let pixels: Vec<u8> = (0..side * side * 4).map(|i| (i * 17 + i / 31) as u8).collect();
+    let mut legacy = Vec::new();
+    image::ImageEncoder::write_image(image::codecs::png::PngEncoder::new(&mut legacy), &pixels, side, side, image::ExtendedColorType::Rgba8).unwrap();
+    let bytes = legacy.len() as u64;
+    let path = cache.path([1; 32], side);
+
+    cache.settings.update(PreviewCacheLimits { budget_bytes: bytes - 1, max_entries: 1 }, false);
+    cache.write(&path, side, &pixels).unwrap();
+    assert!(!path.exists());
+
+    cache.settings.update(PreviewCacheLimits { budget_bytes: bytes, max_entries: 1 }, false);
+    cache.write(&path, side, &pixels).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), legacy);
+    assert_eq!(cache.read(&path, side), Some(pixels));
+}
+
+#[test]
 fn unavailable_or_busy_cache_still_returns_rendered_pixels() {
     let _serial = TESTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = tempfile::tempdir().unwrap();

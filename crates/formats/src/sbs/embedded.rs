@@ -1,39 +1,28 @@
+use super::embedded_error::EmbeddedError;
 use crate::{FormatError, Result};
-use base64::Engine as _;
-use std::io::{Read, Write};
+use std::cell::Cell;
 
+pub(super) fn decode_embedded(strdata: &str) -> std::result::Result<Vec<u8>, String> {
+    decode_embedded_bounded(strdata, crate::MAX_RESOURCE, &Cell::new(crate::MAX_RESOURCE + 1)).map_err(|error| error.to_string())
+}
+
+pub(super) fn decode_embedded_bounded(strdata: &str, remaining_bytes: u64, inflation_work: &Cell<u64>) -> std::result::Result<Vec<u8>, EmbeddedError> {
+    craft_sbs::embedded::decode_bounded(strdata, crate::MAX_RESOURCE, remaining_bytes, inflation_work)
+}
+
+pub(super) fn encode_embedded(bytes: &[u8]) -> Result<String> {
+    craft_sbs::embedded::encode(bytes).map_err(FormatError::Io)
+}
+
+#[cfg(test)]
 pub(super) fn base64_engine() -> base64::engine::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
 }
 
-pub(super) fn decode_embedded(strdata: &str) -> std::result::Result<Vec<u8>, String> {
-    let raw = base64_engine().decode(strdata.split_whitespace().collect::<String>()).map_err(|e| format!("bad base64: {e}"))?;
-    let (length, compressed) = raw.split_at_checked(4).ok_or("too short")?;
-    let length = u32::from_be_bytes([length[0], length[1], length[2], length[3]]) as usize;
-    if length as u64 > crate::MAX_RESOURCE {
-        return Err("embedded resource exceeds the 256 MiB limit".into());
-    }
-
-    let mut out = Vec::new();
-
-    // Reading one extra byte detects data that contradicts the declared format length
-    let mut decoder = flate2::read::ZlibDecoder::new(compressed).take(length as u64 + 1);
-    decoder.read_to_end(&mut out).map_err(|e| format!("bad compressed data: {e}"))?;
-    if out.len() != length {
-        return Err(format!("{} bytes where {length} were declared", out.len()));
-    }
-
-    Ok(out)
-}
-
-pub(super) fn encode_embedded(bytes: &[u8]) -> Result<String> {
-    let length = u32::try_from(bytes.len()).map_err(|_| FormatError::Io("resource too large".into()))?;
-    let mut encoder = flate2::write::ZlibEncoder::new(length.to_be_bytes().to_vec(), flate2::Compression::default());
-    encoder.write_all(bytes).map_err(|e| FormatError::Io(e.to_string()))?;
-    let raw = encoder.finish().map_err(|e| FormatError::Io(e.to_string()))?;
-
-    Ok(craft_mime::transfer::base64(&raw))
-}
+#[cfg(test)]
+use base64::Engine as _;
+#[cfg(test)]
+use std::io::Write;
 
 #[cfg(test)]
 mod tests {
@@ -58,9 +47,71 @@ mod tests {
         assert!(decode_embedded("AA").unwrap_err().starts_with("bad base64:"));
 
         let encoded = encode_embedded(b"payload").unwrap();
-        let spaced = encoded.chars().map(|c| format!("{c} \n")).collect::<String>();
+        let spaced = encoded.chars().map(|c| format!("{c} \n\u{2003}")).collect::<String>();
 
         assert_eq!(decode_embedded(&spaced).unwrap(), b"payload");
+    }
+
+    #[test]
+    fn aggregate_budget_bounds_inflation_without_masking_early_corruption() {
+        for length in [3_u32, 4] {
+            let mut raw = length.to_be_bytes().to_vec();
+            raw.push(255);
+            let encoded = base64_engine().encode(raw);
+            assert!(matches!(decode_embedded_bounded(&encoded, 3, &Cell::new(16)), Err(EmbeddedError::Damaged(_))));
+        }
+        let encoded = encode_embedded(b"four").unwrap();
+
+        assert!(matches!(decode_embedded_bounded(&encoded, 3, &Cell::new(16)), Err(EmbeddedError::Budget)));
+        assert_eq!(decode_embedded_bounded(&encoded, 4, &Cell::new(16)).unwrap(), b"four");
+    }
+
+    #[test]
+    fn inflation_work_counts_discarded_prefixes_and_stops_before_next_decode() {
+        let work = Cell::new(8);
+        let encoded = encode_embedded(b"four").unwrap();
+        for expected in [4, 0] {
+            assert!(matches!(decode_embedded_bounded(&encoded, 3, &work), Err(EmbeddedError::Budget)));
+            assert_eq!(work.get(), expected);
+        }
+
+        // Exhaustion stops the next resource before Base64 decoding
+        assert!(matches!(decode_embedded_bounded("!!!!", 3, &work), Err(EmbeddedError::WorkBudget)));
+
+        let work = Cell::new(2);
+        assert!(matches!(decode_embedded_bounded(&encoded, 4, &work), Err(EmbeddedError::WorkBudget)));
+        assert_eq!(work.get(), 0);
+    }
+
+    #[test]
+    fn checksum_errors_charge_output_without_spending_retained_budget() {
+        let mut raw = base64_engine().decode(encode_embedded(b"four").unwrap()).unwrap();
+        *raw.last_mut().unwrap() ^= 1;
+        let work = Cell::new(8);
+
+        assert!(matches!(decode_embedded_bounded(&base64_engine().encode(raw), 4, &work), Err(EmbeddedError::Damaged(_))));
+        assert_eq!(work.get(), 4);
+    }
+
+    #[test]
+    fn proven_length_mismatch_precedes_retained_budget() {
+        let mut raw = base64_engine().decode(encode_embedded(b"four").unwrap()).unwrap();
+        raw[..4].copy_from_slice(&3_u32.to_be_bytes());
+        let work = Cell::new(4);
+
+        assert!(matches!(decode_embedded_bounded(&base64_engine().encode(raw), 3, &work), Err(EmbeddedError::Damaged(_))));
+        assert_eq!(work.get(), 0);
+    }
+
+    #[test]
+    fn retained_assets_release_spare_decompression_capacity() {
+        let bytes = vec![17; 2 << 20];
+        let encoded = encode_embedded(&bytes).unwrap();
+
+        let decoded = decode_embedded(&encoded).unwrap();
+
+        assert_eq!(decoded, bytes);
+        assert!(decoded.capacity() < 2 * decoded.len(), "retained {} bytes for a {}-byte asset", decoded.capacity(), decoded.len());
     }
 
     #[test]

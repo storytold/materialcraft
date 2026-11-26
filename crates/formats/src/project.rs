@@ -9,7 +9,6 @@ use materialcraft_core::{Package, Value};
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(not(target_arch = "wasm32"))]
 use std::io::Write;
-use std::io::{Cursor, Read};
 
 pub const EXT: &str = "mcraft";
 pub const SBS_ENTRY: &str = "package.sbs";
@@ -82,41 +81,31 @@ fn resolve(owner: &str, reference: &str) -> Result<String> {
 }
 
 pub fn read(bytes: &[u8], identity: &str) -> Result<sbs::SbsRead> {
-    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|error| bad(error.to_string()))?;
-    if zip.len() > MAX_ENTRIES {
-        return Err(bad(format!("archive has more than {MAX_ENTRIES} entries")));
+    let mut archive = craft_zip::Archive::open(bytes, craft_zip::Limits { max_entries: MAX_ENTRIES as u64, max_total_bytes: MAX_TOTAL_EXPANDED_BYTES })
+        .map_err(|error| bad(error.to_string()))?;
+    if archive.has_duplicate_names() {
+        return Err(bad("Invalid or duplicate archive entry"));
     }
 
     let mut files = BTreeMap::new();
     let mut seen = BTreeSet::new();
-    let mut total_expanded_bytes = 0u64;
-    for index in 0..zip.len() {
-        let entry = zip.by_index(index).map_err(|error| bad(error.to_string()))?;
-        let name = entry.name().to_string();
+    for index in 0..archive.len() {
+        let name = archive.entry_name(index).map_err(|error| bad(error.to_string()))?.ok_or_else(|| bad("Missing archive entry"))?;
         let path = name.trim_end_matches('/');
         if path.is_empty()
             || path.contains('\\')
             || resolve("", path)? != path
             || !seen.insert(path.to_ascii_lowercase())
-            || entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000)
+            || archive.entry_is_symlink(index).map_err(|error| bad(error.to_string()))? == Some(true)
         {
             return Err(bad(format!("Invalid or duplicate archive entry `{name}`")));
         }
 
-        if entry.is_dir() {
+        if archive.entry_is_dir(index).map_err(|error| bad(error.to_string()))? == Some(true) {
             continue;
         }
 
-        let mut content = Vec::new();
-        entry.take(MAX_ENTRY_BYTES + 1).read_to_end(&mut content).map_err(|error| bad(error.to_string()))?;
-        if content.len() as u64 > MAX_ENTRY_BYTES {
-            return Err(bad(format!("archive entry `{name}` is too large")));
-        }
-
-        total_expanded_bytes = total_expanded_bytes.saturating_add(content.len() as u64);
-        if total_expanded_bytes > MAX_TOTAL_EXPANDED_BYTES {
-            return Err(bad("archive expands past its total size limit"));
-        }
+        let content = archive.read_index(index, MAX_ENTRY_BYTES).map_err(|error| bad(error.to_string()))?.ok_or_else(|| bad("Missing archive entry"))?;
 
         files.insert(name, content);
     }

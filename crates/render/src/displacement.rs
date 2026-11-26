@@ -4,8 +4,8 @@ pub struct Displacement {
     pub depth: f32,
     /// The height (0..1) that stays on the original surface
     pub level: f32,
-    /// UV repeats of the height map
-    pub tiling: f32,
+    /// UV repeats of the height map along U and V
+    pub repeats: [f32; 2],
     /// Subdivide while one more step stays within this many triangles
     pub max_triangles: usize,
     /// Shade with the displaced surface's normals instead of the original ones

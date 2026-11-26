@@ -61,6 +61,32 @@ fn finish(positions: Vec<Vec3>, normals: Option<Vec<Vec3>>, uvs: Vec<Vec2>, indi
     Mesh::from_parts(positions, normals, uvs, indices, "material").map_err(|e| bad(e.to_string()))
 }
 
+/// `mesh` as Wavefront OBJ text: positions, texture coordinates, normals and triangles
+pub fn obj_text(mesh: &Mesh) -> Result<String> {
+    let (textured, shaded) = (mesh.uvs.len() == mesh.positions.len(), mesh.normals.len() == mesh.positions.len());
+    let corners = mesh
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .flatten()
+        .map(|&index| craft_mesh::Corner {
+            position: index,
+            uv: if textured { index } else { craft_mesh::NONE },
+            normal: if shaded { index } else { craft_mesh::NONE },
+        })
+        .collect();
+    let shared = craft_mesh::Mesh {
+        positions: mesh.positions.iter().map(|p| [f64::from(p.x), f64::from(p.y), f64::from(p.z)]).collect(),
+        normals: if shaded { mesh.normals.iter().map(|n| [f64::from(n.x), f64::from(n.y), f64::from(n.z)]).collect() } else { Vec::new() },
+        uv_sets: if textured { vec![mesh.uvs.iter().map(|u| [u.x, u.y]).collect()] } else { Vec::new() },
+        parts: vec![craft_mesh::Part { corners, ..craft_mesh::Part::default() }],
+        ..craft_mesh::Mesh::default()
+    };
+    let scene = craft_mesh::Scene::from_meshes(vec![shared], Vec::new());
+    craft_mesh::obj::write(&scene, None, &limits()).map_err(|e| read_error("OBJ", e))
+}
+
 /// Parse a mesh file by extension.
 pub fn load_mesh(name: &str, bytes: &[u8]) -> Result<Mesh> {
     let extension = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
@@ -226,6 +252,28 @@ fn box_uvs(mesh: &Mesh) -> Vec<Vec2> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mesh_written_as_obj_loads_back_as_it_was() {
+        let mesh = materialcraft_geom::primitives::torus(1.0, 0.35, 12, 6);
+
+        let loaded = load_mesh("torus.obj", obj_text(&mesh).unwrap().as_bytes()).unwrap();
+
+        assert_eq!((loaded.triangle_count(), loaded.vertex_count()), (mesh.triangle_count(), mesh.vertex_count()));
+
+        // Compare reindexed meshes within their own centered, scaled bounds
+        let (loaded_low, loaded_high) = loaded.bounds();
+        let (mesh_low, mesh_high) = mesh.bounds();
+        let scale = (loaded_high - loaded_low).length() / (mesh_high - mesh_low).length();
+        let (loaded_center, mesh_center) = ((loaded_low + loaded_high) * 0.5, (mesh_low + mesh_high) * 0.5);
+
+        for (&loaded_corner, &mesh_corner) in loaded.indices.iter().zip(&mesh.indices) {
+            let (a, b) = (loaded_corner as usize, mesh_corner as usize);
+            assert!((loaded.positions[a] - loaded_center - (mesh.positions[b] - mesh_center) * scale).length() < 1e-4);
+            assert!((loaded.normals[a] - mesh.normals[b]).length() < 1e-4);
+            assert!((loaded.uvs[a] - mesh.uvs[b]).length() < 1e-5, "the texture is not flipped on the way");
+        }
+    }
 
     #[test]
     fn obj_quad_loads_with_uvs_and_tangents() {
@@ -541,5 +589,37 @@ mod tests {
     fn vertex_bound_allows_three_vertices_per_triangle() {
         assert!(check_vertex_bound(0, 3 * MAX_TRIANGLES).is_ok());
         assert!(check_vertex_bound(0, 3 * MAX_TRIANGLES + 1).is_err());
+    }
+
+    #[test]
+    fn obj_text_preserves_material_and_attribute_parity() {
+        let positions = vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)];
+        let normals = vec![Vec3::Z; 3];
+        let uvs = vec![Vec2::new(0.0, 0.25), Vec2::new(1.0, 0.25), Vec2::new(0.0, 0.75)];
+        let mesh = Mesh::from_parts(positions.clone(), Some(normals.clone()), uvs, vec![0, 1, 2], "material").unwrap();
+        let text = obj_text(&mesh).unwrap();
+
+        assert!(!text.contains("mtllib") && !text.contains("usemtl"));
+        assert!(!text.contains("\no ") && !text.contains("\ng ") && !text.contains("\ns "));
+        assert!(text.contains("vt 0 0.75\n"), "OBJ flips v: {text}");
+        assert!(text.contains("f 1/1/1 2/2/2 3/3/3\n"), "{text}");
+
+        let without_uvs = Mesh { positions: positions.clone(), normals, indices: vec![0, 1, 2], ..Mesh::default() };
+        let no_uv_text = obj_text(&without_uvs).unwrap();
+        assert!(!no_uv_text.contains("vt "));
+        assert!(no_uv_text.contains("f 1//1 2//2 3//3\n"), "{no_uv_text}");
+
+        let positions_only = Mesh { positions, indices: vec![0, 1, 2], ..Mesh::default() };
+        let pos_only_text = obj_text(&positions_only).unwrap();
+        assert!(!pos_only_text.contains("vt ") && !pos_only_text.contains("vn "));
+        assert!(pos_only_text.contains("f 1 2 3\n"), "{pos_only_text}");
+    }
+
+    #[test]
+    fn obj_text_propagates_shared_writer_refusals() {
+        assert!(obj_text(&Mesh::default()).is_err());
+
+        let invalid = Mesh { positions: vec![Vec3::ZERO, Vec3::X, Vec3::Y], indices: vec![0, 1, 99], ..Mesh::default() };
+        assert!(obj_text(&invalid).is_err());
     }
 }

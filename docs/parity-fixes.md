@@ -411,7 +411,7 @@ The first pass classifies all 546 roots: 166 Parity and 380 Too hard. These meas
 
 - **`noise_directional_noise_2.sbs/directional_noise_2` - Too hard for this pass:** Cooks report: pattern graph exceeded its execution budget. Exact pixels by case/output: 0/16384, 0/65536, 0/16384; maximum stored-component difference 65535.
 
-- **`noise_directional_noise_3.sbs/directional_noise_3` - Too hard for this pass:** Cooks report: pattern graph exceeded its execution budget. 
+- **`noise_directional_noise_3.sbs/directional_noise_3` - Too hard for this pass:** Cooks report: pattern graph exceeded its execution budget.
 
 - **`noise_directional_noise_4.sbs/directional_noise_4` - Too hard for this pass:** Exact pixels by case/output: 0/16384, 1/65536, 0/16384, 0/16384; maximum stored-component difference 47884.
 
@@ -539,7 +539,7 @@ The first pass classifies all 546 roots: 166 Parity and 380 Too hard. These meas
 
 - **`pbr_render.sbs/chroma_shift` - Too hard for this pass:** Exact pixels by case/output: 16083/16384, 64304/65536, 16083/16384, 15570/16384; maximum stored-component difference 1.
 
-- **`pbr_render.sbs/get_max_coords/get_max_coord` - Too hard for this pass:** Cooks report: Get Float2 (1379828382): undefined variable `$pos` in this context. 
+- **`pbr_render.sbs/get_max_coords/get_max_coord` - Too hard for this pass:** Cooks report: Get Float2 (1379828382): undefined variable `$pos` in this context.
 
 - **`pbr_render.sbs/ibl_specular_contrib_anisotropic/panoramic_lod` - Too hard for this pass:** Exact pixels by case/output: 0/16384, 0/65536, 0/16384, 0/16384; maximum stored-component difference 0.98973.
 
@@ -553,7 +553,7 @@ The first pass classifies all 546 roots: 166 Parity and 380 Too hard. These meas
 
 - **`pbr_render2.sbs/chroma_shift` - Too hard for this pass:** Exact pixels by case/output: 16083/16384, 64304/65536, 16083/16384, 15570/16384; maximum stored-component difference 1.
 
-- **`pbr_render2.sbs/get_max_coords/get_max_coord` - Too hard for this pass:** Cooks report: Get Float2 (1379828382): undefined variable `$pos` in this context. 
+- **`pbr_render2.sbs/get_max_coords/get_max_coord` - Too hard for this pass:** Cooks report: Get Float2 (1379828382): undefined variable `$pos` in this context.
 
 - **`pbr_render2.sbs/ibl_specular_contrib_anisotropic/panoramic_lod` - Too hard for this pass:** Exact pixels by case/output: 42/16384, 1690/65536, 42/16384, 741/16384; maximum stored-component difference 155.
 
@@ -731,7 +731,7 @@ The first pass classifies all 546 roots: 166 Parity and 380 Too hard. These meas
 
 - **`wood_fibers_1.sbs/wood_fibers_1` - Too hard for this pass:** Exact pixels by case/output: 3/16384, 10/65536, 0/16384, 4/16384; maximum stored-component difference 65495.
 
-- **`wood_fibers_2.sbs/wood_fibers_2` - Too hard for this pass:** Cooks report: pattern graph exceeded its execution budget. 
+- **`wood_fibers_2.sbs/wood_fibers_2` - Too hard for this pass:** Cooks report: pattern graph exceeded its execution budget.
 
 - **`paths_tools.sbs/paths_polygon` - Too hard for this pass:** Exact pixels by case/output: 252/256, 252/256, 252/256, 250/256; maximum stored-component difference 5.602837e-06.
 
@@ -741,7 +741,7 @@ The first pass classifies all 546 roots: 166 Parity and 380 Too hard. These meas
 
 - **`paths_tools.sbs/vertex_processor_simple` - Too hard for this pass:** Exact pixels by case/output: 250/256, 248/256, 250/256, 248/256; maximum stored-component difference 1.
 
-- **`paths_tools.sbs/Impl/compute_paths_lengths` - Too hard for this pass:** Cooks report: function returned bool, expected native type 256. 
+- **`paths_tools.sbs/Impl/compute_paths_lengths` - Too hard for this pass:** Cooks report: function returned bool, expected native type 256.
 
 - **`paths_tools.sbs/Impl/sort_by_blue` - Too hard for this pass:** Cooks report: function returned bool, expected native type 256. Exact pixels by case/output: 256/256, 256/256, 256/256; maximum stored-component difference 0.
 

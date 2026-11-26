@@ -145,6 +145,7 @@ fn a_file_dropped_behind_a_prompt_does_not_reach_the_package() {
 
     let mut app = app();
     let ctx = egui::Context::default();
+    crate::framework::install_headless(&ctx);
     frame(&mut app, &ctx, Vec::new());
     frame(&mut app, &ctx, Vec::new());
     let png = encode(&Image::filled(2, 2, Kind::Gray, [0.5; 4]), "png", Depth::U8, false).unwrap();

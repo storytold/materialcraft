@@ -48,13 +48,35 @@ cargo xtask version set 0.2.0       # or 0.2.0-rc.1 for a pre-release
 `set` rewrites `[workspace.package] version` in the root `Cargo.toml` (the single source of truth)
 and refreshes `Cargo.lock`. Commit, push, and wait for CI on `main` to pass.
 
-### 3. Cut the release
+### 3. Review the release trust boundary, then cut the release
 
-Fast-forward `release` to `main` and push it (only the `release-managers` team and org admins can):
+Compare the proposed tree with the **previous trusted release**, not a manifest from main.
+Review and preserve:
+- `.github/workflows/nightly-sign.yml`, `.github/nightly-signing-policy.json`, and every
+  transitive reusable workflow/action pin;
+- `packaging/windows/sign.ps1`, its signing configuration, tool installers and imports;
+- the macOS nightly signing scripts (`packaging/macos/nightly-sign.sh`, `nightly-verify.sh`,
+  `nightly-lib.sh`, `import-cert.sh`) and entitlements, and the Linux public key
+  `.github/nightly-linux-signing-key.asc`;
+- **every other workflow that can reach the `release` environment**, including reusable
+  callees, dynamic environment selection and changed executable dependencies. A new workflow
+  outside the named nightly paths is not exempt.
+
+Stop the sync if that closure is unreviewed. The intended signer-owned files are identical on
+main and release after promotion; actual top-level repository/event/branch checks and the
+existing environment restrictions provide authority, not permanent branch divergence. Main CI
+changes do not need a separate blanket review gate.
+
+Then fast-forward `release` to the commit that was reviewed and push **that commit** (only the
+`release-managers` team and org admins can). Record the SHA before the review starts: pushing
+`origin/main` after a later fetch would promote whatever `main` became in the meantime, which nobody
+reviewed.
 
 ```sh
 git fetch origin
-git push origin origin/main:refs/heads/release
+reviewed=$(git rev-parse origin/main)   # record this before the review above, at that commit
+# ...review the closure above while it is still $reviewed...
+git push origin "$reviewed:refs/heads/release"
 ```
 
 That push runs `release.yml`, and also `freebsd.yml` and `windows-arm64.yml` (build, test, install
@@ -93,6 +115,44 @@ Review the generated notes, then publish the draft (`gh release edit v<version> 
 storytold/materialcraft --draft=false --latest`, or `--prerelease` for an rc). A draft is updated in
 place by a re-run; a published release is never overwritten, so bump the version before building
 again.
+
+## Release-ref nightly preparation
+
+The Windows, Linux and macOS source preparation is documented in
+[`nightly-release-preparation.md`](nightly-release-preparation.md). It is not an activated
+signing or publication pipeline.
+
+A Nightly build only starts with the Launcher's protocol (`--launch-profile nightly-v1
+--profile-root <dir> -- files...`), and every Linux nightly format starts it that way: the deb/rpm
+wrapper (`/usr/bin/materialcraft-nightly`), the AppImage `AppRun`, the Arch launcher and the Flatpak
+command use `$XDG_DATA_HOME/materialcraft-nightly` (the nightly Flatpak uses the same folder inside
+its own sandbox), so an installed, integrated, extracted or unpacked nightly keeps its autosaves,
+saved layout and preview cache out of `~/Documents/MaterialCraft` and the stable cache. A plain
+`--version` (and the Launcher's query form) is passed straight to the binary, which answers it
+without creating the profile. The plain nightly `.tar.gz` is the one format whose launcher is not
+ours: its `materialcraft` is craft-common-actions' shared template (craft-common-actions #363,
+rendered for this app), which adds its own profile tokens unless the first argument is already a `--launch-profile` pair,
+names the GUI `materialcraft-bin`
+beside it and uses `$XDG_DATA_HOME/ai.storyteller.materialcraft.nightly`, and which asks a bare
+`--version`/`-V` in the Launcher's own form. Stable `release.yml`, its schedule, tags, concurrency,
+environment values and environment rules are unchanged.
+
+Initial installation **and later signer/policy updates** ride an already-intended reviewed
+stable release sync, with an appropriate version/build state. Every release-branch push may
+rebuild/update a stable draft or refuse an already-published version. An urgent change that
+cannot wait means pause/cancel nightlies using existing workflow controls, then request one
+bounded maintenance push with its exact stable consequences understood. Pausing must never
+require a release push. Do not bypass CI, overwrite a stable release or make a dummy version
+bump. Verify the actual environment permits only the release **branch**, excludes main and
+same-name tags, and introduces no per-run approval requirement before activation; unresolved
+protection or secret-scope collisions are blockers, not permission to change settings.
+
+Nightlies share the existing Windows signing identity with stable. A suspected key or signing
+service compromise therefore affects **both channels**: stop/cancel nightlies immediately,
+notify the release maintainers/security owner privately, and have the identity's authorized
+owner revoke/rotate it and assess already-signed stable and nightly packages. Stopping one
+workflow does not revoke signatures or make stable safe. No credentials or identity values
+are recorded in this procedure.
 
 ## What gets built
 

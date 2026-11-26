@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod end_merge_tests {
-    use crate::headless::{Filesystem, Headless};
+    use crate::headless::{Filesystem, Headless, RenderOptions};
     use serde_json::json;
 
     #[cfg(unix)]
@@ -25,6 +25,34 @@ mod end_merge_tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn trusted_reads_reject_named_pipes_without_waiting_for_a_writer() {
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::time::Duration;
+
+        let path = std::env::temp_dir().join(format!("materialcraft-read-pipe-{}", std::process::id()));
+        assert!(std::process::Command::new("mkfifo").arg(&path).status().unwrap().success());
+        let reader_path = path.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            let result = crate::headless::read_file(&Filesystem::TrustedLocal, reader_path.to_str().unwrap());
+            sender.send(result).unwrap();
+        });
+
+        let result = receiver.recv_timeout(Duration::from_secs(2));
+        if result.is_err() {
+            // Release a blocked reader so a regression cannot strand the test process
+            let writer = std::fs::OpenOptions::new().write(true).custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32).open(&path).unwrap();
+            drop(writer);
+        }
+        reader.join().unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        let error = result.expect("a named pipe must be rejected before waiting for a writer").unwrap_err().to_string();
+        assert!(error.contains("not a regular file"), "{error}");
+    }
+
     #[test]
     fn two_param_requests_are_two_undo_steps() {
         let mut h = Headless::new(Headless::default_session(), Filesystem::TrustedLocal);
@@ -34,5 +62,24 @@ mod end_merge_tests {
         h.command_run("graph.node.param", json!({"id": id, "param": "in_low", "value": [0.3, 0.3, 0.3, 0.3]})).unwrap();
         h.command_run("graph.node.param", json!({"id": id, "param": "in_low", "value": [0.4, 0.4, 0.4, 0.4]})).unwrap();
         assert_eq!(sets(&h), 2, "separate requests must not merge");
+    }
+
+    #[test]
+    fn same_name_custom_mesh_reload_rebuilds_the_headless_scene() {
+        let mut headless = Headless::new(materialcraft_engine::new_session(), Filesystem::Denied);
+        let first_mesh = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+        let second_mesh = b"v 0 0 0\nv 2 0 0\nv 0 1 0\nf 1 2 3\n";
+        let options = RenderOptions { width: Some(16), height: Some(16), ..RenderOptions::default() };
+
+        headless.session.load_mesh_bytes("same.obj", first_mesh).unwrap();
+        headless.render_3d(&options, 16);
+        let first_positions = headless.scene.as_ref().unwrap().1.mesh.positions.clone();
+        let previous_mesh = std::sync::Arc::downgrade(&headless.scene.as_ref().unwrap().1.mesh);
+
+        headless.session.load_mesh_bytes("same.obj", second_mesh).unwrap();
+        headless.render_3d(&options, 16);
+
+        assert_ne!(headless.scene.as_ref().unwrap().1.mesh.positions, first_positions);
+        assert!(previous_mesh.upgrade().is_none(), "the previous headless scene must be released");
     }
 }

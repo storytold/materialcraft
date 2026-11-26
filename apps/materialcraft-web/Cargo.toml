@@ -13,12 +13,10 @@ workspace = true
 name = "materialcraft-web"
 path = "src/main.rs"
 
-[dependencies]
-materialcraft-engine = { workspace = true }
-materialcraft-ui-egui = { workspace = true }
-log = { workspace = true }
-
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+materialcraft-engine = { workspace = true }
+log = { workspace = true }
+materialcraft-ui-egui = { workspace = true }
 # `wgpu` pulls egui-wgpu's defaults: WebGPU plus the WebGL2 fallback
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence"] }
 # The SBS library's `resources/`, which the browser build downloads at startup

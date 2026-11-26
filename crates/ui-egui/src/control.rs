@@ -261,20 +261,15 @@ fn handle_inner(app: &mut MaterialCraftApp, ctx: &egui::Context, method: &str, p
         "command.run" => {
             let Some(id) = p.get("id").and_then(Value::as_str) else { return err("`id` is required") };
             let params = p.get("params").cloned().unwrap_or(Value::Null);
+            if matches!(id, "view.3d.saveRender" | "view.3d.exportGeometry" | "view.2d.copyImage") {
+                return displayed_command(app, ctx, id, &params);
+            }
+
             match crate::cook::guard("command request", || {
                 Ok(materialcraft_engine::commands::execute_request(&mut app.session, id, &params).map_err(|error| error.to_string()))
             }) {
                 Ok(Ok(v)) => {
-                    if id == "view.previewSize" {
-                        app.ui.prefs.preview_size = app.session.preview_size.unwrap_or(0);
-                    }
-                    if id == "library.cache.configure" {
-                        app.ui.prefs.library_cache = app.session.library_cache_prefs;
-                    }
-                    if id == "session.history" {
-                        app.ui.prefs.history = app.session.history_prefs;
-                    }
-
+                    app.sync_preferences_after_command(id);
                     app.close_subgraph_after(id);
                     ok(v)
                 }
@@ -388,12 +383,56 @@ fn handle_inner(app: &mut MaterialCraftApp, ctx: &egui::Context, method: &str, p
         }
         "view.screenshot" => {
             let shown = if p.get("view").and_then(Value::as_str) == Some("2d") { &app.view2d.shown } else { &app.view3d.shown };
-            match shown.as_ref().and_then(|(w, h, px)| encode_png(*w, *h, px.clone())) {
+            match shown.as_ref().and_then(|(w, h, px)| encode_png(*w, *h, px.as_ref().clone())) {
                 Some((w, h, png)) => ok(json!({ "width": w, "height": h, "png": base64::engine::general_purpose::STANDARD.encode(png) })),
                 None => err("that view has not drawn anything yet"),
             }
         }
         other => err(format!("unknown method `{other}`")),
+    }
+}
+
+/// Give a programmatic command the same currently displayed bytes the toolbar or dialog uses
+fn displayed_command(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str, params: &Value) -> Value {
+    use materialcraft_engine::DisplaySnapshot;
+
+    let snapshot = match id {
+        "view.3d.saveRender" => app.view3d.shown.as_ref().map(|(width, height, pixels)| DisplaySnapshot::render(*width, *height, pixels.clone())),
+        "view.3d.exportGeometry" => {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                crate::view3d::displayed_mesh(app).map(DisplaySnapshot::geometry)
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                return err("exporting geometry by path needs the desktop app");
+            }
+        }
+        "view.2d.copyImage" => {
+            app.view2d.shown.as_ref().map(|(width, height, pixels)| DisplaySnapshot::image(*width, *height, pixels.clone(), app.view2d.shown_premultiplied))
+        }
+        _ => return err(format!("unknown display command `{id}`")),
+    };
+    let Some(snapshot) = snapshot else { return err("that view has not drawn anything yet") };
+
+    app.session.begin_display_handoff(snapshot);
+    let result = crate::cook::guard("command request", || {
+        Ok(materialcraft_engine::commands::execute_request(&mut app.session, id, params).map_err(|error| error.to_string()))
+    });
+    let output = app.session.finish_display_handoff();
+    match result {
+        Ok(Ok(value)) if id == "view.2d.copyImage" => {
+            let Some((width, height, pixels, premultiplied)) = output.and_then(DisplaySnapshot::into_image) else {
+                return err("the copy command returned no displayed image");
+            };
+            let size = [width as usize, height as usize];
+            let image =
+                if premultiplied { egui::ColorImage::from_rgba_premultiplied(size, &pixels) } else { egui::ColorImage::from_rgba_unmultiplied(size, &pixels) };
+            ctx.copy_image(image);
+            ok(value)
+        }
+        Ok(Ok(value)) => ok(value),
+        Ok(Err(error)) | Err(error) => err(error),
     }
 }
 

@@ -3,6 +3,7 @@ pub(crate) mod add_node_menu;
 pub(crate) mod annotation_canvas;
 pub(crate) mod annotation_input;
 pub(crate) mod canvas;
+pub(crate) mod canvas_focus;
 mod context_menu;
 pub(crate) mod frame_hit;
 #[cfg(test)]

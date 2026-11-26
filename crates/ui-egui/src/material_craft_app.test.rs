@@ -5,6 +5,26 @@ mod lib_tests {
     use materialcraft_engine::sample_session;
     use serde_json::json;
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn autosave_leaves_one_snapshot_worker_in_flight() {
+        let mut app = MaterialCraftApp::headless(sample_session(), UiState::default());
+        app.session.modified = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || receiver.recv().unwrap());
+        let initial_worker = worker.thread().id();
+        app.autosave_worker = Some(worker);
+
+        for interval in 1..=3 {
+            let now = app.next_autosave + f64::from(interval) * 600.0;
+            app.autosave(now);
+            assert_eq!(app.autosave_worker.as_ref().unwrap().thread().id(), initial_worker);
+        }
+
+        sender.send(()).unwrap();
+        app.autosave_worker.take().unwrap().join().unwrap();
+    }
+
     #[test]
     fn copy_and_cut_fill_the_system_clipboard_in_material_and_function_canvases() {
         use crate::function::{FunctionEditor, FunctionTarget};
@@ -37,6 +57,7 @@ mod lib_tests {
         app.ui.explorer.hovered = true;
         app.ui.dock.close(crate::docking::Panel::Explorer);
         let context = egui::Context::default();
+        crate::framework::install_headless(&context);
 
         context.run_ui(egui::RawInput::default(), |ui| app.draw(ui)).textures_delta.clear();
 
@@ -59,14 +80,14 @@ mod close_order_tests {
 
     fn close_frame(app: &mut MaterialCraftApp) -> bool {
         let ctx = egui::Context::default();
+        crate::framework::install_headless(&ctx);
         let mut input = egui::RawInput::default();
         input.viewports.entry(egui::ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
         let mut canceled = false;
         ctx.run_ui(input, |ui| {
-            app.step_then(ui.ctx(), |ctx| {
-                canceled = ctx.viewport(|viewport| viewport.commands.contains(&egui::ViewportCommand::CancelClose));
-                false
-            });
+            app.step(ui.ctx());
+            app.close_path(ui.ctx());
+            canceled = ui.ctx().viewport(|viewport| viewport.commands.contains(&egui::ViewportCommand::CancelClose));
         })
         .textures_delta
         .clear();
@@ -83,7 +104,8 @@ mod close_order_tests {
         let mut clean = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
         clean.fonts_ready = true;
         clean.session.modified = false;
-        assert!(!close_frame(&mut clean), "nothing to hold: the hook sees a close to take over");
+        // Only the app's decision: a close that goes ahead ends in the platform's quit, which macOS answers by canceling it.
+        assert!(!crate::unsaved::close_requested(&mut clean), "nothing to hold: the hook sees a close to take over");
     }
 }
 

@@ -10,8 +10,14 @@ pub mod ibl;
 pub mod preview;
 
 mod displacement;
+mod light;
+mod look;
 mod relief;
+mod view_settings;
 pub use displacement::Displacement;
+pub use light::Light;
+pub use look::Look;
 pub use relief::Relief;
+pub use view_settings::{raised, relief_of, relief_triangles, uv_repeats};
 
-pub use preview::{Lighting, Maps, Scene, Settings, VIEW_TRIANGLES, builtin_mesh, pan, render, render_cancellable};
+pub use preview::{Lighting, Maps, Scene, Settings, VIEW_TRIANGLES, builtin_mesh, camera, pan, render, render_cancellable};

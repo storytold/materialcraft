@@ -12,6 +12,7 @@ pub mod gbuffer;
 pub mod mesh;
 pub mod primitives;
 pub mod unwrap;
+pub mod view;
 
 pub use bvh::{Bvh, Hit};
 pub use camera::{OrbitCamera, Ray};

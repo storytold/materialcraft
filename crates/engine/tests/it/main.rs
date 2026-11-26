@@ -4,6 +4,7 @@
 mod annotations;
 mod atomics;
 mod delete_relink;
+mod display_commands;
 mod embedded_edit;
 mod explorer;
 mod export_names;

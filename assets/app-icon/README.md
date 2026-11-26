@@ -33,3 +33,16 @@ size 4, `OPT=1.0 DP=0`). `materialcraft.svg` is the canonical artwork. Licence: 
 | `materialcraft.icns` | macOS icon (16–1024 px, Apple grid) | the `.app` bundle |
 
 Regenerate everything but the two SVGs with `packaging/icons.sh`.
+
+## Nightly channel
+
+The nightly derivatives keep the foreground artwork, the alpha and the tile geometry unchanged.
+Only the background contribution changes, from MaterialCraft teal (`#178a9c`) to the deeper
+`#0e3a41`; there is no letter badge or crescent, and the app and the Launcher also name the
+channel in text.
+
+`materialcraft-nightly.png` and its nine-frame ICO use the committed full-bleed 256 master.
+`materialcraft-nightly-1024.png` is the full-bleed 1024 master recoloured, and the eleven ICNS
+slots are padded to Apple's 824/1024 grid from it and scaled down, never upscaled from 256.
+Input and output hashes, the palette-fit recipe and the container sizes are recorded in
+[`nightly-provenance.json`](nightly-provenance.json). Stable source files are not recoloured.

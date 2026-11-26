@@ -9,13 +9,21 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+craft-materialx = { workspace = true }
 materialcraft-core = { workspace = true }
 craft-texture = { workspace = true }
 materialcraft-nodes = { workspace = true }
 materialcraft-eval = { workspace = true }
 materialcraft-formats = { workspace = true }
 materialcraft-geom = { workspace = true }
+image = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tempfile = "3"

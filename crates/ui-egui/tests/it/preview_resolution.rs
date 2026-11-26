@@ -12,7 +12,8 @@ fn harness(preview: u32, render: bool) -> (Harness<'static, MaterialCraftApp>, N
     let id = NodeId(app.run("graph.node.add", json!({"def":"uniform"})).unwrap()["id"].as_u64().unwrap());
     app.apply_prefs();
     app.session.cook();
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
+    let builder =
+        Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
     let builder = if render { builder.wgpu() } else { builder };
     let mut h = builder.build_ui_state(
         |ui, app: &mut MaterialCraftApp| {

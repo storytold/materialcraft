@@ -23,6 +23,10 @@ use egui::Ui;
 
 /// The panel title: "<node> - Properties" or "<graph> - Properties"
 pub fn title(app: &MaterialCraftApp) -> String {
+    if let Some(title) = crate::view3d::properties::title(app) {
+        return title;
+    }
+
     if let Some((_, path)) = &app.inspected_folder {
         return format!("{} - {}", path.rsplit('/').next().unwrap_or(path), tr("Properties"));
     }
@@ -70,6 +74,10 @@ pub fn title(app: &MaterialCraftApp) -> String {
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         ui.set_width(ui.available_width());
+        if crate::view3d::properties::show(app, ui) {
+            return;
+        }
+
         if let Some((document, path)) = app.inspected_folder.clone() {
             folder_property_draft::show(app, ui, document, &path);
             return;

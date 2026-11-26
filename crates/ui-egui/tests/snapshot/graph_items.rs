@@ -39,7 +39,7 @@ fn navigation_pin_library_drop_and_properties_in_every_canvas() {
         assert_eq!(target.items(&harness.state().session).unwrap().pins.len(), 1, "{kind}");
         let input = By::new().role(Role::TextInput).label("Navigation Pin description");
         assert!(harness.query(input.clone()).is_some(), "{kind}");
-        assert!(harness.ctx.egui_wants_keyboard_input(), "new pin description must receive focus: {kind}");
+        assert!(harness.ctx.text_edit_focused(), "new pin description must receive focus: {kind}");
         harness.event(Event::ModifiersChanged(Modifiers::COMMAND));
         harness.event(Event::Key { key: Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
         harness.step();
