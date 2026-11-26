@@ -8,7 +8,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 pub struct GraphView {
     pub(crate) inspected_node: Option<NodeId>,
     pub(super) thumbnails_cleared: bool,
-    pub(super) search: Option<NodeSearch>,
+    pub(crate) search: Option<NodeSearch>,
     /// Node rectangles on screen last frame (for `ui.inspect` and scripted input)
     pub rects: Vec<(NodeId, Rect)>,
     /// Ports on screen last frame, each node's in its kind's port order

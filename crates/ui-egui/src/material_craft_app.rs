@@ -4,7 +4,6 @@ use crate::{
 };
 use materialcraft_engine::Session;
 use serde_json::Value;
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 /// One message of the outbox: `step` posts each to the window's notice center and empties the outbox.
@@ -122,15 +121,6 @@ pub struct MaterialCraftApp {
     // PLAN: pn.A30 lists panels-w6..w10 as readers, and no sheet names the one that reads `levels_histograms`
     #[allow(dead_code)]
     pub(crate) levels_histograms: std::collections::HashMap<(u64, usize), Arc<craft_imaging::ui::histogram::HistogramData>>,
-    /// The held action waiting for the Save dialog the unsaved-changes prompt opened
-    pub(crate) awaiting_save: Option<crate::unsaved::Guarded>,
-    /// The window buttons to draw when the app draws the window frame; `None` while the desktop draws it (desktop only)
-    #[cfg(not(target_arch = "wasm32"))]
-    pub window_layout: Option<craft_window::Layout>,
-    /// Keyboard shortcuts and their dispatch
-    pub(crate) keymap: craft_keymap::Keymap,
-    // PLAN: shell-w4 removes `keymap` and `dispatcher` (sh.A2); the stand-in `Dispatcher` type is gone with shell-w5.
-    pub(crate) dispatcher: Dispatcher,
     /// What Copy or Cut put on the clipboard this frame, for the system clipboard
     pub(crate) system_clipboard: Option<String>,
     /// The version this build names itself with: the Launcher's feed identity for a Nightly.
@@ -168,7 +158,7 @@ impl MaterialCraftApp {
         app.frame = options.frame;
         app.ui.windows.home = app.ui.prefs.show_home;
         if let Err(error) = installed {
-            app.toast(crate::i18n::trf("The interface could not start completely: {error}", [("error", error.to_string())]), true);
+            app.toast(crate::i18n::trf("The interface could not start completely: {error}", &[("error", &error)]), true);
         }
         crate::app_icons::register();
 
@@ -203,7 +193,7 @@ impl MaterialCraftApp {
         ui.windows = crate::state::Windows::default();
         ui.frame_all = true;
         i18n::set_language(&ui.prefs.language);
-        let catalog = commands::catalog(craft_keymap::Platform::current(), &session.library);
+        let catalog = commands::catalog(craft_keymap::Platform::current(), &session.library, session.library_generation());
         let mut app = MaterialCraftApp {
             session,
             ui,
@@ -450,7 +440,6 @@ impl MaterialCraftApp {
             self.graph_parents.clear();
             self.pattern_editor = None;
             self.function_editor = None;
-            // PLAN: `GraphView.search` is `pub(super)` in this tree; ge.A2 has crate readers of it (shell-w5's `menus.rs`), so graph-w6 makes it `pub(crate)`
             self.graph.search = None;
             self.graph.selected_wires = Default::default();
             self.graph.cancel_gesture();
@@ -571,7 +560,6 @@ impl MaterialCraftApp {
 
         control::poll(self, ctx);
         control_hooks::step(self, ctx);
-        web_files::poll(self);
         crate::native_dialogs::poll(self);
         #[cfg(not(target_arch = "wasm32"))]
         crate::export::poll(self);

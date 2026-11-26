@@ -2,7 +2,6 @@
 //! that runs a command by reference.
 
 use std::collections::BTreeSet;
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 use craft_keymap::{Binding, CommandDef, CommandKind, CommandRef, CommandScope, Platform, Scope};
 use craft_menu::{Item, MenuBar, Node};
@@ -157,9 +156,9 @@ fn quick_nodes() -> Vec<(&'static str, &'static str)> {
 
 /// Every command of the app, including `node.add.<entry id>` per node entry of `library`: the menu catalog's rows
 /// first, so the catalog wins a chord an engine command shares, then the graph and view keys, the engine commands, the
-/// Recent packages rows and the node keys. The generation is a hash of the rows, so it moves when the library's node
-/// entries change and the board rebuilds its keymap then.
-pub(crate) fn catalog(platform: Platform, library: &NodeLibrary) -> AppCatalog {
+/// Recent packages rows and the node keys. `generation` is the session's `library_generation()`, so the catalog's
+/// moves when the library's node entries change and the board rebuilds its keymap then.
+pub(crate) fn catalog(platform: Platform, library: &NodeLibrary, generation: u64) -> AppCatalog {
     // PLAN: the defaults are one table on every platform (`Ctrl` in a shortcut text is Command on macOS through the
     // keymap's effective modifiers), so `platform` chooses nothing here; the board builds the keymap per platform.
     let _ = platform;
@@ -207,15 +206,9 @@ pub(crate) fn catalog(platform: Platform, library: &NodeLibrary) -> AppCatalog {
     let mut keys = BTreeSet::new();
     defs.retain(|def| keys.insert(def.command.key()));
 
-    let mut hasher = DefaultHasher::new();
-    for def in &defs {
-        def.command.key().hash(&mut hasher);
-        def.label.hash(&mut hasher);
-    }
-
     // The canvases' Hand takes a focused canvas's Space first; production binds Space to the node search and the 2D
     // tiling and has no Space pan
-    built(defs, hasher.finish()).replace_defaults(craft_ui::canvas::MomentaryCommands::Hand.id(), Vec::new())
+    built(defs, generation).replace_defaults(craft_ui::canvas::MomentaryCommands::Hand.id(), Vec::new())
 }
 
 /// The catalog of `defs`, leaving out a def the board refuses (reported to the log), so the rest still run.
@@ -435,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn node_add_commands_follow_the_library_and_their_generation_moves() {
+    fn node_add_commands_follow_the_library() {
         let plain = NodeLibrary::default();
 
         // A package graph the Library files under the atomic nodes adds a node entry
@@ -446,7 +439,7 @@ mod tests {
         let mut grown = NodeLibrary::default();
         grown.packages.insert("sbs://extra.sbs".into(), std::sync::Arc::new(package));
 
-        let (before, after) = (catalog(Platform::Linux, &plain), catalog(Platform::Linux, &grown));
+        let (before, after) = (catalog(Platform::Linux, &plain, 1), catalog(Platform::Linux, &grown, 2));
         for (library, catalog) in [(&plain, &before), (&grown, &after)] {
             let entries = library.entries(&library.packages);
             let bindable: BTreeSet<String> = entries.iter().filter(|entry| crate::node_shortcuts::bindable(entry)).map(|entry| entry.id.clone()).collect();
@@ -455,7 +448,5 @@ mod tests {
         }
 
         assert!(node_adds(&after).is_superset(&node_adds(&before)) && node_adds(&after).len() > node_adds(&before).len(), "the package adds a node entry");
-        assert_ne!(before.generation(), after.generation(), "the board rebuilds its keymap for the new node keys");
-        assert_eq!(catalog(Platform::Linux, &plain).generation(), before.generation(), "an unchanged library keeps its generation");
     }
 }

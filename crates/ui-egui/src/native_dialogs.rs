@@ -332,6 +332,9 @@ fn chosen(app: &mut MaterialCraftApp, then: Then, path: &std::path::Path) {
             parameters["path"] = json!(picked);
             app.run("graph.input.bind", parameters);
         }
+        then @ Then::DownloadPackage { .. } => downloaded(app, then),
+        // The host wrote the bytes where the user picked
+        Then::Download => app.toast(format!("{} {picked}", tr("Saved")), false),
     }
 }
 

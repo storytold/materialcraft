@@ -61,7 +61,7 @@ fn board_enabled(harness: &Harness<'static, MaterialCraftApp>, id: &str) -> bool
 }
 
 /// The menu row whose name starts with `label`; the name may go on with the row's shortcut text.
-fn row<'h>(harness: &'h Harness<'static, MaterialCraftApp>, label: &str) -> Node<'h> {
+fn row<'h>(harness: &'h Harness<'static, MaterialCraftApp>, label: &'h str) -> Node<'h> {
     harness
         .query_all_by_label_contains(label)
         .find(|node| node.accesskit_node().label().is_some_and(|name| name.starts_with(label)))
@@ -91,7 +91,7 @@ fn catalog_shortcuts_parse_and_ids_are_unique() {
 fn every_shortcut_is_a_chord_and_the_catalog_wins_a_shared_chord() {
     let library = materialcraft_engine::NodeLibrary::default();
     for platform in [Platform::Mac, Platform::Windows, Platform::Linux] {
-        let catalog = crate::commands::catalog(platform, &library);
+        let catalog = crate::commands::catalog(platform, &library, 0);
         let map = Keymap::new(catalog.defs().to_vec(), Scopes::new(), platform);
         let mut owners = BTreeMap::new();
         for (id, text) in shortcut_table() {
@@ -217,7 +217,7 @@ fn delete_waits_behind_the_unsaved_prompt() {
     let mut app = sample_app();
     app.run("edit.selectAll", json!({}));
     let wire = app.session.graph().unwrap().connections.first().map(|wire| (wire.to, wire.to_port.clone())).unwrap();
-    app.graph.selected_wires = vec![wire];
+    app.graph.selected_wires = craft_behavior::Selection::single(crate::graph::wire_id(&wire));
     prompt(&mut app);
     let mut harness = harness_of(app);
     let (count, wires) = (nodes(&harness), harness.state().session.graph().unwrap().connections.len());
