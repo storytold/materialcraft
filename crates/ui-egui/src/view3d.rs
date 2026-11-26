@@ -92,6 +92,11 @@ pub(crate) fn inspect(app: &mut MaterialCraftApp, subject: Subject) {
     app.ui.dock.focus(crate::docking::Panel::Properties);
 }
 
+/// Stop showing a part of the 3D view in the Properties panel
+pub(crate) fn uninspect(app: &mut MaterialCraftApp) {
+    app.view3d.inspected = None;
+}
+
 /// The part of the 3D view the Properties panel shows, if it still shows one
 pub(crate) fn inspected(app: &MaterialCraftApp) -> Option<Subject> {
     let (subject, context) = app.view3d.inspected?;

@@ -178,7 +178,7 @@ impl SetKeys {
         }
         match self.inspected {
             Some(Some(subject)) => crate::view3d::inspect(app, subject),
-            Some(None) => app.view3d.inspected = None,
+            Some(None) => crate::view3d::uninspect(app),
             None => {}
         }
     }
