@@ -30,10 +30,10 @@ sha2 = { workspace = true }
 sys-locale = "0.3"
 craft-update = { workspace = true }
 craft-dialogs = { workspace = true }
-craft-quit = { workspace = true, features = ["egui"] }
-craft-window = { workspace = true, features = ["egui"] }
+craft-quit = { workspace = true, features = ["ui"] }
+craft-window = { workspace = true, features = ["ui"] }
 # Floating panels open as OS windows.
-craft-ui = { workspace = true, features = ["native-windows"] }
+craft-ui = { workspace = true }
 
 # Browser file I/O (web_files.rs): async pickers and Blob downloads.
 [target.'cfg(target_arch = "wasm32")'.dependencies]

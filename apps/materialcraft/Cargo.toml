@@ -26,7 +26,7 @@ rfd = { workspace = true }
 craft-atomic = { workspace = true }
 
 # The window frame's choice applies before the window exists.
-craft-window = { workspace = true, features = ["egui"] }
+craft-window = { workspace = true, features = ["ui"] }
 
 # The Windows update helper is a copy of this program started with `--finish-update`.
 [target.'cfg(windows)'.dependencies]
