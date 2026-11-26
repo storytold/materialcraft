@@ -14,6 +14,7 @@ pub(crate) fn show_graph(app: &mut MaterialCraftApp, ui: &mut Ui) {
     {
         super::warning_banner::show(ui, document, &target, graph);
     }
+    // PLAN: the sheet gives `canvas` a new signature, but the rewritten host keeps `(app, &mut editor, ui)`, so this call needs no change.
     canvas(app, &mut editor, ui);
     super::actions::finish_editor(app, editor);
 }

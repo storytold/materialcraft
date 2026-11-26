@@ -1,5 +1,8 @@
 use super::FunctionEditor;
 use crate::MaterialCraftApp;
+use craft_ui::runtime::commands::{ClipItem, ClipboardHandle};
+use materialcraft_engine::FunctionEdit;
+use serde_json::{Value, json};
 
 pub(super) fn editor_enabled(app: &MaterialCraftApp, editor: &FunctionEditor, command: &str) -> Option<bool> {
     if command == "graph.node.edit" {
@@ -9,7 +12,7 @@ pub(super) fn editor_enabled(app: &MaterialCraftApp, editor: &FunctionEditor, co
         );
     }
     let target = editor.command_target().map(materialcraft_engine::SelectionTarget::Function);
-    if let Some(enabled) = crate::graph::wire_actions::enabled(app, command, &editor.selected_wires, target.as_ref()) {
+    if let Some(enabled) = crate::graph::wire_actions::enabled(app, command, &editor.selected_wire_refs(app), target.as_ref()) {
         return Some(enabled && editor.current(app).is_some());
     }
 
@@ -45,10 +48,12 @@ pub(super) fn invoke_editor(app: &mut MaterialCraftApp, editor: &mut FunctionEdi
         return true;
     }
 
-    if command.starts_with("graph.wire.") || (command == "edit.delete" && !editor.selected_wires.is_empty()) {
+    let wires = editor.selected_wire_refs(app);
+    if command.starts_with("graph.wire.") || (command == "edit.delete" && !wires.is_empty()) {
         let command = if command == "edit.delete" { "graph.wire.delete" } else { command };
         let target = editor.command_target().map(materialcraft_engine::SelectionTarget::Function);
-        crate::graph::wire_actions::edit(app, &mut editor.selected_wires, target, command);
+        // PLAN: graph-w8 owns the retyped edit API; this tree still has the Vec-mutating signature.
+        crate::graph::wire_actions::edit(app, &mut wires.clone(), target, command);
         return true;
     }
 
@@ -59,9 +64,65 @@ pub(super) fn invoke_editor(app: &mut MaterialCraftApp, editor: &mut FunctionEdi
     let parameters = editor.selection_parameters(command);
     crate::graph::selection_commands::invoke(app, &mut editor.selection, command, parameters);
     if matches!(command, "edit.selectAll" | "edit.selectNone" | "edit.paste" | "edit.pasteWithoutLinks" | "edit.duplicate" | "edit.duplicateWithoutLinks") {
-        editor.selected_wires.clear();
+        editor.selected_wires = Selection::default();
     }
     true
+}
+
+/// The commands `ui.function.annotate` runs: the canvas menu's annotation rows.
+const ANNOTATIONS: [&str; 3] = ["graph.comment.add", "graph.frame.add", "graph.pin.add"];
+
+/// Runs the Function canvas menu's own actions on the open editor: `ui.function.copyInfo {id}`,
+/// `ui.function.openReference {id}`, `ui.function.setOutput {id}`, `ui.function.add {operation, at, snap}` and
+/// `ui.function.annotate {command, params}`. False for any other command or without an editor.
+// PLAN: graph-w8's `graph/actions.rs` routing calls this for `ui.function.*` while the Function editor is active (ge.A21).
+pub(crate) fn invoke_ui(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &str, params: &Value) -> bool {
+    if !command.starts_with("ui.function.") {
+        return false;
+    }
+    let Some(mut editor) = app.function_editor.take() else { return false };
+
+    let id = params.get("id").and_then(Value::as_u64).and_then(|id| u32::try_from(id).ok());
+    let text = |key: &str| params.get(key).and_then(Value::as_str).map(str::to_owned);
+    let handled = match (command, id) {
+        ("ui.function.copyInfo", Some(id)) => {
+            if let Some(info) = app.run("graph.function.node.info", json!({"target": editor.command_target(), "id": id}))
+                && let Some(text) = info.get("text").and_then(Value::as_str)
+            {
+                // A refused clipboard leaves nothing to undo or report beyond the platform's own notice.
+                let _ = ClipboardHandle::of(ctx).offer(&[ClipItem::Text(text.into())]);
+            }
+            true
+        }
+        ("ui.function.openReference", Some(id)) => {
+            editor.open_reference = Some(id);
+            true
+        }
+        ("ui.function.setOutput", Some(id)) => {
+            editor.edit(app, FunctionEdit::Output { id }, false);
+            true
+        }
+        ("ui.function.add", _) => match text("operation") {
+            Some(operation) => {
+                let at = params.get("at").and_then(|at| serde_json::from_value::<[f32; 2]>(at.clone()).ok()).unwrap_or(editor.menu_at.into());
+                let snap = params.get("snap").and_then(Value::as_bool).unwrap_or(app.ui.prefs.snap_to_grid);
+                editor.edit(app, FunctionEdit::Add { operation, at, snap }, false);
+                true
+            }
+            None => false,
+        },
+        ("ui.function.annotate", _) => match text("command").filter(|command| ANNOTATIONS.contains(&command.as_str())) {
+            Some(command) => {
+                app.run(&command, params.get("params").cloned().unwrap_or_else(|| json!({})));
+                editor.selection.clear();
+                true
+            }
+            None => false,
+        },
+        _ => false,
+    };
+    finish_editor(app, editor);
+    handled
 }
 
 pub(crate) fn invoke(app: &mut MaterialCraftApp, command: &str) -> bool {

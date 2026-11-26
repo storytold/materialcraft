@@ -42,8 +42,8 @@ pub(crate) fn add_near_selection(app: &mut MaterialCraftApp, operation: &str) {
     };
     let at = source.map_or_else(
         || {
-            let center = editor.pan + app.graph.view.size() * 0.5 / editor.zoom;
-            [center.x - crate::graph::NODE_W * 0.5, center.y - 40.0]
+            let center = editor.view.center;
+            [center.x as f32 - crate::graph::NODE_W * 0.5, center.y as f32 - 40.0]
         },
         |(_, position)| [position[0] + 180.0, position[1]],
     );
@@ -83,7 +83,7 @@ pub(super) fn insert(app: &mut MaterialCraftApp, editor: &mut super::FunctionEdi
             ) && let Some(id) = result.get("id").and_then(serde_json::Value::as_u64).and_then(|id| u32::try_from(id).ok())
             {
                 editor.selection = vec![id];
-                editor.selected_wires.clear();
+                editor.selected_wires = craft_behavior::Selection::default();
                 editor.inspected_node = Some(id);
             }
         }

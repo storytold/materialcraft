@@ -1,18 +1,16 @@
 //! What a function node shows in its body: its editable value, or the symbol of its operation
 
-use egui::{Rect, Ui, vec2};
 use egui_phosphor::regular as icon;
-use materialcraft_engine::core::{FunctionNode, Value};
+use materialcraft_engine::core::FunctionNode;
 
 /// Graph-space height of one value field, and the gap between two fields
-const ROW_HEIGHT: f32 = 20.0;
-const ROW_GAP: f32 = 3.0;
-const PADDING: f32 = 6.0;
+pub(super) const ROW_HEIGHT: f32 = 20.0;
+pub(super) const ROW_GAP: f32 = 3.0;
+pub(super) const PADDING: f32 = 6.0;
 /// Body height of a node that shows a symbol
-const SYMBOL_HEIGHT: f32 = 40.0;
+pub(super) const SYMBOL_HEIGHT: f32 = 40.0;
 /// Below this zoom the fields are too small to use, so the value is drawn as text
-const MIN_EDIT_ZOOM: f32 = 0.45;
-const MAX_EDIT_ZOOM: f32 = 1.6;
+pub(super) const MIN_EDIT_ZOOM: f32 = 0.45;
 
 /// The sign or short word that stands for `operation` on its node
 pub(super) fn symbol(operation: &str) -> &'static str {
@@ -83,49 +81,10 @@ pub(super) fn height(node: &FunctionNode) -> f32 {
     }
 }
 
-/// Whether the value of a node is edited on its face at `zoom`; it is drawn as text otherwise
-pub(super) fn editable(zoom: f32) -> bool {
-    zoom >= MIN_EDIT_ZOOM
-}
-
-/// The value fields of a node inside `body`, sized with the canvas zoom; true when `value` changed
-pub(super) fn edit(ui: &mut Ui, body: Rect, clip: Rect, zoom: f32, value: &mut Value) -> bool {
-    let scale = zoom.clamp(MIN_EDIT_ZOOM, MAX_EDIT_ZOOM);
-    let content = body.shrink(PADDING * zoom);
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content));
-    child.set_clip_rect(content.expand(1.0).intersect(clip));
-
-    let style = child.style_mut();
-    style.override_font_id = Some(egui::FontId::proportional(12.0 * scale));
-    style.spacing.interact_size = vec2(24.0 * scale, ROW_HEIGHT * zoom);
-    style.spacing.item_spacing = vec2(4.0 * scale, ROW_GAP * zoom);
-    style.spacing.button_padding = vec2(4.0 * scale, 0.0);
-    style.spacing.icon_width = 14.0 * scale;
-    style.spacing.icon_width_inner = 8.0 * scale;
-    style.spacing.icon_spacing = 4.0 * scale;
-
-    crate::value_editor::show_stacked(&mut child, value)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use materialcraft_engine::nodes::function::{FUNCTIONS, default_value};
-
-    fn node(operation: &str) -> FunctionNode {
-        FunctionNode {
-            id: 1,
-            type_code: 0,
-            op: operation.into(),
-            missing: None,
-            missing_data: String::new(),
-            instance: None,
-            source: None,
-            inputs: Vec::new(),
-            value: default_value(operation),
-            pos: [0.0; 2],
-        }
-    }
 
     #[test]
     fn every_operation_without_a_value_has_its_own_symbol() {
@@ -136,18 +95,5 @@ mod tests {
 
             assert_ne!(symbol(definition.id), icon::FUNCTION, "{} has no symbol", definition.id);
         }
-    }
-
-    #[test]
-    fn a_body_grows_with_the_components_of_its_value() {
-        let single = height(&node("const_float1"));
-
-        assert_eq!(height(&node("const_float4")), single + 3.0 * (ROW_HEIGHT + ROW_GAP));
-        assert_eq!(height(&node("add")), SYMBOL_HEIGHT);
-
-        let mut unavailable = node("const_float4");
-        unavailable.missing = Some(Vec::new());
-
-        assert_eq!(height(&unavailable), SYMBOL_HEIGHT);
     }
 }
