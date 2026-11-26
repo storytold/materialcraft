@@ -54,6 +54,20 @@ fn shown_name(app: &MaterialCraftApp, node: materialcraft_engine::core::NodeId) 
     app.session.graph().ok()?.node(node).ok().map(crate::graph::node_label)
 }
 
+/// The shown image's rect, computed from the `ImageCamera` view in `area`; `None` with no image.
+#[allow(dead_code)] // P3(views-w4): vw.A13
+pub(crate) fn image_rect(app: &MaterialCraftApp, area: Rect) -> Option<Rect> {
+    let _ = (app, area);
+    todo!("vw.A13")
+}
+
+/// Runs the 2D view's command `id` (`view2d.fit`, `view2d.tiled`, `view2d.channel.*`); true when the id was its own.
+#[allow(dead_code)] // P3(views-w4): vw.A11
+pub(crate) fn fired(app: &mut MaterialCraftApp, id: &str) -> bool {
+    let _ = (app, id);
+    todo!("vw.A11")
+}
+
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let shown = Shown::current(app);
     top_toolbar::show(app, ui, shown.as_ref());

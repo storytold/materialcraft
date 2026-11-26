@@ -191,7 +191,8 @@ pub fn enabled(app: &MaterialCraftApp, id: &str) -> bool {
         return enabled;
     }
 
-    if let Some(enabled) = crate::graph::actions::enabled(app, id) {
+    if let Some(enabled) = crate::graph::actions::enabled(app, id, &serde_json::Value::Null) {
+        // P3(shell-w5): ge.A21
         return enabled;
     }
 
@@ -229,7 +230,8 @@ pub fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str) {
         return;
     }
 
-    if crate::graph::actions::invoke(app, id) {
+    if crate::graph::actions::invoke(app, ctx, id, &serde_json::Value::Null) {
+        // P3(shell-w5): ge.A21
         return;
     }
 

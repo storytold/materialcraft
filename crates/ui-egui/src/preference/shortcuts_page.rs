@@ -45,7 +45,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     ui.add_space(4.0);
 
     let (search, key_search, only_assigned) = (state.shortcut_search.to_lowercase(), state.shortcut_key_search.to_lowercase(), state.only_assigned);
-    let catalog = crate::library::entries(app, ui.ctx());
+    let catalog = crate::library::entries(app); // P3(panels-w7): pn.A29
     let entries: Vec<_> = catalog
         .iter()
         .filter(|entry| entry.missing.is_none() && crate::node_shortcuts::CATEGORIES.contains(&entry.category.as_str()))

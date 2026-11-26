@@ -165,7 +165,8 @@ impl ExplorerTree<'_> {
             let dependencies = package.dependencies.keys().any(|path| super::actions::is_package_file(path));
             let state =
                 super::explorer_menu_state::ExplorerMenuState { paste: self.session.explorer_clipboard.is_some(), saved: reload, dependencies, outputs };
-            if let Some(command) = context_menu::show(ui, target, &state) {
+            if let Some(command) = context_menu::show(ui, &response, target, &state) {
+                // P3(panels-w4): pn.A34: the opener
                 self.action = Some((target.clone(), command));
             }
         });

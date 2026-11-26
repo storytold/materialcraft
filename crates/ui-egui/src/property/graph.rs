@@ -1,4 +1,4 @@
-use super::{input::input_editor, section};
+use super::{input::input_value, section};
 use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
@@ -83,7 +83,7 @@ fn show_target(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_en
                     emit("graph.exposed.delete", json!({"id": exposed.id}));
                 }
                 ui.vertical(|ui| {
-                    if let Some(value) = input_editor(ui, exposed, &current) {
+                    if let Some(value) = input_value(ui, exposed, &current) {
                         emit("graph.exposed.set", json!({"id": exposed.id, "value": value}));
                     }
                 });

@@ -18,6 +18,28 @@ use serde_json::json;
 use crate::MaterialCraftApp;
 use crate::i18n::tr;
 
+/// Selects the row as a click does.
+#[allow(dead_code)] // P3(panels-w4): pn.A38
+pub(crate) fn select(app: &mut MaterialCraftApp, target: ExplorerTarget) {
+    let _ = (app, target);
+    todo!("pn.A38")
+}
+
+/// True when the target is in the open package.
+#[allow(dead_code)] // P3(panels-w4): pn.A39
+pub(crate) fn exists(app: &MaterialCraftApp, target: &ExplorerTarget) -> bool {
+    let _ = (app, target);
+    todo!("pn.A39")
+}
+
+/// Runs a row-menu command on the target, refusing one the row does not offer; no `egui::Context`. It refuses
+/// `graph.rename` and `folder.rename` with a message that points to `ui.explorer.rename`.
+#[allow(dead_code)] // P3(panels-w4): pn.A40
+pub(crate) fn invoke(app: &mut MaterialCraftApp, target: ExplorerTarget, command: &str) -> Result<(), String> {
+    let _ = (app, target, command);
+    todo!("pn.A40")
+}
+
 /// Draw open packages and dispatch selection, resource and context-menu actions.
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     ui.horizontal(|ui| {

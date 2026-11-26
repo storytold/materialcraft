@@ -77,7 +77,7 @@ fn background_actions(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, u
     }
     for (label, command) in [("Previous pin", "ui.graph.previousPin"), ("Next pin", "ui.graph.nextPin")] {
         if edit_menu::button(ui, label, command, menus::enabled(app, command)) {
-            crate::graph::actions::invoke(app, command);
+            crate::graph::actions::invoke(app, &ui.ctx().clone(), command, &serde_json::Value::Null); // P3(graph-w14): ge.A21
             editor.set_camera(app.ui.graph_camera);
         }
     }

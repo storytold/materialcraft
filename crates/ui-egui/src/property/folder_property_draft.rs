@@ -36,8 +36,9 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui, document: u64,
     let identifier = path.rsplit('/').next().unwrap_or(path).to_string();
     let description = package.folder_descriptions.get(path).cloned().unwrap_or_default();
 
+    // P3(panels-w10): pn.A25: `section` takes `FnMut`, so the loop clones
     super::section(ui, "folder-attributes", tr("Attributes"), |ui| {
-        for (key, label, current) in [("identifier", "Identifier", identifier), ("description", "Description", description)] {
+        for (key, label, current) in [("identifier", "Identifier", identifier.clone()), ("description", "Description", description.clone())] {
             let widget = ui.make_persistent_id(("folder-attribute", document, path, key));
             if app.folder_property_draft.as_ref().is_some_and(|draft| draft.widget == widget && draft.original != current) {
                 app.folder_property_draft = None;

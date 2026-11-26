@@ -7,6 +7,13 @@ use serde_json::{Value, json};
 
 use crate::i18n::tr;
 
+/// The node/output assignment rows of the node `node` of graph `graph`, which need not be the open graph.
+#[allow(dead_code)] // P3(graph-w12): ge.A11
+pub(crate) fn rows(app: &crate::MaterialCraftApp, graph: usize, node: NodeId) -> Vec<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
+    let _ = (app, graph, node);
+    todo!("ge.A11")
+}
+
 /// Shared node/output assignment menu for the canvas and Explorer
 pub(crate) fn show(ui: &mut Ui, session: &Session, graph_index: usize, node_id: NodeId) -> Option<Value> {
     let graph = session.pkg.graphs.get(graph_index)?;

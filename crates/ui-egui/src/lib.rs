@@ -8,8 +8,10 @@ mod commands;
 pub mod control;
 mod control_hooks;
 pub mod cook;
+mod data_colors; // P3(views-w9): vw.A1
 pub mod data_root;
 pub mod docking;
+mod edit_commit; // P3(panels-w8): pn.A23
 pub mod explorer;
 pub mod export;
 pub mod fonts;
@@ -61,6 +63,7 @@ mod toast;
 pub mod updates_ui;
 mod user_directory;
 mod value_editor;
+mod view_lettering; // P3(views-w9): vw.A2
 #[cfg(not(target_arch = "wasm32"))]
 mod window_controls;
 

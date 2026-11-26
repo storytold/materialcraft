@@ -239,8 +239,9 @@ pub(super) fn handle(
     }
 
     let at = app.graph.menu_at;
+    let opener = canvas.clone(); // P3(graph-w8): ge.A7: the wire menu's opener
     canvas.context_menu(|ui| match app.graph.menu_wire.clone() {
-        Some(wire) => wire_menu(app, ui, wire, at),
+        Some(wire) => wire_menu(app, ui, &opener, wire, at),
         None => super::context_menu::show(app, ui, at, None),
     });
 

@@ -2,8 +2,22 @@ use egui::Ui;
 use materialcraft_engine::core::{ExposedParameter, ParameterEditor, Value};
 use serde_json::{Value as JsonValue, json};
 
+/// One control per exposed input value: its edit events go to `send`.
+#[allow(dead_code)] // P3(panels-w8): pn.A26
+pub(super) fn input_editor(
+    app: &mut crate::MaterialCraftApp,
+    ui: &mut Ui,
+    exposed: &ExposedParameter,
+    current: &Value,
+    send: impl FnOnce(&mut crate::MaterialCraftApp, &craft_behavior::value::EditEvents<Value>),
+) {
+    let _ = (app, ui, exposed, current, send);
+    todo!("pn.A26")
+}
+
 /// The editor for one exposed input's value; returns the new value as JSON when it changed
-pub(super) fn input_editor(ui: &mut Ui, exposed: &materialcraft_engine::core::ExposedParameter, current: &Value) -> Option<JsonValue> {
+// P3(panels-w8): pn.A26: the old `input_editor`, kept for its callers until they take `send`
+pub(super) fn input_value(ui: &mut Ui, exposed: &materialcraft_engine::core::ExposedParameter, current: &Value) -> Option<JsonValue> {
     let label = if exposed.label.is_empty() { exposed.id.as_str() } else { exposed.label.as_str() };
     let response = ui.vertical(|ui| edit(ui, exposed, current, label));
     if !exposed.description.is_empty() {
@@ -132,7 +146,7 @@ mod tests {
             let builder = Harness::builder().with_size(egui::vec2(360.0, 160.0)).with_step_dt(1.0 / 60.0);
             let builder = if directory.is_some() { builder.wgpu() } else { builder };
             let mut harness = builder.build_ui(|ui| {
-                input_editor(ui, &input, &input.default);
+                input_value(ui, &input, &input.default);
             });
             harness.run();
             let position = harness.get(By::new().role(egui::accesskit::Role::CheckBox).label("Amount")).rect().center();
@@ -162,7 +176,7 @@ mod tests {
             .unwrap();
             let mut harness = Harness::new_ui_state(
                 |ui, value: &mut Value| {
-                    if let Some(edited) = input_editor(ui, &input, value) {
+                    if let Some(edited) = input_value(ui, &input, value) {
                         *value = value.coerce_json(&edited).unwrap();
                     }
                 },

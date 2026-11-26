@@ -458,12 +458,12 @@ fn publish(app: &mut MaterialCraftApp, settings: &ExportSettings) -> bool {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn poll(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+pub(crate) fn poll(app: &mut MaterialCraftApp) {
     let Some(job) = &app.material_export_job else { return };
     let result = match job.try_recv() {
         Ok(result) => result,
         Err(std::sync::mpsc::TryRecvError::Empty) => {
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            // P3(panels-w6): pn.A28: the repaint request goes with the host `Wake`
             return;
         }
         Err(error) => Err(error.to_string()),
@@ -474,6 +474,42 @@ pub(crate) fn poll(app: &mut MaterialCraftApp, ctx: &egui::Context) {
             app.toast(material_export_message(&report), false);
         }
         Err(error) => app.toast(error, true),
+    }
+}
+
+/// The material export jobs: each runs `materialcraft_engine::execute` on a fresh `Session` through a host
+/// `JobQueue`, and `poll` drains the results into toasts.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+#[allow(dead_code)] // P3(panels-w6): pn.A28
+pub(crate) struct PublishJobs {
+    _private: (),
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)] // P3(panels-w6): pn.A28
+impl PublishJobs {
+    /// A queue that runs its jobs on `jobs` and wakes the UI through `wake` when one finishes.
+    pub(crate) fn new(jobs: std::sync::Arc<dyn craft_host::Jobs>, wake: craft_host::Wake) -> Self {
+        let _ = (jobs, wake);
+        todo!("pn.A28")
+    }
+
+    /// True while a job is queued, running or finished and not yet drained, so a second export is refused.
+    pub(crate) fn busy(&self) -> bool {
+        todo!("pn.A28")
+    }
+
+    /// Queues one export command on a fresh session holding `package`.
+    pub(crate) fn submit(
+        &self,
+        command: &'static str,
+        params: Value,
+        package: materialcraft_engine::core::Package,
+        env: materialcraft_engine::core::EvaluationEnvironment,
+    ) {
+        let _ = (command, params, package, env);
+        todo!("pn.A28")
     }
 }
 

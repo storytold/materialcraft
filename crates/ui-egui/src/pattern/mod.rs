@@ -3,6 +3,7 @@ mod canvas;
 mod context_menu;
 mod geometry;
 mod input;
+mod kind; // P3(graph-w15): ge.A20
 pub(crate) mod library;
 mod node_canvas;
 mod parameter_value;

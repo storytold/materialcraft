@@ -73,31 +73,35 @@ fn category_icon(category: &str) -> &'static str {
 }
 
 /// The library's entries for the open session, rebuilt when its packages change
-pub(crate) fn entries(app: &MaterialCraftApp, ctx: &egui::Context) -> Arc<Vec<LibraryEntry>> {
-    type Cached = (Vec<(String, usize)>, Arc<Vec<LibraryEntry>>);
+pub(crate) fn entries(app: &mut MaterialCraftApp) -> Arc<Vec<LibraryEntry>> {
     let library = ("", Arc::as_ptr(&app.session.library) as usize);
     let packages = app.session.pkg.dependencies.iter().filter(|(path, _)| path.starts_with("sbs://"));
     let key = std::iter::once(library).chain(packages.map(|(path, package)| (path.as_str(), Arc::as_ptr(package) as usize)));
 
-    let id = egui::Id::unique("library-entries");
-    let previous = ctx.data(|data| data.get_temp::<Arc<Cached>>(id));
-    if let Some((cached, list)) = previous.as_deref()
-        && cached.iter().map(|(path, address)| (path.as_str(), *address)).eq(key.clone())
-    {
-        return list.clone();
+    let cache = &app.library_entries;
+    if cache.key.iter().map(|(path, address)| (path.as_str(), *address)).eq(key.clone()) {
+        return cache.list.clone();
     }
 
     let key: Vec<_> = key.map(|(path, address)| (path.to_owned(), address)).collect();
     let list = Arc::new(app.session.library_entries());
-    ctx.data_mut(|data| data.insert_temp(id, Arc::new((key, list.clone()))));
+    app.library_entries = EntriesCache { key, list: list.clone() };
     list
+}
+
+/// The library's entries for the open session, held on the app: the key is the library pointer plus the
+/// `sbs://` dependency paths and pointers.
+#[derive(Default)]
+pub(crate) struct EntriesCache {
+    key: Vec<(String, usize)>,
+    list: Arc<Vec<LibraryEntry>>,
 }
 
 /// Draw the shared library tree and search results for the active editor.
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let tokens = Tokens::get(ui.ctx());
     let target = LibraryTarget::of(app);
-    let all = entries(app, ui.ctx());
+    let all = entries(app); // P3(panels-w7): pn.A29
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         ui.label(RichText::new(icon::MAGNIFYING_GLASS).color(tokens.text_dim));

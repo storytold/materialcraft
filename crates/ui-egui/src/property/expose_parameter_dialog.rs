@@ -29,7 +29,15 @@ impl ExposeParameterDialog {
             Some(Self { target: GraphTarget::active(&app.session), node, parameter: parameter.into(), input, focus_identifier: true });
     }
 
-    pub(crate) fn show(app: &mut MaterialCraftApp, context: &egui::Context) {
+    /// Sets the draft's fields; `None` leaves a field as the draft has it.
+    #[allow(dead_code)] // P3(panels-w12): pn.A37
+    pub(crate) fn preset_fields(&mut self, identifier: Option<&str>, label: Option<&str>, group: Option<&str>, description: Option<&str>) {
+        let _ = (identifier, label, group, description);
+        todo!("pn.A37")
+    }
+
+    pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
+        let context = &ui.ctx().clone(); // P3(panels-w12): pn.A35
         let Some(mut dialog) = app.expose_parameter_dialog.take() else {
             return;
         };
@@ -159,7 +167,7 @@ impl ExposeParameterDialog {
                     let mut preview = self.input.clone();
                     preview.label = tr("Default").into();
                     preview.clamp = false;
-                    if let Some(value) = super::input::input_editor(ui, &preview, &self.input.default)
+                    if let Some(value) = super::input::input_value(ui, &preview, &self.input.default)
                         && let Some(value) = self.input.default.coerce_json(&value)
                     {
                         self.input.default = value;

@@ -16,6 +16,15 @@ pub struct PatternEditor {
     pub(super) framed: bool,
     pub(super) drag: Option<PatternDrag>,
     pub(super) menu_at: Pos2,
+    /// The live view of the canvas
+    #[allow(dead_code)] // P3(graph-w15): ge.A18
+    pub(crate) view: craft_behavior::canvas::CanvasView,
+    /// The view commands for the canvas's next pass; starts with a fit
+    #[allow(dead_code)] // P3(graph-w15): ge.A18
+    pub(crate) queued: Vec<craft_ui::canvas::ViewRequest>,
+    /// The canvas menu is open
+    #[allow(dead_code)] // P3(graph-w15): ge.A18
+    pub(crate) menu_open: bool,
 }
 
 impl PatternEditor {
@@ -40,7 +49,24 @@ impl PatternEditor {
             framed: false,
             drag: None,
             menu_at: Pos2::ZERO,
+            view: craft_behavior::canvas::CanvasView::new(egui::Rect::NOTHING, craft_behavior::kurbo::Point::ZERO, 1.0),
+            queued: vec![craft_ui::canvas::ViewRequest::Place(craft_ui::canvas::ViewCommands::FitOnScreen)],
+            menu_open: false,
         }
+    }
+
+    /// Opens the canvas menu at `at`.
+    #[allow(dead_code)] // P3(graph-w15): ge.A18
+    pub(crate) fn open_menu(&mut self, at: Pos2) {
+        let _ = at;
+        todo!("ge.A18")
+    }
+
+    /// The selected wires, as references (the refs need the graph, which the editor does not hold).
+    #[allow(dead_code)] // P3(graph-w15): ge.A18
+    pub(crate) fn selected_wire_refs(&self, app: &MaterialCraftApp) -> Vec<crate::graph::WireRef> {
+        let _ = app;
+        todo!("ge.A18")
     }
 
     pub(crate) fn current<'a>(&self, app: &'a MaterialCraftApp) -> Option<&'a PatternGraph> {

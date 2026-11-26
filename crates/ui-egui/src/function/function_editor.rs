@@ -21,6 +21,21 @@ pub struct FunctionEditor {
     pub(super) open_reference: Option<u32>,
     /// The open node search (Space, Tab, double-click or a wire dropped on empty canvas)
     pub(crate) search: Option<super::search::FunctionSearch>,
+    /// The live view of the canvas
+    #[allow(dead_code)] // P3(graph-w9): ge.A5
+    pub(crate) view: craft_behavior::canvas::CanvasView,
+    /// The view commands for the canvas's next pass; starts with a fit
+    #[allow(dead_code)] // P3(graph-w9): ge.A5
+    pub(crate) queued: Vec<craft_ui::canvas::ViewRequest>,
+}
+
+#[allow(dead_code)] // P3(graph-w9): ge.A5
+impl FunctionEditor {
+    /// The selected wires, as references (the editor holds only hashed wire ids).
+    pub(crate) fn selected_wire_refs(&self, app: &MaterialCraftApp) -> Vec<crate::graph::WireRef> {
+        let _ = app;
+        todo!("ge.A5")
+    }
 }
 
 impl FunctionEditor {
@@ -56,6 +71,8 @@ impl FunctionEditor {
             framed: false,
             open_reference: None,
             search: None,
+            view: craft_behavior::canvas::CanvasView::new(egui::Rect::NOTHING, craft_behavior::kurbo::Point::ZERO, 1.0),
+            queued: vec![craft_ui::canvas::ViewRequest::Place(craft_ui::canvas::ViewCommands::FitOnScreen)],
         }
     }
 

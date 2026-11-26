@@ -20,6 +20,34 @@ impl GraphCamera {
     }
 }
 
+/// The zoom rungs of the graph canvas, in points per graph unit.
+const RUNGS: [f64; 7] = [0.08, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0];
+
+/// The material graph's zoom range in points per graph unit: 0.08 to 4.
+#[allow(dead_code)] // P3(graph-w6): ge.A1
+pub const GRAPH_ZOOM: craft_behavior::canvas::ZoomScheme = craft_behavior::canvas::ZoomScheme::new(&RUNGS, craft_behavior::canvas::ZoomFloor::Fixed(0.08), 4.0);
+
+/// `GRAPH_ZOOM` whose 100 % is one point per graph unit at any display scale.
+#[allow(dead_code)] // P3(graph-w6): ge.A1
+pub fn graph_zoom(pixels_per_point: f32) -> craft_behavior::canvas::ZoomScheme {
+    GRAPH_ZOOM.with_hundred(f64::from(pixels_per_point))
+}
+
+#[allow(dead_code)] // P3(graph-w6): ge.A1
+impl GraphCamera {
+    /// The live view of this camera in `rect`.
+    pub fn view(self, rect: egui::Rect) -> craft_behavior::canvas::CanvasView {
+        let _ = rect;
+        todo!("ge.A1")
+    }
+
+    /// The saved camera of a live view.
+    pub fn from_view(view: &craft_behavior::canvas::CanvasView) -> GraphCamera {
+        let _ = view;
+        todo!("ge.A1")
+    }
+}
+
 impl Default for GraphCamera {
     fn default() -> Self {
         GraphCamera { pan: [-60.0, -60.0], zoom: 0.8 }

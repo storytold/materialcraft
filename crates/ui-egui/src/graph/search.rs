@@ -5,6 +5,40 @@ use egui_phosphor::regular as icon;
 use materialcraft_engine::core::NodeId;
 use serde_json::json;
 
+/// A port of a node: the node and the port's id.
+#[allow(dead_code)] // P3(graph-w11): ge.A10
+pub(crate) type PortKey = (NodeId, String);
+
+/// The editor a node search serves; the Function editor is borrowed because its panel takes it out of `app`.
+#[allow(dead_code)] // P3(graph-w11): ge.A10
+pub(crate) enum SearchEditor<'a> {
+    /// The material graph.
+    Material,
+    /// The Function editor.
+    Function(&'a mut crate::function::FunctionEditor),
+}
+
+/// Opens the node search at `at`, connecting the new node to `wire` when given.
+#[allow(dead_code)] // P3(graph-w11): ge.A10
+pub(crate) fn open(app: &mut MaterialCraftApp, at: Pos2, wire: Option<super::node_search::SearchWire>) {
+    let _ = (app, at, wire);
+    todo!("ge.A10")
+}
+
+/// The candidates for the search text of the open search.
+#[allow(dead_code)] // P3(graph-w11): ge.A10
+pub(crate) fn candidates(app: &MaterialCraftApp, editor: &SearchEditor<'_>, text: &str) -> Vec<super::node_search::SearchCandidate> {
+    let _ = (app, editor, text);
+    todo!("ge.A10")
+}
+
+/// The open search's state, for every editor, as `ui.inspect` reports it.
+#[allow(dead_code)] // P3(graph-w11): ge.A15
+pub(crate) fn inspect(app: &MaterialCraftApp) -> Option<serde_json::Value> {
+    let _ = app;
+    todo!("ge.A15")
+}
+
 pub(super) fn open_search(app: &mut MaterialCraftApp, ctx: &egui::Context, at: Pos2, connect: Option<(NodeId, String)>) {
     if crate::shell::modality::Modality::capture(app, ctx).is_blocked() {
         return;

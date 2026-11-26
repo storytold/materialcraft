@@ -116,7 +116,8 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
     // P3(shell-w9): sh.A6: `unsaved::show` takes a `Ui`; `windows::show` becomes `show(app, ui)` and drops this area
     egui::Area::new(egui::Id::unique("unsaved-stand-in")).show(ctx, |ui| crate::unsaved::show(app, ui));
     crate::explorer::dialogs(app, ctx);
-    crate::properties::ExposeParameterDialog::show(app, ctx);
+    // P3(shell-w9): pn.A35: as above
+    egui::Area::new(egui::Id::unique("expose-stand-in")).show(ctx, |ui| crate::properties::ExposeParameterDialog::show(app, ui));
     #[cfg(target_arch = "wasm32")]
     // P3(shell-w9): sh.A29: as above
     egui::Area::new(egui::Id::unique("save-stand-in")).show(ctx, |ui| crate::web_files::save_dialog(app, ui));

@@ -1,7 +1,7 @@
 use crate::{MaterialCraftApp, i18n::tr};
 use egui::Ui;
 
-const SIZES: [u32; 6] = [256, 512, 1024, 2048, 4096, 0];
+pub(crate) const SIZES: [u32; 6] = [256, 512, 1024, 2048, 4096, 0];
 
 pub(crate) fn label(size: u32) -> String {
     if size == 0 { tr("Full size").to_string() } else { format!("{size} px") }

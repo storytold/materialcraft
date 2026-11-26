@@ -1,4 +1,4 @@
-use super::{input::input_editor, parameter::param_row, section};
+use super::{input::input_value, parameter::param_row, section};
 use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
 use egui::{Rect, RichText, Ui, vec2};
 use egui_phosphor::regular as icon;
@@ -37,7 +37,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft
     if node.def == "input_value"
         && let Some(descriptor) = ParameterDescriptor::for_node(&app.session.pkg, node, "default")
     {
-        super::parameter_control::show(app, ui, node, &descriptor, None, |app, ui| {
+        super::parameter_control::row(app, ui, node, &descriptor, None, |app, ui| {
             ui.label(tr("Default value"));
             crate::value_input_editor::default_value(app, ui, node);
         });
@@ -67,9 +67,9 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft
             if let Some(descriptor) = ParameterDescriptor::for_node(&app.session.pkg, node, parameter.id)
                 && descriptor.supports_function
             {
-                super::parameter_control::show(app, ui, node, &descriptor, None, |app, ui| param_row(app, ui, node.id, parameter, current));
+                super::parameter_control::row(app, ui, node, &descriptor, None, |app, ui| param_row(app, ui, node.id, parameter, current, true));
             } else {
-                param_row(app, ui, node.id, parameter, current);
+                param_row(app, ui, node.id, parameter, current, false);
             }
         }
     });
@@ -111,7 +111,7 @@ fn base_params(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft_eng
                     max: descriptor.max,
                     options: descriptor.options,
                 };
-                if let Some(value) = ui.add_enabled_ui(editable, |ui| input_editor(ui, &input, &value)).inner {
+                if let Some(value) = ui.add_enabled_ui(editable, |ui| input_value(ui, &input, &value)).inner {
                     app.run("graph.node.base", json!({"id": node.id, "param": parameter.identifier(), "value": value}));
                 }
                 if parameter == BaseParameter::RandomSeed && ui.button(format!("{}  {}", icon::SHUFFLE, tr("New random seed"))).clicked() {
@@ -173,14 +173,14 @@ fn instance_params(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft
         let descriptor = ParameterDescriptor::for_node(&app.session.pkg, node, &entry.id);
         let current = node.params.get(&entry.id).unwrap_or_else(|| descriptor.as_ref().map_or(&entry.default, |descriptor| &descriptor.default)).clone();
         let literal = |app: &mut MaterialCraftApp, ui: &mut Ui| {
-            if let Some(value) = input_editor(ui, &entry, &current) {
+            if let Some(value) = input_value(ui, &entry, &current) {
                 app.run("graph.node.param", json!({"id": node.id.0, "param": entry.id, "value": value}));
             }
         };
         if let Some(descriptor) = descriptor
             && descriptor.supports_function
         {
-            super::parameter_control::show(app, ui, node, &descriptor, None, literal);
+            super::parameter_control::row(app, ui, node, &descriptor, None, literal);
         } else {
             literal(app, ui);
         }

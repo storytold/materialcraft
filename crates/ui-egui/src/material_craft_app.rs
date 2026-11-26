@@ -142,6 +142,22 @@ pub struct MaterialCraftApp {
     pub(crate) dialogs: crate::native_dialogs::Dialogs,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) material_export_job: Option<std::sync::mpsc::Receiver<Result<Value, String>>>,
+    /// The material export jobs, queued through the host (desktop only)
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(dead_code)] // P3(panels-w6): pn.A30
+    pub(crate) material_export: crate::export::PublishJobs,
+    /// The library's entries for the open session, rebuilt when its packages change
+    #[allow(dead_code)] // P3(panels-w7): pn.A30
+    pub(crate) library_entries: crate::library::EntriesCache,
+    /// Whether a node's width and height are linked, per graph and node
+    #[allow(dead_code)] // P3(panels-w9): pn.A30
+    pub(crate) size_links: std::collections::HashMap<(usize, materialcraft_engine::core::NodeId), bool>,
+    /// The name typed for a new preset
+    #[allow(dead_code)] // P3(panels-w10): pn.A30
+    pub(crate) preset_name: String,
+    /// The Function JSON being edited: the node, the text and the text last applied
+    #[allow(dead_code)] // P3(panels-w10): pn.A30
+    pub(crate) function_json: Option<(materialcraft_engine::core::NodeId, String, String)>,
     /// The held action waiting for the Save dialog the unsaved-changes prompt opened
     pub(crate) awaiting_save: Option<crate::unsaved::Guarded>,
     /// The window buttons to draw when the app draws the window frame; `None` while the desktop draws it (desktop only)
@@ -258,6 +274,12 @@ impl MaterialCraftApp {
             dialogs: crate::native_dialogs::unattached(),
             #[cfg(not(target_arch = "wasm32"))]
             material_export_job: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            material_export: Default::default(),
+            library_entries: Default::default(),
+            size_links: Default::default(),
+            preset_name: String::new(),
+            function_json: None,
             awaiting_save: None,
             #[cfg(not(target_arch = "wasm32"))]
             window_layout: None,
@@ -651,7 +673,7 @@ impl MaterialCraftApp {
         #[cfg(not(target_arch = "wasm32"))]
         crate::native_dialogs::poll(self);
         #[cfg(not(target_arch = "wasm32"))]
-        crate::export::poll(self, ctx);
+        crate::export::poll(self); // P3(panels-w6): pn.A28
         if !crate::shell::modality::Modality::capture(self, ctx).is_blocked() {
             for f in ctx.input(|i| i.raw.dropped_files.clone()) {
                 web_files::dropped(self, ctx, &f);

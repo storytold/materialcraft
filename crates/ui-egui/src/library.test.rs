@@ -20,19 +20,19 @@ fn catalog_hits_share_entries_and_replaced_packages_release_them() {
     let path = "sbs://test/replaced.sbs";
 
     for name in ["First", "Second", "Third"] {
-        let catalog = entries(&app, &context);
-        assert!(Arc::ptr_eq(&catalog, &entries(&app, &context)));
+        let catalog = entries(&mut app); // P3(panels-w7): pn.A29
+        assert!(Arc::ptr_eq(&catalog, &entries(&mut app)));
         let previous = Arc::downgrade(&catalog);
         drop(catalog);
 
         app.session.pkg.dependencies.insert(path.into(), Arc::new(materialcraft_engine::core::Package::new(name)));
-        let replacement = entries(&app, &context);
+        let replacement = entries(&mut app); // P3(panels-w7): pn.A29
 
         assert!(previous.upgrade().is_none());
         assert!(!replacement.is_empty());
     }
 
-    let last = Arc::downgrade(&entries(&app, &context));
+    let last = Arc::downgrade(&entries(&mut app)); // P3(panels-w7): pn.A29
     drop(context);
 
     assert!(last.upgrade().is_none());

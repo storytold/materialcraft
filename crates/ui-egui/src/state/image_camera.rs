@@ -24,6 +24,20 @@ impl ImageCamera {
         ImageCamera { zoom, offset, fit: false }.sanitized()
     }
 
+    /// The live view of this camera in `rect`.
+    #[allow(dead_code)] // P3(views-w4): vw.A9
+    pub fn view(self, rect: egui::Rect) -> craft_behavior::canvas::CanvasView {
+        let _ = rect;
+        todo!("vw.A9")
+    }
+
+    /// The saved camera of a live view; `fit` says whether it still follows the fitted view.
+    #[allow(dead_code)] // P3(views-w4): vw.A9
+    pub fn from_view(view: &craft_behavior::canvas::CanvasView, fit: bool) -> ImageCamera {
+        let _ = (view, fit);
+        todo!("vw.A9")
+    }
+
     /// The camera with a finite offset and a zoom inside [`Self::ZOOM`].
     pub fn sanitized(self) -> ImageCamera {
         let off = |v: f32| if v.is_finite() { v.clamp(-1.0e9, 1.0e9) } else { 0.0 };

@@ -7,6 +7,7 @@ mod function_search;
 mod function_search_candidate;
 mod function_target;
 pub(crate) mod library;
+mod node_kind; // P3(graph-w9): ge.A14
 mod port_label;
 pub(crate) mod properties;
 pub(crate) mod search;

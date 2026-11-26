@@ -51,7 +51,8 @@ fn rows(ui: &mut egui::Ui, rows: &[ExplorerRow], state: &ExplorerMenuState, reso
 }
 
 /// Build the context menu for a package, folder, graph or resource.
-pub(super) fn show(ui: &mut egui::Ui, target: &ExplorerTarget, state: &ExplorerMenuState) -> Option<&'static str> {
+pub(super) fn show(ui: &mut egui::Ui, opener: &egui::Response, target: &ExplorerTarget, state: &ExplorerMenuState) -> Option<&'static str> {
+    let _ = opener; // P3(panels-w5): pn.A34
     ui.set_min_width(220.0);
     let mut action = None;
     let resources = target.is_resources();
@@ -83,4 +84,11 @@ pub(super) fn show(ui: &mut egui::Ui, target: &ExplorerTarget, state: &ExplorerM
         ExplorerTarget::Node { .. } => return None,
     }
     action
+}
+
+/// True when the target's row menu offers the command, built from the same `EXPLORER_*` rows as `show`.
+#[allow(dead_code)] // P3(panels-w5): pn.A41
+pub(super) fn offers(target: &ExplorerTarget, command: &str) -> bool {
+    let _ = (target, command);
+    todo!("pn.A41")
 }

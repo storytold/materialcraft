@@ -76,6 +76,16 @@ fn panel_context(app: &MaterialCraftApp) -> u64 {
     hasher.finish()
 }
 
+/// The frame's rect inside the area.
+#[allow(dead_code)] // P3(views-w6): vw.A14
+pub(crate) fn picture_rect(app: &MaterialCraftApp, area: Rect) -> Rect {
+    let _ = (app, area);
+    todo!("vw.A14")
+}
+
+#[allow(unused_imports)] // P3(views-w6): vw.A11
+pub(crate) use navigation::fired;
+
 /// Show a part of the 3D view in the Properties panel, until something else is selected
 pub(crate) fn inspect(app: &mut MaterialCraftApp, subject: Subject) {
     app.view3d.inspected = Some((subject, panel_context(app)));
@@ -162,7 +172,7 @@ fn viewport(app: &mut MaterialCraftApp, ui: &mut Ui, rect: Rect) {
     if let Some(texture) = &app.view3d.tex {
         painter.image(texture.id(), area, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
     }
-    overlays::paint(app, ui, rect, area);
+    overlays::paint_ui(app, ui, rect, area); // P3(views-w9): vw.A5
 
     let notice = egui::FontId::proportional(11.0);
     if app.session.view3d.alpha_view {

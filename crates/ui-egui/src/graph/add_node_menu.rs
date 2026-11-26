@@ -4,6 +4,16 @@ use crate::MaterialCraftApp;
 use crate::i18n::tr;
 use crate::shell::modality::Modality;
 
+/// The add-node rows for `entries`; each row's ref carries its entry id under the key `params` gives it.
+#[allow(dead_code)] // P3(graph-w12): ge.A11
+pub(crate) fn rows(
+    entries: impl IntoIterator<Item = (&'static str, &'static str, &'static str)>,
+    params: impl Fn(&str) -> serde_json::Value,
+) -> Vec<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
+    let _ = (entries, params);
+    todo!("ge.A11")
+}
+
 pub(crate) fn show(app: &MaterialCraftApp, ui: &mut Ui, entries: impl IntoIterator<Item = (&'static str, &'static str, &'static str)>) -> Option<&'static str> {
     let blocked = Modality::capture(app, ui.ctx()).is_blocked();
     let filter_id = ui.make_persistent_id("add-node-filter");

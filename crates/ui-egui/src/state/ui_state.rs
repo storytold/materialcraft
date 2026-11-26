@@ -65,6 +65,9 @@ pub struct UiState {
     pub preferences_page: String,
     /// The user's changes to the node-creation shortcuts, over the app catalog's defaults
     pub shortcut_overrides: craft_keymap::Overrides,
+    /// The Export outputs groups closed this session
+    #[serde(skip)]
+    pub export_closed: std::collections::BTreeSet<String>,
 }
 
 impl craft_settings::Settings for UiState {
@@ -107,6 +110,7 @@ impl Default for UiState {
             frame_all: true,
             preferences_page: "general".into(),
             shortcut_overrides: Default::default(),
+            export_closed: Default::default(),
         }
     }
 }

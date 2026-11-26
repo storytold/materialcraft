@@ -93,6 +93,21 @@ fn open_graph(app: &mut MaterialCraftApp, index: usize) -> bool {
     opened
 }
 
+/// The breadcrumb's entries; each value is the number of `parent()` steps back to that level, and the open level
+/// never reports.
+#[allow(dead_code)] // P3(graph-w13): ge.A12
+pub(crate) fn crumbs(app: &MaterialCraftApp) -> Vec<craft_ui::contract::Entry<usize>> {
+    let _ = app;
+    todo!("ge.A12")
+}
+
+/// Returns `steps` levels up.
+#[allow(dead_code)] // P3(graph-w13): ge.A12
+pub(crate) fn back(app: &mut MaterialCraftApp, steps: usize) {
+    let _ = (app, steps);
+    todo!("ge.A12")
+}
+
 pub(crate) fn breadcrumb(app: &MaterialCraftApp) -> String {
     let mut path: Vec<String> = app
         .graph_parents

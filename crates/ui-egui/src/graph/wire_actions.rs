@@ -92,7 +92,15 @@ pub(crate) fn shortcuts(app: &mut MaterialCraftApp, ctx: &egui::Context) {
     }
 }
 
-pub(super) fn wire_menu(app: &mut MaterialCraftApp, ui: &mut Ui, (to, port): WireRef, at: Pos2) {
+/// The Swap row of a wire selection, as a command row.
+#[allow(dead_code)] // P3(graph-w8): ge.A7
+pub(crate) fn swap_row(app: &MaterialCraftApp, target: materialcraft_engine::SelectionTarget) -> Option<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
+    let _ = (app, target);
+    todo!("ge.A7")
+}
+
+pub(super) fn wire_menu(app: &mut MaterialCraftApp, ui: &mut Ui, opener: &egui::Response, (to, port): WireRef, at: Pos2) {
+    let _ = opener; // P3(graph-w8): ge.A7
     let n = app.graph.selected_wires.len();
     if ui.button(format!("{}  {}", icon::DOT_OUTLINE, tr("Insert reroute dot"))).clicked() {
         app.run("graph.wire.insertDot", json!({"to": to.0, "toPort": port, "at": [at.x, at.y]}));

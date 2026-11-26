@@ -15,7 +15,8 @@ fn typed(value: &Value) -> JsonValue {
 }
 
 /// The literal editor inside a parameter control
-pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, parameter: &ParameterDefinition, current: Value) {
+pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, parameter: &ParameterDefinition, current: Value, inline: bool) {
+    let _ = inline; // P3(panels-w8): pn.A45
     let tokens = Tokens::get(ui.ctx());
     match current {
         Value::Float(mut value) => {

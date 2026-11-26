@@ -2,7 +2,7 @@ use crate::theme::Tokens;
 use egui::{Sense, Ui, vec2};
 use egui_phosphor::regular as icon;
 
-pub(crate) fn section(ui: &mut Ui, id: &str, title: &str, body: impl FnOnce(&mut Ui)) {
+pub(crate) fn section(ui: &mut Ui, id: &str, title: &str, mut body: impl FnMut(&mut Ui)) {
     let tokens = Tokens::get(ui.ctx());
     let id = ui.make_persistent_id(id);
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
@@ -26,4 +26,11 @@ pub(crate) fn section(ui: &mut Ui, id: &str, title: &str, body: impl FnOnce(&mut
         body(ui);
         ui.add_space(6.0);
     });
+}
+
+/// A section that starts closed; otherwise as `section`.
+#[allow(dead_code)] // P3(panels-w10): pn.A25
+pub(crate) fn section_closed(ui: &mut Ui, id: &str, title: &str, body: impl FnMut(&mut Ui)) {
+    let _ = (ui, id, title, body);
+    todo!("pn.A25")
 }

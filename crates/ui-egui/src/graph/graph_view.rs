@@ -28,9 +28,49 @@ pub struct GraphView {
     pub(super) menu_wire: Option<WireRef>,
     /// Wires on screen last frame: the wire and its bezier control points
     pub wires: Vec<(WireRef, [Pos2; 4])>,
+    /// The frame being moved and its offset
+    #[allow(dead_code)] // P3(graph-w6): ge.A2
+    pub(crate) moving: Option<(craft_ui::graph::AnnotationKey, egui::Vec2)>,
+    /// The node-move preview offset
+    #[allow(dead_code)] // P3(graph-w6): ge.A2
+    pub(crate) node_move: Option<egui::Vec2>,
 }
 
+/// The reference of a wire for the framework's wire selection.
+#[allow(dead_code)] // P3(graph-w6): ge.A2
+pub(crate) fn wire_id(wire: &WireRef) -> u64 {
+    let _ = wire;
+    todo!("ge.A2")
+}
+
+#[allow(dead_code)] // P3(graph-w6): ge.A2
 impl GraphView {
+    /// The wires selected, as references.
+    pub(crate) fn selected_wire_refs(&self) -> Vec<WireRef> {
+        todo!("ge.A2")
+    }
+
+    /// Queues a view command for the canvas's next pass.
+    pub(crate) fn request_view(&mut self, request: craft_ui::canvas::ViewRequest) {
+        let _ = request;
+        todo!("ge.A2")
+    }
+
+    /// Stores what the canvas drew this pass: the view, the node, port, wire and annotation rects.
+    pub(crate) fn publish(
+        &mut self,
+        view: Rect,
+        rects: Vec<(NodeId, Rect)>,
+        ports: Vec<PortHit>,
+        wires: Vec<(WireRef, [Pos2; 4])>,
+        frames: Vec<(u64, Rect)>,
+        comments: Vec<(u64, Rect)>,
+        pins: Vec<(u64, Rect)>,
+    ) {
+        let _ = (view, rects, ports, wires, frames, comments, pins);
+        todo!("ge.A2")
+    }
+
     pub(crate) fn cancel_drag(&mut self) {
         self.drag = None;
         self.search = None;
@@ -72,6 +112,8 @@ impl Default for GraphView {
             selected_wires: Vec::new(),
             menu_wire: None,
             wires: Vec::new(),
+            moving: None,
+            node_move: None,
         }
     }
 }

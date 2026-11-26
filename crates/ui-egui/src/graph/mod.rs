@@ -2,7 +2,9 @@ pub(crate) mod actions;
 pub(crate) mod add_node_menu;
 pub(crate) mod annotation_canvas;
 pub(crate) mod annotation_input;
+mod annotations; // P3(graph-w10): ge.A9
 pub(crate) mod canvas;
+mod canvas_events; // P3(graph-w6): ge.A3
 mod context_menu;
 pub(crate) mod frame_hit;
 #[cfg(test)]
@@ -20,6 +22,7 @@ mod library_drag;
 #[cfg(test)]
 mod modality_tests;
 pub(crate) mod node_card;
+mod node_kind; // P3(graph-w7): ge.A6
 mod node_layout;
 mod node_search;
 pub(crate) mod node_selection;

@@ -1,6 +1,20 @@
 use crate::{i18n::tr, menus};
 use egui::Ui;
 
+/// The row of one edit command with its parameters.
+#[allow(dead_code)] // P3(graph-w12): ge.A11
+pub(crate) fn row(command: &str, params: serde_json::Value) -> craft_ui::menu::MenuRow<craft_keymap::CommandRef> {
+    let _ = (command, params);
+    todo!("ge.A11")
+}
+
+/// The selection edit rows (cut, copy, delete, duplicate) with their parameters.
+#[allow(dead_code)] // P3(graph-w12): ge.A11
+pub(crate) fn selection_rows(params: serde_json::Value) -> Vec<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
+    let _ = params;
+    todo!("ge.A11")
+}
+
 pub(crate) fn button(ui: &mut Ui, label: &str, command: &str, enabled: bool) -> bool {
     let mut button = egui::Button::new(tr(label));
     if let Some(shortcut) = menus::shortcut_of(command).map(|text| menus::shortcut_label(ui.ctx(), text)) {

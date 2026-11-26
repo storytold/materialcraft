@@ -117,6 +117,14 @@ fn hits_mesh(app: &mut MaterialCraftApp, pointer: Pos2, area: Rect) -> bool {
     scene.bvh.closest(ray.origin, ray.dir, f32::MAX).is_some()
 }
 
+/// Runs the 3D view's command `id` (`view3d.frame`, `view3d.resetCamera`, `view3d.saveRender`, ...); true when the
+/// id was its own.
+#[allow(dead_code)] // P3(views-w6): vw.A11
+pub(crate) fn fired(app: &mut MaterialCraftApp, ctx: &egui::Context, id: &str) -> bool {
+    let _ = (app, ctx, id);
+    todo!("vw.A11")
+}
+
 /// Put back what the active tool moves: where the first light is with the Light tool, else the
 /// camera with its lens and the rest of its properties
 pub(super) fn reset_selected(app: &mut MaterialCraftApp) {

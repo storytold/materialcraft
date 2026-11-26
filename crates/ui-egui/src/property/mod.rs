@@ -16,7 +16,11 @@ pub(crate) use expose_parameter_dialog::ExposeParameterDialog;
 pub(crate) use folder_property_draft::FolderPropertyDraft;
 pub use gradient::gradient_editor;
 pub(crate) use graph_property_draft::GraphPropertyDraft;
+#[allow(unused_imports)] // P3(panels-w10): pn.A43
+pub(crate) use parameter_control::expose;
 pub(crate) use section::section;
+#[allow(unused_imports)] // P3(panels-w10): pn.A25
+pub(crate) use section::section_closed;
 
 use crate::{MaterialCraftApp, graph::editor_target::EditorTarget, i18n::tr};
 use egui::Ui;

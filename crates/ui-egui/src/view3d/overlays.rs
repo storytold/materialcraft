@@ -28,8 +28,39 @@ const UNITS_PER_METER: f32 = 100.0;
 /// The lengths the scale bar can show, in meters
 const SCALE_LENGTHS: [f32; 13] = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0];
 
+/// What `paint` needs of the overlays: owned, because the picture's painter callback cannot hold the app. The
+/// `Sight` is rebuilt from the scene and the aspect, since it borrows the scene.
+#[allow(dead_code)] // P3(views-w9): vw.A5
+pub(super) struct Prepared {
+    overlay: Option<Arc<Overlay>>,
+    scene: Arc<materialcraft_render::Scene>,
+    aspect: f32,
+}
+
+/// Resolves the overlays for the frame shown in `area` and keeps the overlay cache; `None` when no helper is on.
+#[allow(dead_code)] // P3(views-w9): vw.A5
+pub(super) fn prepare(app: &mut MaterialCraftApp, area: Rect, view_rect: Rect, pixels_per_point: f32) -> Option<Prepared> {
+    let _ = (app, area, view_rect, pixels_per_point);
+    todo!("vw.A5")
+}
+
+/// Draws the helpers over the frame through the picture's painter, clipped to `view_rect` and `area`.
+#[allow(dead_code)] // P3(views-w9): vw.A5
+pub(super) fn paint(
+    painter: &craft_ui::primitives::ContentPainterCx<'_>,
+    ink: &crate::data_colors::ViewportInk,
+    style: craft_theme::TypeStyle,
+    prepared: &Prepared,
+    view_rect: Rect,
+    area: Rect,
+) {
+    let _ = (painter, ink, style, prepared, view_rect, area);
+    todo!("vw.A5")
+}
+
 /// Draw the view's helpers over the frame shown in `area`, inside `view_rect`
-pub(super) fn paint(app: &mut MaterialCraftApp, ui: &Ui, view_rect: Rect, area: Rect) {
+// P3(views-w9): vw.A5: the old `paint`, kept for its caller until the picture's painter callback replaces it
+pub(super) fn paint_ui(app: &mut MaterialCraftApp, ui: &Ui, view_rect: Rect, area: Rect) {
     let scene = super::frame::shown_scene(app);
     let view = &app.session.view3d;
     let sight = Sight::of(&scene, super::frame::shown_view(app), area.width() / area.height().max(1.0));

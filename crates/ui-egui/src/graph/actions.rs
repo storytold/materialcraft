@@ -1,6 +1,7 @@
 use crate::{MaterialCraftApp, docking::Panel};
 
-pub(crate) fn enabled(app: &MaterialCraftApp, command: &str) -> Option<bool> {
+pub(crate) fn enabled(app: &MaterialCraftApp, command: &str, params: &serde_json::Value) -> Option<bool> {
+    let _ = params; // P3(graph-w8): ge.A21
     if let Some(enabled) = super::wire_actions::enabled(app, command, &app.graph.selected_wires, None) {
         return Some(enabled);
     }
@@ -13,7 +14,15 @@ pub(crate) fn enabled(app: &MaterialCraftApp, command: &str) -> Option<bool> {
     }
 }
 
-pub(crate) fn invoke(app: &mut MaterialCraftApp, command: &str) -> bool {
+/// The view that centres the next or previous pin.
+#[allow(dead_code)] // P3(graph-w8): ge.A21
+pub(crate) fn pin_target(app: &MaterialCraftApp, forward: bool) -> Option<craft_behavior::canvas::CanvasView> {
+    let _ = (app, forward);
+    todo!("ge.A21")
+}
+
+pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &str, params: &serde_json::Value) -> bool {
+    let _ = (ctx, params); // P3(graph-w8): ge.A21
     match command {
         "graph.wire.swap" => {
             super::wire_actions::swap_selected_wires(app);

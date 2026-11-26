@@ -39,6 +39,13 @@ pub(crate) fn activate(app: &mut MaterialCraftApp, target: materialcraft_engine:
     app.graph.annotation_target = target;
 }
 
+/// Sets the active editor's live view.
+#[allow(dead_code)] // P3(graph-w10): ge.A4
+pub(crate) fn set_camera(app: &mut MaterialCraftApp, view: craft_behavior::canvas::CanvasView) {
+    let _ = (app, view);
+    todo!("ge.A4")
+}
+
 /// Read the active editor camera without replacing the parent graph's saved view.
 pub(crate) fn camera(app: &MaterialCraftApp) -> crate::state::GraphCamera {
     if let Some(editor) = &app.function_editor {

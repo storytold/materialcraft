@@ -8,10 +8,18 @@ use materialcraft_engine::{
 use serde_json::json;
 
 pub(super) fn header(app: &mut MaterialCraftApp, ui: &mut Ui, node: &Node, descriptor: &ParameterDescriptor, base: BaseParameter) -> bool {
-    show(app, ui, node, descriptor, Some(base), |_, _| {})
+    row(app, ui, node, descriptor, Some(base), |_, _| {})
 }
 
-pub(super) fn show(
+/// Opens the Expose dialog for that parameter as the actions menu's Expose row does; `Err` when the node or the
+/// parameter is missing or its value cannot be captured.
+#[allow(dead_code)] // P3(panels-w8): pn.A43
+pub(crate) fn expose(app: &mut MaterialCraftApp, node: materialcraft_engine::core::NodeId, parameter: &str) -> Result<(), String> {
+    let _ = (app, node, parameter);
+    todo!("pn.A43")
+}
+
+pub(super) fn row(
     app: &mut MaterialCraftApp,
     ui: &mut Ui,
     node: &Node,
