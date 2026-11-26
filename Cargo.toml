@@ -182,3 +182,4 @@ opt-level = 3
 [workspace.metadata.cl]
 selection = ["materialcraft", "materialcraft-ui-egui"]
 tracked = ["egui", "eframe"]
+unset_env = ["MATERIALCRAFT_BUILD_CHANNEL", "MATERIALCRAFT_VERSION", "MATERIALCRAFT_BUILD_SHA", "MATERIALCRAFT_BUILD_DATE", "MATERIALCRAFT_REQUIRE_WINRES", "SOURCE_DATE_EPOCH"]
