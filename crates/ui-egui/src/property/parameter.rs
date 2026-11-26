@@ -73,8 +73,7 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
         }
         Value::Float3(_) | Value::Float4(_) | Value::Int3(_) | Value::Int4(_) => {
             ui.label(tr(parameter.label));
-            let mut value = current.clone();
-            if crate::value_editor::show(ui, &mut value) {
+            if let Some(value) = crate::value_editor::show(ui, &current).value() {
                 set(app, node, parameter.id, serde_json::to_value(value).unwrap_or_default());
             }
         }
@@ -140,7 +139,39 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
         }
         Value::Function(function) => {
             ui.label(RichText::new(tr(parameter.label)).color(tokens.text));
-            crate::windows::function_summary(app, ui, node, parameter.id, &function);
+            function_summary(app, ui, node, parameter.id, &function);
         }
     }
+}
+
+// owed by panels-w8: `windows::function_summary` as it was (shell-w9 deletes it) until `property/function_card.rs`.
+/// The function parameter of a pixel/value processor: a button opening the function graph editor, and the function as JSON for copy and paste
+fn function_summary(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, param: &str, f: &materialcraft_engine::core::FunctionGraph) {
+    let tk = Tokens::get(ui.ctx());
+    if ui.add(crate::widgets::primary_button(ui, &format!("{}  {}", icon::FLOW_ARROW, tr("Edit function graph...")))).clicked() {
+        crate::graph::subgraph_navigation::open_function(app, node, crate::function::FunctionTarget::Parameter(param.to_string()));
+    }
+    ui.label(RichText::new(format!("{} {}", f.nodes.len(), tr("function nodes"))).size(10.5).color(tk.text_dim));
+    let id = egui::Id::unique(("fn-edit", node.0, param));
+    egui::CollapsingHeader::new(tr("As JSON")).id_salt(("fn-json", node.0, param)).default_open(false).show(ui, |ui| {
+        let mut text: String = ui.data(|d| d.get_temp(id)).unwrap_or_else(|| serde_json::to_string_pretty(f).unwrap_or_default());
+        if ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_rows(8).desired_width(f32::INFINITY)).changed() {
+            ui.data_mut(|d| d.insert_temp(id, text.clone()));
+        }
+        ui.horizontal(|ui| {
+            if ui.button(tr("Apply")).clicked() {
+                match serde_json::from_str::<materialcraft_engine::core::FunctionGraph>(&text) {
+                    Ok(g) => {
+                        let v = serde_json::to_value(Value::Function(Box::new(g))).unwrap_or(JsonValue::Null);
+                        app.run("graph.node.param", json!({"id": node.0, "param": param, "value": v}));
+                        ui.data_mut(|d| d.remove::<String>(id));
+                    }
+                    Err(e) => app.toast(format!("{}: {e}", tr("Bad function")), true),
+                }
+            }
+            if ui.button(tr("Revert")).clicked() {
+                ui.data_mut(|d| d.remove::<String>(id));
+            }
+        });
+    });
 }

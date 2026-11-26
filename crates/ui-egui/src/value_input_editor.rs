@@ -47,7 +47,10 @@ pub(crate) fn default_value(app: &mut MaterialCraftApp, ui: &mut Ui, node: &Node
     if changed {
         value = kind.default_value();
     }
-    changed |= crate::value_editor::show(ui, &mut value);
+    if let Some(edited) = crate::value_editor::show(ui, &value).value() {
+        value = edited.clone();
+        changed = true;
+    }
     if changed {
         app.run("graph.node.param", json!({"id": node.id.0, "param": "default", "value": value}));
     }

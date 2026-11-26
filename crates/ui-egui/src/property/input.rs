@@ -95,7 +95,13 @@ fn numeric_fields(ui: &mut Ui, input: &ExposedParameter, value: &mut Value) -> b
         Value::Int2(values) => components(ui, input, values),
         Value::Int3(values) => components(ui, input, values),
         Value::Int4(values) => components(ui, input, values),
-        _ => crate::value_editor::show(ui, value),
+        other => match crate::value_editor::show(ui, other).value() {
+            Some(edited) => {
+                *other = edited.clone();
+                true
+            }
+            None => false,
+        },
     }
 }
 

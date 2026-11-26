@@ -115,7 +115,7 @@ fn show_target(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_en
 fn run_or_pick(app: &mut MaterialCraftApp, id: &str, parameters: JsonValue) {
     #[cfg(not(target_arch = "wasm32"))]
     if id == "ui.pickInputImage" {
-        let dialog = craft_dialogs::FileDialog::open().filter("Images", materialcraft_engine::formats::IMAGE_EXTENSIONS);
+        let dialog = craft_host::PickRequest::open("import").filter("Images", materialcraft_engine::formats::IMAGE_EXTENSIONS);
         let then = crate::native_dialogs::Then::BindInput(parameters, crate::native_dialogs::GraphRef::active(app));
         crate::native_dialogs::ask(app, dialog, then);
         return;
@@ -191,9 +191,9 @@ mod tests {
         let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
         let nodes = app.session.graph().unwrap().nodes.len();
         run_or_pick(&mut app, "ui.pickInputImage", json!({"identifier": "curvature"}));
-        assert_eq!(app.dialogs.queued(), 1);
+        assert_eq!(app.picks.len(), 1);
         run_or_pick(&mut app, "graph.node.add", json!({"def": "input_grayscale"}));
-        assert_eq!(app.dialogs.queued(), 1, "a command does not ask for a file");
+        assert_eq!(app.picks.len(), 1, "a command does not ask for a file");
         assert_eq!(app.session.graph().unwrap().nodes.len(), nodes + 1);
     }
 }
