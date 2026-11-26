@@ -4,11 +4,11 @@
 
 use craft_behavior::value::EditEvents;
 use craft_ui::choice::Checkbox;
-use craft_ui::contract::{Bind, FieldLayout, GlyphLabel, LabelKind, Props as _, Show as _, ShowContainer as _, SideLabel, Sizing};
+use craft_ui::contract::{Bind, FieldLayout, GlyphLabel, LabelKind, PaintUi, Props as _, Show as _, ShowContainer as _, SideLabel, Sizing};
 use craft_ui::form::{Field, FieldGroup};
 use craft_ui::layout_components::Row;
 use craft_ui::text::{NumberField, TextField};
-use egui::Ui;
+use egui::{Rect, Ui};
 use materialcraft_engine::core::Value;
 
 use crate::i18n::tr;
@@ -25,9 +25,9 @@ pub(crate) fn show(ui: &mut Ui, value: &Value) -> EditEvents<Value> {
     Row::new().fill_width().wrap(true).show(ui, |ui, _| fields(ui, value, false)).inner.unwrap_or_default()
 }
 
-/// Edit a function value with one full-width field per component, as a node face shows it
-pub(crate) fn show_stacked(ui: &mut Ui, value: &Value) -> EditEvents<Value> {
-    FieldGroup::new(tr("Value")).show(ui, |ui, _| fields(ui, value, true)).inner.unwrap_or_default()
+/// Edit a function value with one full-width field per component at `rect`, as a node face shows it
+pub(crate) fn show_stacked(ui: &mut PaintUi<'_>, rect: Rect, value: &Value) -> EditEvents<Value> {
+    ui.container("value", rect, FieldGroup::new(tr("Value")), |ui, _| fields(ui, value, true)).inner.unwrap_or_default()
 }
 
 /// How many fields `show_stacked` lays out for `value`
@@ -98,9 +98,7 @@ fn fields(ui: &mut Ui, value: &Value, stacked: bool) -> EditEvents<Value> {
                 .inner
                 .unwrap_or_default()
         }
-        Value::Text(text) => {
-            TextField::new(tr("Value"), Bind::given(text.clone())).sizing(Sizing::FillWidth).show(ui).events.map(Value::Text)
-        }
+        Value::Text(text) => TextField::new(tr("Value"), Bind::given(text.clone())).sizing(Sizing::FillWidth).show(ui).events.map(Value::Text),
         _ => numbers(ui, value, stacked),
     }
 }

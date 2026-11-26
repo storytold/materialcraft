@@ -2,17 +2,15 @@
 
 use craft_behavior::EditEvents;
 use craft_behavior::value::EditEvent;
-use craft_ui::choice::Checkbox;
-use craft_ui::contract::{Bind, MeasureCx, PaintUi, Props as _};
+use craft_ui::contract::{MeasureCx, PaintUi};
 use craft_ui::graph::{Node, NodeHeader, NodeKind, NodeShape, PortDirection};
 use craft_ui::primitives::{Draw, HAlign, PaintShape, TextRun};
 use craft_ui::style::{DataColor, StyleCx, TypeRole, rgba_color};
-use craft_ui::text::{NumberField, TextField};
 use egui::{CornerRadius, Rect, Vec2, pos2, vec2};
 use materialcraft_engine::core::{FunctionNode, Value};
 use materialcraft_engine::nodes::function as functions;
 
-use super::node_face::{self, MIN_EDIT_ZOOM, PADDING, ROW_GAP, ROW_HEIGHT, SYMBOL_HEIGHT};
+use super::node_face::{self, MIN_EDIT_ZOOM, PADDING, SYMBOL_HEIGHT};
 use super::port_label::port_label;
 use crate::graph::node_colors::NodeColors;
 use crate::graph::{FOOTER_HEIGHT, HEADER_HEIGHT, NODE_W};
@@ -91,47 +89,6 @@ fn is_dot(node: &FunctionNode) -> bool {
     node.op == "passthrough"
 }
 
-/// The components of `value` as the stacked fields show them: each field's name and number.
-fn components(value: &Value) -> Vec<(&'static str, f64)> {
-    fn named(names: &[&'static str], values: &[f32]) -> Vec<(&'static str, f64)> {
-        names.iter().zip(values).map(|(name, v)| (*name, f64::from(*v))).collect()
-    }
-    fn numbered(values: &[i32]) -> Vec<(&'static str, f64)> {
-        ["X", "Y", "Z", "W"].iter().zip(values).map(|(name, v)| (*name, f64::from(*v))).collect()
-    }
-    match value {
-        Value::Float(v) => vec![("Value", f64::from(*v))],
-        Value::Float2(v) => named(&["X", "Y"], v),
-        Value::Float3(v) => named(&["X", "Y", "Z"], v),
-        Value::Float4(v) => named(&["X", "Y", "Z", "W"], v),
-        Value::Color(v) => named(&["Red", "Green", "Blue", "Alpha"], v),
-        Value::Int(v) => vec![("Value", f64::from(*v))],
-        Value::Int2(v) => numbered(v),
-        Value::Int3(v) => numbered(v),
-        Value::Int4(v) => numbered(v),
-        _ => Vec::new(),
-    }
-}
-
-/// `value` with component `at` set to `number`; integers round.
-fn with_component(value: &Value, at: usize, number: f64) -> Value {
-    let mut value = value.clone();
-    let float = number as f32;
-    let int = number.round() as i32;
-    match &mut value {
-        Value::Float(v) => *v = float,
-        Value::Int(v) => *v = int,
-        Value::Float2(v) => v.get_mut(at).into_iter().for_each(|c| *c = float),
-        Value::Float3(v) => v.get_mut(at).into_iter().for_each(|c| *c = float),
-        Value::Float4(v) | Value::Color(v) => v.get_mut(at).into_iter().for_each(|c| *c = float),
-        Value::Int2(v) => v.get_mut(at).into_iter().for_each(|c| *c = int),
-        Value::Int3(v) => v.get_mut(at).into_iter().for_each(|c| *c = int),
-        Value::Int4(v) => v.get_mut(at).into_iter().for_each(|c| *c = int),
-        _ => {}
-    }
-    value
-}
-
 /// The last event of a pass, which carries the latest value of the running gesture.
 fn last<T, U>(events: EditEvents<T>, f: impl Fn(T) -> Option<U>) -> Option<EditEvent<U>> {
     events.into_iter().filter_map(|event| event.filter_map(&f)).last()
@@ -175,20 +132,9 @@ impl NodeKind<FunctionValueEdit> for FunctionKind<'_> {
         }
     }
 
-    // PLAN: sh.A20's `value_editor::show_stacked` takes an egui `Ui`, which `PaintUi` does not lend; the node shows the
-    // same stacked fields (one per component, as `value_editor::rows`) as framework children here.
     fn controls(&self, ui: &mut PaintUi<'_>, rect: Rect) -> Option<FunctionValueEdit> {
         let value = self.fields_at(self.scale)?;
-        let content = rect.shrink(PADDING);
-        let row = |at: usize| Rect::from_min_size(pos2(content.left(), content.top() + at as f32 * (ROW_HEIGHT + ROW_GAP)), vec2(content.width(), ROW_HEIGHT));
-        let edit = match value {
-            Value::Bool(checked) => last(ui.child("value", row(0), Checkbox::new(Bind::given(*checked)).label("Value")).events, |b| Some(Value::Bool(b))),
-            Value::Text(text) => last(ui.child("value", row(0), TextField::new("Value", Bind::given(text.clone()))).events, |t| Some(Value::Text(t))),
-            value => components(value).into_iter().enumerate().fold(None, |edit, (at, (name, number))| {
-                let events = ui.child(("value", at), row(at), NumberField::new(name, Bind::given(Some(number)))).edit.events;
-                last(events, |n: Option<f64>| n.map(|n| with_component(value, at, n))).or(edit)
-            }),
-        }?;
+        let edit = last(crate::value_editor::show_stacked(ui, rect.shrink(PADDING), value), Some)?;
         Some(FunctionValueEdit { id: self.node.id, edit })
     }
 
