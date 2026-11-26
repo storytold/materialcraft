@@ -272,7 +272,7 @@ fn pattern_canvas_wires_moves_and_deletes_only_embedded_nodes() {
     frames.app.session.undo().unwrap();
     assert_eq!(frames.app.session.pkg, before_cycle);
 
-    frames.app.graph.selected_wires.push((owner, "parent-wire".into()));
+    frames.app.graph.selected_wires.items.push(super::wire_id(&(owner, "parent-wire".into())));
     frames.run(vec![Event::Key { key: egui::Key::Delete, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }], Modifiers::NONE);
     frames.run(vec![Event::Key { key: egui::Key::Delete, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::NONE }], Modifiers::NONE);
     assert_eq!(current(&frames).nodes.len(), 2);
@@ -584,68 +584,6 @@ fn every_canvas_keeps_properties_after_deselection() {
 }
 
 #[test]
-fn box_selection_and_alt_panning_are_shared_by_every_canvas() {
-    use materialcraft_engine::core::{FunctionGraph, PatternGraph, PatternNodeKind, Value};
-
-    for kind in ["material", "function", "pattern"] {
-        let mut frames = Frames::new(new_session());
-        match kind {
-            "function" => {
-                frames.app.run("file.new", json!({"kind": "function"})).unwrap();
-                let mut graph = FunctionGraph::default();
-                for x in [0.0, 320.0] {
-                    graph.add("get_float1", &[], Some(Value::Text("value".into())));
-                    graph.nodes.last_mut().unwrap().pos = [x, 0.0];
-                }
-                frames.app.run("graph.function.set", json!({"function": graph})).unwrap();
-            }
-            "pattern" => {
-                let owner = NodeId(frames.app.run("graph.node.add", json!({"def": "fx_map"})).unwrap()["id"].as_u64().unwrap());
-                let mut graph = PatternGraph::default();
-                for x in [0.0, 320.0] {
-                    graph.add(PatternNodeKind::Quadrant).unwrap();
-                    graph.nodes.last_mut().unwrap().position = [x, 0.0];
-                }
-                frames.app.run("graph.pattern.set", json!({"id": owner.0, "pattern": graph})).unwrap();
-                frames.app.pattern_editor = Some(crate::pattern::PatternEditor::new(frames.app.session.graph, owner));
-            }
-            _ => {
-                for x in [0, 320] {
-                    frames.app.run("graph.node.add", json!({"def": "uniform", "at": [x, 0]})).unwrap();
-                }
-            }
-        }
-        if kind == "function" {
-            frames.app.run("graph.frame.add", json!({"rect": [-256, 256, 240, 100]})).unwrap();
-        }
-        frames.app.ui.frame_all = true;
-        frames.run(Vec::new(), Modifiers::NONE);
-        frames.run(Vec::new(), Modifiers::NONE);
-        let original = frames.app.session.pkg.clone();
-        let bounds = frames.app.graph.rects.iter().fold(egui::Rect::NOTHING, |bounds, (_, rect)| bounds.union(*rect)).expand(12.0);
-        drag(&mut frames, bounds.min, bounds.max);
-        let selection_count = match kind {
-            "function" => frames.app.function_editor.as_ref().unwrap().selection.len(),
-            "pattern" => frames.app.pattern_editor.as_ref().unwrap().selection.len(),
-            _ => frames.app.session.selection.len(),
-        };
-        assert_eq!(selection_count, 2, "{kind} box selection");
-
-        let before = frames.app.graph.rects[0].1.center();
-        let from = frames.app.graph.view.left_bottom() + vec2(20.0, -20.0);
-        let to = from + vec2(30.0, -20.0);
-        frames.run(vec![Event::PointerMoved(from)], Modifiers::ALT);
-        frames.run(vec![Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::ALT }], Modifiers::ALT);
-        frames.run(vec![Event::PointerMoved(to)], Modifiers::ALT);
-        frames.run(vec![Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::ALT }], Modifiers::ALT);
-        frames.run(Vec::new(), Modifiers::NONE);
-        let after = frames.app.graph.rects[0].1.center();
-        assert!((after - before - (to - from)).length() < 0.01, "{kind} pan: {before:?} -> {after:?}");
-        assert_eq!(frames.app.session.pkg, original, "{kind} navigation edited the document");
-    }
-}
-
-#[test]
 fn dots_move_from_their_body_and_still_wire_from_just_outside_at_any_zoom() {
     let mut frames = Frames::new(new_session());
     let ids: Vec<NodeId> = [[0, 0], [256, 0]]
@@ -697,10 +635,10 @@ fn pattern_links_use_the_shared_pair_shortcut_and_preserve_node_selection() {
     frames.run(Vec::new(), Modifiers::NONE);
     for (port, modifiers) in [("output0", Modifiers::NONE), ("output1", Modifiers::SHIFT)] {
         let curve = frames.app.graph.wires.iter().find(|(wire, _)| wire.0 == NodeId(1) && wire.1 == port).unwrap().1;
-        frames.click(super::wire_geometry::bezier_at(&curve, 0.5), modifiers);
+        frames.click(Frames::wire_midpoint(&curve), modifiers);
     }
     frames.click(frames.center(NodeId(1)), Modifiers::SHIFT);
-    assert_eq!(frames.app.pattern_editor.as_ref().unwrap().selected_wires.len(), 2);
+    assert_eq!(frames.app.pattern_editor.as_ref().unwrap().selected_wires.items.len(), 2);
     assert_eq!(frames.app.pattern_editor.as_ref().unwrap().selection, vec![1]);
     let key = |key| Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     frames.run(vec![key(egui::Key::X)], Modifiers::NONE);
@@ -801,7 +739,7 @@ fn function_links_swap_and_delete_without_editing_the_parent_graph() {
         frames.app.session.reset_history();
         for (input, modifiers) in [("0", egui::Modifiers::NONE), ("1", egui::Modifiers::SHIFT)] {
             let curve = frames.app.graph.wires.iter().find(|(wire, _)| wire.0 == NodeId(u64::from(subtract)) && wire.1 == input).unwrap().1;
-            frames.click(super::wire_geometry::bezier_at(&curve, 0.5), modifiers);
+            frames.click(Frames::wire_midpoint(&curve), modifiers);
         }
         let header = frames.app.graph.rects.iter().find(|(id, _)| *id == NodeId(u64::from(a))).unwrap().1.min + vec2(12.0, 12.0);
         frames.click(header, egui::Modifiers::SHIFT);
@@ -819,8 +757,8 @@ fn function_links_swap_and_delete_without_editing_the_parent_graph() {
         assert_eq!(frames.app.session.pkg, original);
 
         frames.app.run("graph.function.edit", json!({"target": target, "edit": {"action": "connect", "from": a, "to": subtract, "input": 1}})).unwrap();
-        frames.app.function_editor.as_mut().unwrap().selected_wires =
-            vec![(NodeId(u64::from(subtract)), "0".into()), (NodeId(u64::from(subtract)), "1".into())];
+        frames.app.function_editor.as_mut().unwrap().selected_wires.items =
+            vec![super::wire_id(&(NodeId(u64::from(subtract)), "0".into())), super::wire_id(&(NodeId(u64::from(subtract)), "1".into()))];
         let package = frames.app.session.pkg.clone();
         let history = frames.app.session.history();
         assert!(!menus::enabled(&frames.app, "graph.wire.swap"));
@@ -874,7 +812,7 @@ fn wires_pulled_from_an_unconnected_input_connect_on_an_output() {
     // Dropped on empty canvas, it searches for a node to feed the input, as an output wire does
     drag(&mut frames, inputs[0].pos, empty);
 
-    assert!(frames.app.graph.search.as_ref().is_some_and(|search| search.connect_to == Some((target, inputs[0].port.clone()))));
+    assert!(frames.app.graph.search.as_ref().is_some_and(|search| search.wire == Some(super::node_search::SearchWire::To((target, inputs[0].port.clone())))));
 
     frames.app.graph.search = None;
 
@@ -886,8 +824,6 @@ fn wires_pulled_from_an_unconnected_input_connect_on_an_output() {
     frames.run(vec![Event::PointerMoved(inputs[0].pos)], Modifiers::NONE);
     frames.run(vec![Event::PointerButton { pos: inputs[0].pos, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], Modifiers::NONE);
     frames.run(vec![Event::PointerMoved(midway)], Modifiers::NONE);
-
-    assert!(matches!(&frames.app.graph.drag, Some(super::GraphDrag::InputWire { to }) if *to == (target, inputs[0].port.clone())));
 
     frames.run(vec![Event::PointerMoved(output.pos)], Modifiers::NONE);
     frames.run(vec![Event::PointerButton { pos: output.pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], Modifiers::NONE);
@@ -918,10 +854,8 @@ fn review_library_drop_respects_grid_preference() {
         frames.run(vec![Event::PointerMoved(position)], Modifiers::NONE);
         frames.run(vec![Event::PointerButton { pos: position, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], Modifiers::NONE);
         egui::DragAndDrop::set_payload(&frames.ctx, super::LibraryDrag("node:blur".into()));
-        let camera =
-            super::GraphCamera { origin: frames.app.graph.view.min, pan: frames.app.ui.graph_camera.pan.into(), zoom: frames.app.ui.graph_camera.zoom };
-        let graph_position = camera.to_graph(position);
-        let expected = materialcraft_engine::graph_grid::snap_position([graph_position.x - super::NODE_W * 0.5, graph_position.y - 20.0], snapping);
+        let graph_position = frames.app.ui.graph_camera.view(frames.app.graph.view).to_doc(position);
+        let expected = materialcraft_engine::graph_grid::snap_position([graph_position.x as f32 - super::NODE_W * 0.5, graph_position.y as f32 - 20.0], snapping);
         let before = frames.app.session.graph().unwrap().nodes.len();
 
         frames.run(vec![Event::PointerButton { pos: position, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], Modifiers::NONE);

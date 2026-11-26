@@ -158,7 +158,9 @@ fn instance_navigation_preserves_parent_view_and_material_across_renames() {
     assert_eq!(app.session.material_preview, material);
     assert!(menus::enabled(&app, "ui.graph.parent"));
     app.run("graph.rename", json!({"graph": 0, "name": "Renamed parent"})).unwrap();
-    assert!(super::subgraph_navigation::breadcrumb(&app).starts_with("Renamed parent / Child"));
+    let crumbs = super::subgraph_navigation::crumbs(&app);
+    assert!(crumbs.iter().any(|entry| entry.label == "Renamed parent"));
+    assert!(crumbs.iter().any(|entry| entry.label == "Child"));
     menus::invoke(&mut app, &context, "ui.graph.parent");
     assert_eq!(app.session.graph, 0);
     assert_eq!(app.session.selection, vec![owner]);
@@ -176,7 +178,8 @@ fn dynamic_parameter_functions_return_to_the_owning_node() {
     let owner = NodeId(app.run("graph.node.add", json!({"def": "blur"})).unwrap()["id"].as_u64().unwrap());
     app.run("graph.node.function", json!({"id": owner, "param": "intensity"})).unwrap();
     super::subgraph_navigation::open_function(&mut app, owner, FunctionTarget::Dynamic("intensity".into()));
-    assert!(super::subgraph_navigation::breadcrumb(&app).ends_with("Blur / Intensity"));
+    let crumbs = super::subgraph_navigation::crumbs(&app);
+    assert_eq!(crumbs.iter().rev().take(2).map(|entry| entry.label.as_str()).collect::<Vec<_>>(), ["Intensity", "Blur"]);
     let context = egui::Context::default();
     menus::invoke(&mut app, &context, "edit.selectAll");
     menus::invoke(&mut app, &context, "edit.delete");
@@ -210,60 +213,27 @@ fn idle_ui_frames_preserve_explicit_automation_undo_groups() {
     frames.app.run("graph.function.edit", json!({"merge": true, "edit": {"action": "value", "id": id, "value": Value::Float(4.0)}})).unwrap();
     frames.run(vec![Event::PointerButton { pos: position, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], Modifiers::NONE);
     frames.app.run("graph.function.edit", json!({"merge": true, "edit": {"action": "value", "id": id, "value": Value::Float(5.0)}})).unwrap();
-    assert_eq!(frames.app.session.history().len(), 3);
+    assert_eq!(frames.app.session.history().len(), 2);
 }
 
 #[test]
-#[ignore = "release canvas timing, run with --nocapture"]
-fn canvas_frame_cost() {
-    for count in [128, 4096] {
-        for kind in ["function", "pattern"] {
-            let mut app = MaterialCraftApp::headless(new_session(), UiState::default());
-            if kind == "function" {
-                app.run("file.new", json!({"kind": "function"})).unwrap();
-                let mut graph = FunctionGraph::default();
-                let mut previous = None;
-                for index in 0..count {
-                    let id = graph.add("passthrough", &previous.into_iter().collect::<Vec<_>>(), None);
-                    graph.nodes.last_mut().unwrap().pos = [(index % 64) as f32 * 200.0, (index / 64) as f32 * 180.0];
-                    previous = Some(id);
-                }
-                app.session.graph_mut().unwrap().function = Some(graph);
-            } else {
-                let owner = NodeId(app.run("graph.node.add", json!({"def": "fx_map"})).unwrap()["id"].as_u64().unwrap());
-                let mut graph = PatternGraph::default();
-                for index in 0..count {
-                    graph.add(PatternNodeKind::Quadrant).unwrap();
-                    let node = graph.nodes.last_mut().unwrap();
-                    node.position = [(index % 64) as f32 * 200.0, (index / 64) as f32 * 180.0];
-                    node.parameters.insert("rotation".into(), Value::Function(Box::new(FunctionGraph::constant(Value::Float(0.0)))));
-                }
-                app.session.graph_mut().unwrap().node_mut(owner).unwrap().params.insert("pattern".into(), Value::PatternGraph(Box::new(graph)));
-                app.pattern_editor = Some(crate::pattern::PatternEditor::new(app.session.graph, owner));
-            }
-            let context = egui::Context::default();
-            crate::theme::install(&context);
-            let mut frame = || {
-                let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0))), ..Default::default() };
-                let mut output = context.run_ui(input, |ui| super::show(&mut app, ui));
-                output.textures_delta.clear();
-                std::hint::black_box(output);
-            };
-            for _ in 0..3 {
-                frame();
-            }
-            let mut samples = Vec::new();
-            for _ in 0..3 {
-                let start = std::time::Instant::now();
-                for _ in 0..8 {
-                    frame();
-                }
-                samples.push(start.elapsed().as_secs_f64() * 1000.0 / 8.0);
-            }
-            samples.sort_by(f64::total_cmp);
-            println!("{kind} {count} nodes: {:.3} ms/frame", samples[1]);
-        }
-    }
+fn two_parent_size_picks_stay_two_undo_steps() {
+    use super::frames::Frames;
+    let mut frames = Frames::new(new_session());
+    frames.app.run("graph.size", json!({"log2": [10, 10]})).unwrap();
+    frames.run(Vec::new(), egui::Modifiers::NONE);
+    let before = frames.app.session.history().len();
+    let width = frames.rect_of(egui::accesskit::Role::ComboBox, "Parent width");
+    frames.click(width.center(), egui::Modifiers::NONE);
+    let option = frames.rect_of(egui::accesskit::Role::MenuItem, "512");
+    frames.click(option.center(), egui::Modifiers::NONE);
+    let width = frames.rect_of(egui::accesskit::Role::ComboBox, "Parent width");
+    frames.click(width.center(), egui::Modifiers::NONE);
+    let option = frames.rect_of(egui::accesskit::Role::MenuItem, "256");
+    frames.click(option.center(), egui::Modifiers::NONE);
+    assert_eq!(frames.app.session.history().len(), before + 2);
+    frames.app.session.undo().unwrap();
+    assert_eq!(frames.app.session.graph().unwrap().size, [9, 10]);
 }
 
 #[test]

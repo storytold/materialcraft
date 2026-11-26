@@ -1,6 +1,7 @@
 use crate::MaterialCraftApp;
 use egui::{Pos2, Rect, vec2};
 use materialcraft_engine::core::NodeId;
+use craft_ui::testing::access::{AccessTree, tree_of};
 
 /// The whole app in an offscreen egui context, driven one frame at a time
 pub(super) struct Frames {
@@ -8,13 +9,16 @@ pub(super) struct Frames {
     pub(super) app: MaterialCraftApp,
     pub(super) time: f64,
     pub(super) canvas_text: Vec<String>,
+    pub(super) access: Option<AccessTree>,
 }
 
 impl Frames {
     /// `session` after a few frames, so the canvas is laid out
     pub(super) fn new(session: materialcraft_engine::Session) -> Frames {
-        let mut f =
-            Frames { ctx: egui::Context::default(), app: MaterialCraftApp::headless(session, crate::UiState::default()), time: 0.0, canvas_text: Vec::new() };
+        let ctx = egui::Context::default();
+        let app = MaterialCraftApp::headless(session, crate::UiState::default());
+        let mut f = Frames { ctx, app, time: 0.0, canvas_text: Vec::new(), access: None };
+        f.app.install_runtime(&f.ctx, None).expect("runtime");
         for _ in 0..3 {
             f.run(Vec::new(), egui::Modifiers::NONE);
         }
@@ -28,20 +32,30 @@ impl Frames {
         let screen_rect = Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 960.0)));
         let input = egui::RawInput { events, screen_rect, time: Some(self.time), ..Default::default() };
         let app = &mut self.app;
+        eframe::App::raw_input_hook(&mut self.app, &self.ctx, &mut input);
         let mut output = self.ctx.run_ui(input, |ui| {
             app.step(&ui.ctx().clone());
             app.draw(ui);
         });
+        let mut frame = eframe::Frame::_new_kittest();
+        eframe::App::logic(&mut self.app, &self.ctx, &mut frame);
+        self.access = Some(tree_of(&mut output));
+        let canvas_shapes: Vec<_> = output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if self.app.graph.view.contains(text.pos))).map(|shape| shape.shape.clone()).collect();
+        self.canvas_text = craft_ui::testing::text::painted(&canvas_shapes);
         // These interaction tests inspect shapes without uploading textures
         output.textures_delta.clear();
-        self.canvas_text = output
-            .shapes
-            .iter()
-            .filter_map(|shape| match &shape.shape {
-                egui::Shape::Text(text) if self.app.graph.view.contains(text.pos) => Some(text.galley.job.text.clone()),
-                _ => None,
-            })
-            .collect();
+    }
+
+    /// The bounds of a named control with `role` in the last frame.
+    pub(super) fn rect_of(&self, role: egui::accesskit::Role, name: &str) -> Rect {
+        self.access.as_ref().into_iter().flat_map(AccessTree::keys).find(|key| self.access.as_ref().is_some_and(|tree| tree.role_of(*key) == Some(craft_ui::runtime::access::Role::Node(role)) && tree.name_of(*key) == Some(name)))
+            .and_then(|key| self.access.as_ref().and_then(|tree| tree.bounds_of(key))).unwrap_or_else(|| panic!("missing {role:?} control {name}"))
+    }
+
+    /// The midpoint of a published wire curve.
+    pub(super) fn wire_midpoint(curve: &[Pos2; 4]) -> Pos2 {
+        let p = (curve[0].to_vec2() + 3.0 * curve[1].to_vec2() + 3.0 * curve[2].to_vec2() + curve[3].to_vec2()) / 8.0;
+        Pos2::new(p.x, p.y)
     }
 
     /// Press and release the primary button at `pos`, a second after any earlier click so the two never pair into a double-click

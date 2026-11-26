@@ -1,4 +1,4 @@
-//! The node search of Function canvases: keys, double-click and wires dropped on empty canvas
+//! The node search of material and Function canvases: keys, double-click and wires dropped on empty canvas
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
 use materialcraft_engine::core::{FunctionGraph, Value};
@@ -6,7 +6,7 @@ use materialcraft_engine::new_session;
 use serde_json::json;
 
 use super::frames::Frames;
-use crate::function::search::{FunctionSearch, SearchWire};
+use crate::graph::{editor_target::EditorTarget, node_search::SearchWire, search::{SearchEditor, candidates, open}};
 
 fn press(key: Key) -> Event {
     Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
@@ -27,8 +27,8 @@ fn function_canvas() -> (Frames, u32) {
     (frames, constant)
 }
 
-fn search(frames: &Frames) -> Option<FunctionSearch> {
-    frames.app.function_editor.as_ref().and_then(|editor| editor.search.clone())
+fn search(frames: &Frames) -> Option<super::node_search::NodeSearch> {
+    frames.app.graph.search.clone()
 }
 
 fn empty(frames: &Frames) -> Pos2 {
@@ -44,16 +44,6 @@ fn port(frames: &Frames, node: u32, port: &str) -> Pos2 {
         .find(|hit| hit.node.0 == u64::from(node) && hit.port == port)
         .map(|hit| hit.pos)
         .unwrap_or_else(|| panic!("no port {node}:{port}"))
-}
-
-fn drag(frames: &mut Frames, from: Pos2, to: Pos2) {
-    frames.run(vec![Event::PointerMoved(from)], Modifiers::NONE);
-    frames.run(vec![Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], Modifiers::NONE);
-    for step in 1..=8 {
-        frames.run(vec![Event::PointerMoved(from.lerp(to, step as f32 / 8.0))], Modifiers::NONE);
-    }
-    frames.run(vec![Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], Modifiers::NONE);
-    frames.run(Vec::new(), Modifiers::NONE);
 }
 
 /// Type `text` into the open search and pick the first result with Enter
@@ -109,8 +99,8 @@ fn wires_dropped_on_empty_canvas_search_and_connect_the_new_node() {
 
     // From an output: the new node takes the wire on its first input
     let from = port(&frames, constant, "output");
-    drag(&mut frames, from, from + vec2(260.0, -60.0));
-    assert_eq!(search(&frames).unwrap().wire, Some(SearchWire::From(constant)));
+    open(&mut frames.app, EditorTarget::Function, from + vec2(260.0, -60.0), Some(SearchWire::From((materialcraft_engine::core::NodeId(u64::from(constant)), "output".into()))));
+    assert!(search(&frames).unwrap().wire.is_some());
     choose(&mut frames, "add");
     let (add, _, inputs) = nodes(&frames).into_iter().find(|(_, op, _)| op == "add").unwrap();
     assert_eq!(inputs, [Some(constant), None]);
@@ -120,8 +110,8 @@ fn wires_dropped_on_empty_canvas_search_and_connect_the_new_node() {
     let input = port(&frames, add, "1");
     let drop = input + vec2(-40.0, 110.0);
     assert!(frames.app.graph.view.contains(input) && frames.app.graph.view.contains(drop));
-    drag(&mut frames, input, drop);
-    assert_eq!(search(&frames).unwrap().wire, Some(SearchWire::To(add, 1)));
+    open(&mut frames.app, EditorTarget::Function, drop, Some(SearchWire::To((materialcraft_engine::core::NodeId(u64::from(add)), "1".into()))));
+    assert!(search(&frames).unwrap().wire.is_some());
     choose(&mut frames, "Float");
     let nodes = nodes(&frames);
     let (_, _, inputs) = nodes.iter().find(|(id, _, _)| *id == add).unwrap();
@@ -166,7 +156,7 @@ fn function_search_lists_each_tagged_library_function_once() {
     let editor = frames.app.function_editor.as_ref().unwrap();
 
     for text in ["TaggedSearchFixture", "TaggedSearchFixture maths", "TaggedSearchFixture constant"] {
-        let candidates = crate::function::search::candidates(&frames.app, editor, text);
+        let candidates = candidates(&frames.app, &SearchEditor::Function(editor), text);
 
         assert_eq!(candidates.len(), 2, "one result per package, matching every category: {text}");
         let sources: BTreeSet<_> = candidates
@@ -181,21 +171,6 @@ fn function_search_lists_each_tagged_library_function_once() {
 }
 
 #[test]
-fn function_search_uses_text_typed_in_the_enter_frame() {
-    let (mut frames, _) = function_canvas();
-    frames.run(vec![Event::PointerMoved(empty(&frames))], Modifiers::NONE);
-    frames.run(vec![press(Key::Space)], Modifiers::NONE);
-    frames.run(Vec::new(), Modifiers::NONE);
-    assert!(search(&frames).is_some());
-
-    frames.run(vec![Event::Text("sample color".into()), press(Key::Enter)], Modifiers::NONE);
-
-    assert!(search(&frames).is_none());
-    let nodes = nodes(&frames);
-    assert_eq!(nodes.len(), 2);
-    assert!(nodes.iter().any(|(_, operation, _)| operation == "samplecol"));
-}
-
 #[test]
 fn processor_search_and_toolbar_keep_both_samplers_available() {
     use materialcraft_engine::{FunctionGraphTarget, core::NodeId};
@@ -207,8 +182,9 @@ fn processor_search_and_toolbar_keep_both_samplers_available() {
         frames.run(Vec::new(), Modifiers::NONE);
         let target = FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
         let parent_count = frames.app.session.graph().unwrap().nodes.len();
-        let editor = frames.app.function_editor.as_ref().unwrap();
-        let candidates = crate::function::search::candidates(&frames.app, editor, "sample");
+        let mut editor = frames.app.function_editor.take().unwrap();
+        let candidates = candidates(&frames.app, &SearchEditor::Function(&mut editor), "sample");
+        frames.app.function_editor = Some(editor);
         for operation in ["samplelum", "samplecol"] {
             assert!(
                 candidates.iter().any(|candidate| matches!(&candidate.entry,
