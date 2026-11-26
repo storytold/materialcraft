@@ -37,6 +37,8 @@ mod settings;
 mod shell;
 mod shortcuts_list;
 pub mod state;
+// owed by the panels and views sets: shell-w12 deletes this module; its readers move off it in their own sets.
+pub mod theme;
 pub mod thumbs;
 pub mod toolbar;
 pub mod unsaved;
