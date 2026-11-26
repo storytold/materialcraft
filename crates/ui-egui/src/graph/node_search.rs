@@ -1,17 +1,19 @@
 use egui::Pos2;
-use materialcraft_engine::core::NodeId;
 
-/// The wire a node search connects the new node to.
-#[allow(dead_code)] // P3(graph-w11): ge.A10
+/// A graph port identified by its node and port name.
+pub(crate) type PortKey = (materialcraft_engine::core::NodeId, String);
+
+/// The wire direction associated with a node search.
+#[derive(Clone, Debug)]
 pub(crate) enum SearchWire {
     /// The new node's output feeds this input.
-    From(super::search::PortKey),
+    From(PortKey),
     /// This output feeds the new node.
-    To(super::search::PortKey),
+    To(PortKey),
 }
 
 /// What a node search can add.
-#[allow(dead_code)] // P3(graph-w11): ge.A10
+#[derive(Clone, Debug)]
 pub(crate) enum SearchPick {
     /// A node definition.
     Definition(&'static str),
@@ -19,28 +21,22 @@ pub(crate) enum SearchPick {
     Function(crate::function::library::FunctionLibraryDrag),
 }
 
-/// One row of the node search's list.
-#[allow(dead_code)] // P3(graph-w11): ge.A10
+/// One row in a node search result list.
+#[derive(Clone, Debug)]
 pub(crate) struct SearchCandidate {
-    /// The row's text.
+    /// The row label.
     pub label: String,
-    /// The group the row belongs to.
+    /// The category shown at the row's end.
     pub group: String,
-    /// What picking the row adds.
+    /// The item added when this result is chosen.
     pub pick: SearchPick,
 }
 
-/// The node search popup (Space or Tab)
+/// The state of the node search shared by graph editors.
 #[derive(Clone, Debug)]
 pub(super) struct NodeSearch {
-    pub(super) at: Pos2,
-    pub(super) text: String,
-    pub(super) sel: usize,
-    pub(super) connect: Option<(NodeId, String)>,
-    /// Opened from this input (a wire dragged off it): the new node's output feeds it
-    pub(super) connect_to: Option<(NodeId, String)>,
-    pub(super) focus: bool,
-    /// The editor the search serves.
-    #[allow(dead_code)] // P3(graph-w11): ge.A10
-    pub(super) editor: super::editor_target::EditorTarget,
+    pub(crate) at: Pos2,
+    pub(crate) text: String,
+    pub(crate) wire: Option<SearchWire>,
+    pub(crate) editor: super::editor_target::EditorTarget,
 }
