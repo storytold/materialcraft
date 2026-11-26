@@ -178,3 +178,7 @@ opt-level = 3
 opt-level = 3
 [profile.wasm-release.package.glam]
 opt-level = 3
+
+[workspace.metadata.cl]
+selection = ["materialcraft", "materialcraft-ui-egui"]
+tracked = ["egui", "eframe"]
