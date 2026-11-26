@@ -57,18 +57,52 @@ pub(super) fn invoke_editor(app: &mut MaterialCraftApp, editor: &mut PatternEdit
     if editor_enabled(app, editor, command) != Some(true) {
         return;
     }
-    if command.starts_with("graph.wire.") || (command == "edit.delete" && !editor.selected_wires.is_empty()) {
+    if command.starts_with("graph.wire.") || (command == "edit.delete" && !editor.selected_wires.items.is_empty()) {
         let command = if command == "edit.delete" { "graph.wire.delete" } else { command };
         let target = Some(materialcraft_engine::SelectionTarget::Pattern(editor.node));
-        crate::graph::wire_actions::edit(app, &mut editor.selected_wires, target, command);
+        let mut refs = editor.selected_wire_refs(app);
+        crate::graph::wire_actions::edit(app, &refs, &mut editor.selected_wires, target, command);
+        if command == "graph.wire.delete" {
+            editor.selected_wires = craft_behavior::Selection::default();
+        }
         return;
     }
 
     let parameters = editor.selection_parameters(command);
     crate::graph::selection_commands::invoke(app, &mut editor.selection, command, parameters);
     if matches!(command, "edit.selectAll" | "edit.selectNone" | "edit.paste" | "edit.pasteWithoutLinks" | "edit.duplicate" | "edit.duplicateWithoutLinks") {
-        editor.selected_wires.clear();
+        editor.selected_wires = craft_behavior::Selection::default();
     }
+}
+
+/// Runs the FX-Map editor's menu action `ui.pattern.add` with its `params`: `{kind, at}` adds a node of the kind
+/// whose native id is `kind` at the graph point `at` and selects it; `{entry, at}` adds that library item (a comment,
+/// frame or pin) there and leaves no node selected. Returns whether it ran.
+pub(crate) fn invoke_ui(app: &mut MaterialCraftApp, command: &str, params: &serde_json::Value) -> bool {
+    if command != "ui.pattern.add" || !active(app) {
+        return false;
+    }
+    let Some(mut editor) = app.pattern_editor.take() else { return false };
+
+    let point = |at: &serde_json::Value| Some([at.get(0)?.as_f64()? as f32, at.get(1)?.as_f64()? as f32]);
+    let at = params.get("at").and_then(point).unwrap_or([editor.menu_at.x, editor.menu_at.y]);
+    let kind = params
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|id| materialcraft_engine::core::PatternNodeKind::ALL.into_iter().find(|kind| kind.native_id() == id));
+    let ran = if let Some(kind) = kind {
+        let snap = app.ui.prefs.snap_to_grid;
+        editor.edit(app, materialcraft_engine::PatternEdit::Add { kind, at, snap }, false);
+        true
+    } else if let Some(entry) = params.get("entry").and_then(serde_json::Value::as_str) {
+        app.run("library.add", serde_json::json!({"entry": entry, "at": at}));
+        editor.selection.clear();
+        true
+    } else {
+        false
+    };
+    app.pattern_editor = Some(editor);
+    ran
 }
 
 pub(super) fn editor_enabled(app: &MaterialCraftApp, editor: &PatternEditor, command: &str) -> Option<bool> {
@@ -76,7 +110,7 @@ pub(super) fn editor_enabled(app: &MaterialCraftApp, editor: &PatternEditor, com
         return Some(true);
     }
     let target = materialcraft_engine::SelectionTarget::Pattern(editor.node);
-    if let Some(enabled) = crate::graph::wire_actions::enabled(app, command, &editor.selected_wires, Some(&target)) {
+    if let Some(enabled) = crate::graph::wire_actions::enabled(app, command, &editor.selected_wire_refs(app), Some(&target)) {
         return Some(enabled && editor.current(app).is_some());
     }
     materialcraft_engine::selection_commands::enabled_for(
