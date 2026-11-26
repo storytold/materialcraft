@@ -3,6 +3,7 @@ mod frame_properties;
 mod pin_properties;
 
 use crate::MaterialCraftApp;
+use craft_behavior::canvas::CanvasView;
 use egui::Ui;
 use materialcraft_engine::AnnotationSelection;
 
@@ -34,25 +35,32 @@ pub(crate) fn target(app: &MaterialCraftApp) -> materialcraft_engine::Annotation
 pub(crate) fn activate(app: &mut MaterialCraftApp, target: materialcraft_engine::AnnotationTarget) {
     if app.graph.annotation_target != target {
         app.session.annotation_selection = None;
+        // Also closes the search, which adds to the editor it opened over; the canvas calls this every pass, so only a
+        // change of editor closes it.
+        // PLAN: `GraphView::search` is `pub(super)`; this relies on graph-w6's `cancel_drag` keeping `search = None`.
         app.graph.cancel_drag();
     }
     app.graph.annotation_target = target;
 }
 
-/// Sets the active editor's live view.
-#[allow(dead_code)] // P3(graph-w10): ge.A4
-pub(crate) fn set_camera(app: &mut MaterialCraftApp, view: craft_behavior::canvas::CanvasView) {
-    let _ = (app, view);
-    todo!("ge.A4")
+/// Sets the active editor's live view: the Function or FX-Map editor's own, else the material graph's saved camera.
+pub(crate) fn set_camera(app: &mut MaterialCraftApp, view: CanvasView) {
+    if let Some(editor) = &mut app.function_editor {
+        editor.view = view;
+    } else if let Some(editor) = &mut app.pattern_editor {
+        editor.view = view;
+    } else {
+        app.ui.graph_camera = crate::state::GraphCamera::from_view(&view);
+    }
 }
 
-/// Read the active editor camera without replacing the parent graph's saved view.
-pub(crate) fn camera(app: &MaterialCraftApp) -> crate::state::GraphCamera {
+/// Read the active editor's live view without replacing the parent graph's saved camera.
+pub(crate) fn camera(app: &MaterialCraftApp) -> CanvasView {
     if let Some(editor) = &app.function_editor {
-        editor.camera()
+        editor.view
     } else if let Some(editor) = &app.pattern_editor {
-        editor.camera()
+        editor.view
     } else {
-        app.ui.graph_camera
+        app.ui.graph_camera.view(app.graph.view)
     }
 }

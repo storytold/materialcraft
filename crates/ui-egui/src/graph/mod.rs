@@ -1,60 +1,47 @@
 pub(crate) mod actions;
 pub(crate) mod add_node_menu;
-pub(crate) mod annotation_canvas;
-pub(crate) mod annotation_input;
-mod annotations; // P3(graph-w10): ge.A9
+// The Function and FX-Map hosts build and apply their annotations through it too.
+pub(crate) mod annotations;
 pub(crate) mod canvas;
-mod canvas_events; // P3(graph-w6): ge.A3
+mod canvas_events;
 mod context_menu;
-pub(crate) mod frame_hit;
 #[cfg(test)]
 mod frames;
 #[cfg(test)]
 mod function_search_tests;
-mod graph_camera;
-mod graph_drag;
 pub(crate) mod graph_parent;
 mod graph_view;
 mod instance_context_menu;
 #[cfg(test)]
 mod interaction_tests;
 mod library_drag;
-#[cfg(test)]
-mod modality_tests;
-pub(crate) mod node_card;
+pub(crate) mod node_colors;
 mod node_kind; // P3(graph-w7): ge.A6
-mod node_layout;
-mod node_search;
+pub(crate) mod node_search;
 pub(crate) mod node_selection;
 pub(crate) mod port_hit;
-pub(crate) mod port_label;
 pub(crate) mod subgraph_navigation;
 
 pub use canvas::show;
-pub(crate) use graph_camera::GraphCamera;
-use graph_drag::GraphDrag;
 pub use graph_view::{GraphView, wire_id};
 pub use library_drag::LibraryDrag;
 pub use navigation::{add_entry_in_view, add_node_near_selection};
 use node_search::NodeSearch;
-pub use node_style::{NODE_W, header_color, node_label, node_rect, port_color, shows_preview};
+// `node_kind::NODE_W` is `pub(crate)`, and every reader is in this crate.
+pub(crate) use node_kind::NODE_W;
+pub use node_style::{node_label, shows_preview};
 pub use port_hit::PortHit;
-pub use wire_actions::{delete_selected_wires, swap_selected_wires};
 pub type WireRef = (materialcraft_engine::core::NodeId, String);
 
 #[cfg(test)]
 mod canvas_tests;
-pub(crate) mod grid;
-mod input;
 mod navigation;
 mod node_style;
-mod search;
+pub(crate) mod search;
 pub(crate) mod selection_commands;
 pub(crate) mod toolbar;
 pub(crate) mod value_text;
 pub(crate) mod wire_actions;
-pub(crate) mod wire_geometry;
-pub(crate) mod wire_selection;
 
 #[cfg(test)]
 mod review_tests;
@@ -62,9 +49,6 @@ mod review_tests;
 pub(crate) mod edit_menu;
 pub(crate) mod editor_actions;
 pub(crate) mod editor_target;
-pub(crate) mod gesture;
-
-pub(crate) mod canvas_geometry;
 
 pub use navigation::import_bitmap_bytes;
 #[cfg(not(target_arch = "wasm32"))]

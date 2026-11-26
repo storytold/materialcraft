@@ -295,9 +295,9 @@ Both processor types accept Sample gray and Sample color to read their image inp
 A breadcrumb and parent action return from nested functions, FX-Maps and local graph instances
 while retaining the parent view and material preview.
 
-`ui-egui/graph/graph_camera.rs` owns framing, pointer-centered scroll/pinch zoom and navigation
-shortcuts. `node_selection.rs` owns click and box selection; `port_hit.rs` owns nearest-port picking;
-`wire_geometry.rs` owns curve construction. Node movement uses the engine's `graph_grid::translate`
+The material canvas (`ui-egui/graph/canvas.rs`, a `Canvas` with `ViewTarget::unbounded`) owns framing,
+pointer-centered scroll/pinch zoom and navigation shortcuts. `node_selection.rs` keeps `inspected`, the
+node the properties show; `port_hit.rs` keeps `PortHit`, the published port record. Node movement uses the engine's `graph_grid::translate`
 for both previews and commits.
 
 `engine/graph_edit/` owns Function/FX-Map selection commands, clipboard remapping, deletion and
@@ -318,9 +318,7 @@ command makes that owner unavailable.
 Common context-menu entries live in `graph/edit_menu.rs`. Pointer gestures finish only when their
 initiating button is released; Escape or focus loss cancels pending canvas movement.
 
-Function and FX-Map rendering borrow the document, prepare screen geometry, and dispatch edits
-after painting. Function wires reuse one node-layout index instead of scanning the graph for each
-endpoint. The engine's `graph.function.edit` and `graph.pattern.edit` commands own creation,
+The Function and FX-Map editors show a `NodeGraph` and dispatch edits from its events. The engine's `graph.function.edit` and `graph.pattern.edit` commands own creation,
 movement, connections, values and result/root changes. Function targets identify standalone,
 parameter, dynamic-parameter or nested FX-Map functions explicitly. Value updates may request
 `merge: true`; `edit.finish` closes that undo group. The UI closes groups at gesture boundaries,
