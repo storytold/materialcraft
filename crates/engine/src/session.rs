@@ -110,6 +110,12 @@ pub struct Session {
 }
 
 impl Session {
+    /// A number that changes whenever the node library's entries change, so a reader rebuilds only then.
+    #[allow(dead_code)] // P3(shell-w4): K1-K4
+    pub fn library_generation(&self) -> u64 {
+        todo!("shell-w4")
+    }
+
     /// Open a package with the process's installed node library.
     pub fn new(pkg: Package) -> Session {
         Self::with_library(pkg, crate::node_library::NodeLibrary::shared())

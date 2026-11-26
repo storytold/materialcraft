@@ -40,4 +40,7 @@ pub(super) struct NodeSearch {
     /// Opened from this input (a wire dragged off it): the new node's output feeds it
     pub(super) connect_to: Option<(NodeId, String)>,
     pub(super) focus: bool,
+    /// The editor the search serves.
+    #[allow(dead_code)] // P3(graph-w11): ge.A10
+    pub(super) editor: super::editor_target::EditorTarget,
 }

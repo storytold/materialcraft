@@ -84,7 +84,7 @@ pub(crate) fn entries(app: &mut MaterialCraftApp) -> Arc<Vec<LibraryEntry>> {
     }
 
     let key: Vec<_> = key.map(|(path, address)| (path.to_owned(), address)).collect();
-    let list = Arc::new(app.session.library_entries());
+    let list = app.session.library_entries(); // P3(shell-w4): K1-K4
     app.library_entries = EntriesCache { key, list: list.clone() };
     list
 }

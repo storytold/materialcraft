@@ -9,7 +9,7 @@ use crate::i18n::tr;
 
 /// The node/output assignment rows of the node `node` of graph `graph`, which need not be the open graph.
 #[allow(dead_code)] // P3(graph-w12): ge.A11
-pub(crate) fn rows(app: &crate::MaterialCraftApp, graph: usize, node: NodeId) -> Vec<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
+pub(crate) fn rows(app: &crate::MaterialCraftApp, graph: usize, node: NodeId) -> Vec<craft_menu::Node> {
     let _ = (app, graph, node);
     todo!("ge.A11")
 }

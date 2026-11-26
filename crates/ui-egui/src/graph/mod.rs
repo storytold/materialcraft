@@ -33,7 +33,7 @@ pub(crate) mod subgraph_navigation;
 pub use canvas::show;
 pub(crate) use graph_camera::GraphCamera;
 use graph_drag::GraphDrag;
-pub use graph_view::GraphView;
+pub use graph_view::{GraphView, wire_id};
 pub use library_drag::LibraryDrag;
 pub use navigation::{add_entry_in_view, add_node_near_selection};
 use node_search::NodeSearch;

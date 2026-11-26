@@ -26,7 +26,8 @@ pub(crate) fn candidates(app: &MaterialCraftApp, editor: &FunctionEditor, text: 
             (operation.id.to_string(), candidate)
         })
         .collect();
-    for entry in app.session.library_entries() {
+    for entry in app.session.library_entries().iter() {
+        // P3(graph-w11): K1-K4
         if let LibraryItem::FunctionInstance { package, graph } = &entry.item
             && entry.missing.is_none()
         {
@@ -36,7 +37,7 @@ pub(crate) fn candidates(app: &MaterialCraftApp, editor: &FunctionEditor, text: 
                 group,
                 entry: FunctionLibraryDrag::Instance { package: package.clone(), graph: graph.clone() },
             };
-            all.push((entry.id, candidate));
+            all.push((entry.id.clone(), candidate)); // P3(graph-w11): K1-K4
         }
     }
     let words: Vec<String> = text.split_whitespace().map(str::to_lowercase).collect();

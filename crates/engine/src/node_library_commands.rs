@@ -35,9 +35,10 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
 }
 
 impl Session {
-    /// The library's entries, resolved against this session's loaded packages
-    pub fn library_entries(&self) -> Vec<LibraryEntry> {
-        self.library.entries(&self.pkg.dependencies)
+    /// The library's entries, resolved against this session's loaded packages, shared: the same `Arc` while `library_generation` is unchanged.
+    // P3(shell-w4): K1-K4: the body still resolves on every call; shell-w4 caches it by generation
+    pub fn library_entries(&self) -> std::sync::Arc<Vec<LibraryEntry>> {
+        std::sync::Arc::new(self.library.entries(&self.pkg.dependencies))
     }
 }
 
@@ -54,7 +55,8 @@ fn tree(session: &mut Session, parameters: &Value) -> Result<Value> {
     };
     let entries: Vec<_> = session
         .library_entries()
-        .into_iter()
+        .iter()
+        .cloned() // P3(shell-w4): K1-K4
         .filter(|entry| category.is_empty() || entry.category == category || entry.category.starts_with(&format!("{category}/")))
         .filter(|entry| canvas.is_none_or(|canvas| entry.canvas == LibraryCanvas::Any || entry.canvas == canvas))
         .filter(|entry| filter.is_empty() || entry.label.to_lowercase().contains(&filter) || entry.id.to_lowercase().contains(&filter))
@@ -66,7 +68,7 @@ fn tree(session: &mut Session, parameters: &Value) -> Result<Value> {
 /// Validate an entry and dispatch its insertion through the destination graph command.
 fn add(session: &mut Session, parameters: &Value) -> Result<Value> {
     let id = strp(parameters, "entry").ok_or_else(|| bad(ADD, "`entry` is required (an id from library.tree)"))?;
-    let entry = session.library_entries().into_iter().find(|entry| entry.id == id).ok_or_else(|| bad(ADD, format!("no library entry `{id}`")))?;
+    let entry = session.library_entries().iter().find(|entry| entry.id == id).cloned().ok_or_else(|| bad(ADD, format!("no library entry `{id}`")))?;
     if let Some(missing) = &entry.missing {
         return Err(bad(ADD, format!("{}: {missing}", entry.label)));
     }

@@ -3,14 +3,14 @@ use egui::Ui;
 
 /// The row of one edit command with its parameters.
 #[allow(dead_code)] // P3(graph-w12): ge.A11
-pub(crate) fn row(command: &str, params: serde_json::Value) -> craft_ui::menu::MenuRow<craft_keymap::CommandRef> {
+pub(crate) fn row(command: &str, params: serde_json::Value) -> craft_menu::Node {
     let _ = (command, params);
     todo!("ge.A11")
 }
 
 /// The selection edit rows (cut, copy, delete, duplicate) with their parameters.
 #[allow(dead_code)] // P3(graph-w12): ge.A11
-pub(crate) fn selection_rows(params: serde_json::Value) -> Vec<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
+pub(crate) fn selection_rows(params: serde_json::Value) -> Vec<craft_menu::Node> {
     let _ = params;
     todo!("ge.A11")
 }

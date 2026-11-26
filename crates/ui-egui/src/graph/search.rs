@@ -20,8 +20,8 @@ pub(crate) enum SearchEditor<'a> {
 
 /// Opens the node search at `at`, connecting the new node to `wire` when given.
 #[allow(dead_code)] // P3(graph-w11): ge.A10
-pub(crate) fn open(app: &mut MaterialCraftApp, at: Pos2, wire: Option<super::node_search::SearchWire>) {
-    let _ = (app, at, wire);
+pub(crate) fn open(app: &mut MaterialCraftApp, editor: super::editor_target::EditorTarget, at: Pos2, wire: Option<super::node_search::SearchWire>) {
+    let _ = (app, editor, at, wire);
     todo!("ge.A10")
 }
 
@@ -34,8 +34,8 @@ pub(crate) fn candidates(app: &MaterialCraftApp, editor: &SearchEditor<'_>, text
 
 /// The open search's state, for every editor, as `ui.inspect` reports it.
 #[allow(dead_code)] // P3(graph-w11): ge.A15
-pub(crate) fn inspect(app: &MaterialCraftApp) -> Option<serde_json::Value> {
-    let _ = app;
+pub(crate) fn inspect(app: &MaterialCraftApp, ctx: &egui::Context) -> Option<serde_json::Value> {
+    let _ = (app, ctx);
     todo!("ge.A15")
 }
 
@@ -43,7 +43,8 @@ pub(super) fn open_search(app: &mut MaterialCraftApp, ctx: &egui::Context, at: P
     if crate::shell::modality::Modality::capture(app, ctx).is_blocked() {
         return;
     }
-    app.graph.search = Some(NodeSearch { at, text: String::new(), sel: 0, connect, connect_to: None, focus: true });
+    app.graph.search =
+        Some(NodeSearch { at, text: String::new(), sel: 0, connect, connect_to: None, focus: true, editor: super::editor_target::EditorTarget::Material }); // P3(graph-w11): ge.A10
 }
 
 /// The search for a node whose output feeds input `to` (a wire dragged off it onto empty canvas)

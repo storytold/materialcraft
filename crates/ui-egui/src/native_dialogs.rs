@@ -10,6 +10,7 @@ use crate::i18n::tr;
 pub(crate) type Dialogs = craft_dialogs::Dialogs<Then>;
 
 /// What the app does with an answered dialog
+#[allow(dead_code)] // P3(shell-w9): sh.A7 (`DownloadPackage`, `Download`)
 pub(crate) enum Then {
     OpenPackage,
     /// `document` is the package the request was for; `before_action` finishes a Save in the unsaved-changes prompt
@@ -45,6 +46,19 @@ pub(crate) enum Then {
     ExportLog(String),
     /// The parameters `graph.input.bind` runs with, before the path
     BindInput(Value, GraphRef),
+    /// A browser save of the package: success is `Downloaded` or `Saved`; `before_action` finishes a Save in the unsaved-changes prompt.
+    DownloadPackage {
+        /// The package the save was for.
+        document: u64,
+        /// Save a copy.
+        copy: bool,
+        /// Finish a Save in the unsaved-changes prompt.
+        before_action: bool,
+        /// The path the save was requested for.
+        path: String,
+    },
+    /// A browser download with no follow-up beyond its toast.
+    Download,
 }
 
 /// The active graph when a dialog was requested. Its index can pass to another graph when one is deleted, so its folder-qualified path is part of the identity
@@ -76,6 +90,13 @@ pub(crate) fn attached(ctx: &egui::Context) -> Dialogs {
 #[allow(dead_code)] // P3(shell-w9): sh.A7
 pub(crate) fn pending(app: &MaterialCraftApp) -> bool {
     let _ = app;
+    todo!("sh.A7")
+}
+
+/// Asks the host to write `bytes` where the user picks (a download in the browser), then does `then` with the answer.
+#[allow(dead_code)] // P3(shell-w9): sh.A7
+pub(crate) fn save(app: &mut MaterialCraftApp, request: craft_host::PickRequest, bytes: Vec<u8>, then: Then) {
+    let _ = (app, request, bytes, then);
     todo!("sh.A7")
 }
 
@@ -244,6 +265,7 @@ fn chosen(app: &mut MaterialCraftApp, then: Then, path: &std::path::Path) {
             parameters["path"] = json!(picked);
             app.run("graph.input.bind", parameters);
         }
+        Then::DownloadPackage { .. } | Then::Download => todo!("sh.A7"), // P3(shell-w9): sh.A7
     }
 }
 

@@ -57,8 +57,8 @@ pub(crate) fn handle(app: &mut MaterialCraftApp, ctx: &egui::Context, method: &s
 
 /// Adds the hooks' fields to `ui.inspect`, draining the errors they collected.
 #[allow(dead_code)] // P3(shell-w7): sh.A30
-pub(crate) fn inspect(app: &mut MaterialCraftApp, into: &mut Map<String, Value>) {
-    let _ = (app, into);
+pub(crate) fn inspect(app: &mut MaterialCraftApp, ctx: &egui::Context, into: &mut Map<String, Value>) {
+    let _ = (app, ctx, into);
     todo!("sh.A30")
 }
 

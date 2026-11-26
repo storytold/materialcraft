@@ -94,7 +94,7 @@ pub(crate) fn shortcuts(app: &mut MaterialCraftApp, ctx: &egui::Context) {
 
 /// The Swap row of a wire selection, as a command row.
 #[allow(dead_code)] // P3(graph-w8): ge.A7
-pub(crate) fn swap_row(app: &MaterialCraftApp, target: materialcraft_engine::SelectionTarget) -> Option<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
+pub(crate) fn swap_row(app: &MaterialCraftApp, target: materialcraft_engine::SelectionTarget) -> Option<craft_menu::Node> {
     let _ = (app, target);
     todo!("ge.A7")
 }

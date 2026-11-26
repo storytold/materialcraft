@@ -34,11 +34,14 @@ pub struct GraphView {
     /// The node-move preview offset
     #[allow(dead_code)] // P3(graph-w6): ge.A2
     pub(crate) node_move: Option<egui::Vec2>,
+    /// The backdrop resize preview: the frame and its rect
+    #[allow(dead_code)] // P3(graph-w6): ge.A2
+    pub(crate) resizing: Option<(u64, Rect)>,
 }
 
 /// The reference of a wire for the framework's wire selection.
 #[allow(dead_code)] // P3(graph-w6): ge.A2
-pub(crate) fn wire_id(wire: &WireRef) -> u64 {
+pub fn wire_id(wire: &WireRef) -> u64 {
     let _ = wire;
     todo!("ge.A2")
 }
@@ -114,6 +117,7 @@ impl Default for GraphView {
             wires: Vec::new(),
             moving: None,
             node_move: None,
+            resizing: None,
         }
     }
 }

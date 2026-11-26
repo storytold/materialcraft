@@ -4,13 +4,14 @@ use crate::MaterialCraftApp;
 use crate::i18n::tr;
 use crate::shell::modality::Modality;
 
-/// The add-node rows for `entries`; each row's ref carries its entry id under the key `params` gives it.
+/// The add-node command rows of `command` for `entries`; each row's ref carries `params(entry id)`.
 #[allow(dead_code)] // P3(graph-w12): ge.A11
 pub(crate) fn rows(
+    command: &'static str,
     entries: impl IntoIterator<Item = (&'static str, &'static str, &'static str)>,
     params: impl Fn(&str) -> serde_json::Value,
-) -> Vec<craft_ui::menu::MenuRow<craft_keymap::CommandRef>> {
-    let _ = (entries, params);
+) -> Vec<craft_menu::Node> {
+    let _ = (command, entries, params);
     todo!("ge.A11")
 }
 

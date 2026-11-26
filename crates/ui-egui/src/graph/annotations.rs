@@ -12,6 +12,14 @@ pub(crate) struct AnnotationLayers {
     pub(crate) selected: Option<AnnotationKey>,
 }
 
+#[allow(dead_code)] // P3(graph-w10): ge.A9
+impl AnnotationLayers {
+    /// The contents of the frame being moved and its snapped offset, for the hosts to translate their own nodes by.
+    pub(crate) fn carried(&self) -> Option<(&materialcraft_engine::FrameContents, egui::Vec2)> {
+        todo!("ge.A9")
+    }
+}
+
 /// The backdrops, notes and markers of the active editor's annotation target.
 #[allow(dead_code)] // P3(graph-w10): ge.A9
 pub(crate) fn layers(app: &MaterialCraftApp) -> AnnotationLayers {

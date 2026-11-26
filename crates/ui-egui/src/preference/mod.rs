@@ -48,8 +48,18 @@ pub(super) fn number_row<T: egui::emath::Numeric>(ui: &mut Ui, label: &str, valu
 
 /// The staged copy of the preferences the open window edits until Apply or OK.
 #[allow(dead_code)] // P3(shell-w11): sh.A10
-pub(crate) struct PrefsDraft {
-    _private: (),
+pub(crate) struct PrefsDraft<'a> {
+    app: &'a mut MaterialCraftApp,
+}
+
+/// The staged preferences and shortcut overrides the open window edits.
+#[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)] // P3(shell-w11): sh.A10
+pub(crate) struct Draft {
+    /// The staged preferences.
+    prefs: crate::state::Prefs,
+    /// The staged shortcut overrides.
+    overrides: craft_keymap::Overrides,
 }
 
 /// What the open Preferences window keeps between frames (the open page is `UiState::preferences_page`).
@@ -64,6 +74,10 @@ pub(crate) struct State {
     only_assigned: bool,
     /// The command whose shortcut field waits for keys.
     capturing: Option<String>,
+    /// The staged copy, while the window is open.
+    draft: Option<Draft>,
+    /// The framework preferences window's own state.
+    window: craft_ui::patterns::preferences::PreferencesState,
 }
 
 /// The Preferences window: staged mode, where `apply` writes `ui.prefs` and `ui.shortcut_overrides`.

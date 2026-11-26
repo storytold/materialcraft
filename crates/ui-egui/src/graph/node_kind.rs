@@ -77,6 +77,11 @@ impl NodeColors {
         todo!("ge.A6")
     }
 
+    /// The colour of the FX-Map's root node.
+    pub(crate) fn fx_root(&self) -> Rgba {
+        todo!("ge.A6")
+    }
+
     /// The colour of an FX-Map node's port.
     pub(crate) fn fx_port(&self) -> Rgba {
         todo!("ge.A6")
@@ -93,6 +98,18 @@ impl NodeKind<()> for MaterialKind {}
 
 #[allow(dead_code)] // P3(graph-w7): ge.A6
 impl MaterialKind {
+    /// The kind of `node`, with the ports `ports_with_connections` returned for it.
+    pub(crate) fn new(
+        app: &MaterialCraftApp,
+        ctx: &egui::Context,
+        node: &materialcraft_engine::core::Node,
+        ins: Vec<materialcraft_engine::eval::Port>,
+        outs: Vec<materialcraft_engine::eval::Port>,
+    ) -> MaterialKind {
+        let _ = (app, ctx, node, ins, outs);
+        todo!("ge.A6")
+    }
+
     /// The node card's rect with its top-left corner at `pos`.
     pub(crate) fn rect(&self, pos: [f32; 2]) -> egui::Rect {
         let _ = pos;
