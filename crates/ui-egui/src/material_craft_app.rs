@@ -66,7 +66,7 @@ pub struct MaterialCraftApp {
     pub(crate) dispatcher: craft_keymap::egui::Dispatcher,
     /// What Copy or Cut put on the clipboard this frame, for the system clipboard
     pub(crate) system_clipboard: Option<String>,
-    /// Fallback fonts for Arabic
+    /// System fallback fonts for the UI languages
     pub fonts: fonts::UiFonts,
     /// The icon font is installed (it takes effect on the frame after `set_fonts`)
     fonts_ready: bool,
@@ -76,10 +76,8 @@ pub struct MaterialCraftApp {
 impl MaterialCraftApp {
     pub fn new(cc: &eframe::CreationContext<'_>, session: Session) -> MaterialCraftApp {
         let ui = cc.storage.and_then(|s| eframe::get_value::<UiState>(s, "ui")).unwrap_or_default();
-        theme::install(&cc.egui_ctx);
         let mut app = MaterialCraftApp::headless(session, ui);
-        i18n::set_language(&app.ui.prefs.language);
-        app.fonts_ready = true;
+        app.install_fonts(&cc.egui_ctx);
         app.ui.windows.home = app.ui.prefs.show_home;
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -146,7 +144,7 @@ impl MaterialCraftApp {
             fonts_ready: false,
             ui_gesture_active: false,
         };
-        i18n::set_language(&app.ui.prefs.language);
+        i18n::set_language(app.display_language());
         app.apply_prefs();
 
         // A session that has not touched its 3D view starts from the saved default
@@ -478,16 +476,30 @@ impl MaterialCraftApp {
         close(ctx);
     }
 
+    fn display_language(&self) -> &str {
+        let requested = self.ui.prefs.language.as_str();
+        if requested == "zh-Hans" && !self.fonts.covers_language(requested) { "en" } else { requested }
+    }
+
+    fn update_language(&mut self, ctx: &egui::Context) {
+        self.fonts.update(ctx, &self.ui.prefs.language, self.ui.windows.preferences);
+        i18n::set_language(self.display_language());
+    }
+
+    fn install_fonts(&mut self, ctx: &egui::Context) {
+        theme::install(ctx);
+        self.update_language(ctx);
+        self.fonts_ready = true;
+    }
+
     /// Per-frame logic before drawing: styles, the control channel, cooking, shortcuts
     pub fn step(&mut self, ctx: &egui::Context) {
         if !self.fonts_ready {
-            theme::install(ctx);
             ctx.request_repaint();
             return;
         }
 
-        i18n::set_language(&self.ui.prefs.language);
-        self.fonts.update(ctx, &self.ui.prefs.language, self.ui.windows.preferences);
+        self.update_language(ctx);
         let now = ctx.input(|i| i.time);
         let dt = (now - self.last_time) as f32;
         if dt > 0.0 {
@@ -548,7 +560,7 @@ impl MaterialCraftApp {
     pub fn draw(&mut self, ui: &mut egui::Ui) {
         crate::annotation::activate(self, crate::annotation::target(self));
         if !self.fonts_ready {
-            self.fonts_ready = true;
+            self.install_fonts(ui.ctx());
             return;
         }
 

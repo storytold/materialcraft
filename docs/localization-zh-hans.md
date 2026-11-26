@@ -55,6 +55,8 @@ remembered to avoid repeated disk access and log spam on each frame.
 
 No font assets or build dependencies are added. If the system has no suitable
 font, the picker shows the English language name and disables that choice.
+When a Chinese font cannot be loaded, the desktop UI displays English and keeps
+the Chinese preference. Installing a supported font and restarting restores Chinese.
 The existing web shell cannot load system fonts; Chinese glyph delivery there
 still needs a separate craft-fonts integration and is not claimed by this change.
 

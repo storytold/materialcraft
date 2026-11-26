@@ -34,7 +34,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
         for language in &crate::i18n::LANGUAGES {
             let supported = fonts.covers_language(language.code);
             let name = if supported { language.name } else { language.english };
-            let response = ui.add_enabled(supported, egui::Button::selectable(prefs.language == language.code, name));
+            let response = ui.add_enabled(supported, egui::Button::selectable(current.code == language.code, name));
             if response.on_disabled_hover_text(tr("No font on this system can show this language")).clicked() {
                 prefs.language = language.code.to_owned();
                 crate::i18n::set_language(&prefs.language);
