@@ -35,7 +35,7 @@ fn explorer_can_close_the_last_package_and_all_packages() {
     materialcraft_ui_egui::menus::invoke(harness.state_mut(), &context, "ui.closeAll");
     settle(&mut harness, 3);
 
-    assert!(harness.state().ui.windows.unsaved.is_some());
+    assert!(materialcraft_ui_egui::unsaved::held(harness.state()).is_some());
 
     harness.get_by_label("Cancel").click();
     settle(&mut harness, 3);
@@ -49,7 +49,7 @@ fn explorer_can_close_the_last_package_and_all_packages() {
 
     assert!(harness.state().session.open_packages().is_empty());
     assert_eq!(harness.query_all(By::new().role(Role::TreeItem)).count(), 0);
-    assert!(harness.state().ui.windows.unsaved.is_none());
+    assert!(materialcraft_ui_egui::unsaved::held(harness.state()).is_none());
 
     save(&mut harness, &directory, "explorer-after-close-all");
 }
