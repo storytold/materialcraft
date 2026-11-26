@@ -4,7 +4,7 @@ use crate::{
 };
 use materialcraft_engine::Session;
 use serde_json::Value;
-use std::sync::Arc;
+use std::collections::VecDeque;
 
 /// One message of the outbox: `step` posts each to the window's notice center and empties the outbox.
 pub struct Toast {
@@ -117,10 +117,15 @@ pub struct MaterialCraftApp {
     /// The Function JSON being edited: the node, the text and the text last applied
     #[allow(dead_code)] // P3(panels-w10): pn.A30
     pub(crate) function_json: Option<(materialcraft_engine::core::NodeId, String, String)>,
-    /// The Levels editor's histograms, per cook result and output port
-    // PLAN: pn.A30 lists panels-w6..w10 as readers, and no sheet names the one that reads `levels_histograms`
-    #[allow(dead_code)]
-    pub(crate) levels_histograms: std::collections::HashMap<(u64, usize), Arc<craft_imaging::ui::histogram::HistogramData>>,
+    /// The held action waiting for the Save dialog the unsaved-changes prompt opened
+    pub(crate) awaiting_save: Option<crate::unsaved::Guarded>,
+    /// The window buttons to draw when the app draws the window frame; `None` while the desktop draws it (desktop only)
+    #[cfg(not(target_arch = "wasm32"))]
+    pub window_layout: Option<craft_window::Layout>,
+    /// Keyboard shortcuts and their dispatch
+    pub(crate) keymap: craft_keymap::Keymap,
+    // PLAN: shell-w4 removes `keymap` and `dispatcher` (sh.A2); the stand-in `Dispatcher` type is gone with shell-w5.
+    pub(crate) dispatcher: Dispatcher,
     /// What Copy or Cut put on the clipboard this frame, for the system clipboard
     pub(crate) system_clipboard: Option<String>,
     /// The version this build names itself with: the Launcher's feed identity for a Nightly.

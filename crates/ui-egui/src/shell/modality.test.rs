@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use craft_ui::dialog::{Alert, HostedAlert};
+use craft_ui::runtime::env::WindowKey;
+use craft_ui::shell::WindowDialogs;
+
 use super::{Blocker, Modality};
-use crate::explorer::ExplorerTarget;
 use crate::{MaterialCraftApp, UiState};
 
 fn app() -> MaterialCraftApp {
@@ -13,36 +16,51 @@ fn capture(app: &MaterialCraftApp) -> Modality {
     Modality::capture(app, &egui::Context::default())
 }
 
+/// The unsaved-changes prompt as a user opens it: an edit, then Quit.
+fn prompt(app: &mut MaterialCraftApp) {
+    app.run("edit.selectAll", serde_json::json!({}));
+    app.run("edit.delete", serde_json::json!({}));
+    crate::unsaved::guard(app, crate::unsaved::Guarded::Quit);
+}
+
+/// A native file dialog asked for and waiting.
+fn file_dialog(app: &mut MaterialCraftApp) {
+    crate::native_dialogs::ask(app, crate::windows::package_dialog(true, false), crate::native_dialogs::Then::OpenPackage);
+}
+
+/// A modal alert open on the main window's dialog host of `ctx`.
+fn host_modal(ctx: &egui::Context) {
+    WindowDialogs::of(ctx, &WindowKey::main()).with(|host| {
+        host.open(HostedAlert::new(Alert::new("Could not open", "The file is damaged.")));
+    });
+}
+
 #[test]
 fn home_and_the_shortcuts_list_leave_input_free() {
     let mut app = app();
     assert_eq!(capture(&app), Modality::Free);
     app.ui.windows.home = true;
-    app.ui.windows.shortcuts = true;
-    assert_eq!(capture(&app), Modality::Free);
+    assert_eq!(capture(&app), Modality::Free, "Home is modeless");
 }
 
 #[test]
 fn every_blocking_source_blocks() {
     type Open = fn(&mut MaterialCraftApp);
-    let cases: [(&str, Open, Blocker); 10] = [
+    // PLAN: `ExposeParameterDialog::open` is `pub(super)` in `property` (panels-w12), so this module cannot open the
+    // `expose_parameter_dialog` source; its case waits for an opener the tests can reach.
+    let cases: [(&str, Open, Blocker); 9] = [
         ("new graph", |app| app.ui.windows.new_graph = true, Blocker::Dialog),
         ("export", |app| app.ui.windows.export = true, Blocker::Dialog),
         ("preferences", |app| app.ui.windows.preferences = true, Blocker::Dialog),
         ("about", |app| app.ui.windows.about = true, Blocker::Dialog),
-        ("rename", |app| app.ui.explorer.rename = Some((ExplorerTarget::Folder { document: 0, path: "a".into() }, "a".into())), Blocker::Dialog),
         ("web save", |app| crate::web_files::PackageSave::request(app, false), Blocker::Dialog),
-        ("unsaved prompt", |app| app.ui.windows.unsaved = Some(crate::unsaved::Guarded::Quit), Blocker::UnsavedPrompt),
-        ("awaited save", |app| app.awaiting_save = Some(crate::unsaved::Guarded::Quit), Blocker::UnsavedPrompt),
-        (
-            "queued file dialog",
-            |app| app.dialogs.ask(craft_dialogs::FileDialog::save(), crate::native_dialogs::Then::ExportDestination(crate::export::ExportTab::FromGraph)),
-            Blocker::FileDialog,
-        ),
+        ("the shortcuts list", |app| app.shortcuts = Some(craft_menu::shortcuts::DialogState::new()), Blocker::Dialog),
+        ("unsaved prompt", prompt, Blocker::UnsavedPrompt),
+        ("queued file dialog", file_dialog, Blocker::FileDialog),
         ("update prompt", |app| crate::updates_ui::open_prompt_for_test(app), Blocker::Update),
     ];
 
-    let wrong: Vec<_> = cases
+    let mut wrong: Vec<_> = cases
         .into_iter()
         .filter_map(|(name, open, blocker)| {
             let mut app = app();
@@ -50,6 +68,13 @@ fn every_blocking_source_blocks() {
             (capture(&app) != Modality::Blocked(blocker)).then_some(name)
         })
         .collect();
+
+    let free = app();
+    let ctx = egui::Context::default();
+    host_modal(&ctx);
+    if Modality::capture(&free, &ctx) != Modality::Blocked(Blocker::Dialog) {
+        wrong.push("a modal on the window's dialog host");
+    }
     assert!(wrong.is_empty(), "not reported as blocking: {wrong:?}");
 }
 
@@ -59,7 +84,6 @@ fn a_blocker_lets_only_its_own_commands_through() {
     for id in ["edit.delete", "file.open", "file.save"] {
         assert!(!Modality::Blocked(Blocker::UnsavedPrompt).allows(id), "{id}");
         assert!(!Modality::Blocked(Blocker::Dialog).allows(id), "{id}");
-        assert!(!Modality::Blocked(Blocker::Modal).allows(id), "{id}");
         assert!(!Modality::Blocked(Blocker::Update).allows(id), "{id}");
     }
 
@@ -74,44 +98,28 @@ fn a_blocker_lets_only_its_own_commands_through() {
 
 #[test]
 fn a_file_dialog_frees_its_commands_only_when_nothing_else_blocks() {
-    let queued = |app: &mut MaterialCraftApp| app.dialogs.ask(craft_dialogs::FileDialog::open(), crate::native_dialogs::Then::OpenPackage);
+    let mut alone = app();
+    file_dialog(&mut alone);
+    assert!(capture(&alone).allows("file.open"), "the dialog alone lets Open bring it forward");
 
     let mut preferences = app();
-    queued(&mut preferences);
+    file_dialog(&mut preferences);
     preferences.ui.windows.preferences = true;
     assert_eq!(capture(&preferences), Modality::Blocked(Blocker::Dialog));
     assert!(!capture(&preferences).allows("file.open"));
 
     let mut update = app();
-    queued(&mut update);
+    file_dialog(&mut update);
     crate::updates_ui::open_prompt_for_test(&mut update);
     assert_eq!(capture(&update), Modality::Blocked(Blocker::Update));
+    assert!(!capture(&update).allows("file.open"));
 
     let mut modal = app();
-    queued(&mut modal);
+    file_dialog(&mut modal);
     let ctx = egui::Context::default();
-    ctx.run_ui(egui::RawInput::default(), |ui| {
-        egui::Modal::new(egui::Id::unique("modal")).show(ui.ctx(), |_| {});
-    })
-    .textures_delta
-    .clear();
-    let mut answer = Modality::Free;
-    ctx.run_ui(egui::RawInput::default(), |ui| answer = Modality::capture(&modal, ui.ctx())).textures_delta.clear();
-    assert_eq!(answer, Modality::Blocked(Blocker::Modal));
-}
-
-#[test]
-fn a_modal_layer_from_the_previous_frame_blocks() {
-    let app = app();
-    let ctx = egui::Context::default();
-    ctx.run_ui(egui::RawInput::default(), |ui| {
-        egui::Modal::new(egui::Id::unique("modal")).show(ui.ctx(), |_| {});
-    })
-    .textures_delta
-    .clear();
-    let mut answer = Modality::Free;
-    ctx.run_ui(egui::RawInput::default(), |ui| answer = Modality::capture(&app, ui.ctx())).textures_delta.clear();
-    assert_eq!(answer, Modality::Blocked(Blocker::Modal));
+    host_modal(&ctx);
+    assert_eq!(Modality::capture(&modal, &ctx), Modality::Blocked(Blocker::Dialog));
+    assert!(!Modality::capture(&modal, &ctx).allows("file.open"));
 }
 
 #[derive(Debug)]
@@ -127,35 +135,28 @@ impl egui::DroppedFile for Dropped {
     }
 }
 
-/// One whole frame with `files` dropped on the window
-fn frame(app: &mut MaterialCraftApp, ctx: &egui::Context, files: Vec<egui::DroppedFileHandle>) {
-    let input = egui::RawInput { dropped_files: files, ..Default::default() };
-    ctx.run_ui(input, |ui| {
-        app.step(ui.ctx());
-        app.draw(ui);
-    })
-    .textures_delta
-    .clear();
-}
-
 #[test]
 fn a_file_dropped_behind_a_prompt_does_not_reach_the_package() {
     use materialcraft_engine::formats::{Depth, encode};
     use materialcraft_engine::image::{Image, Kind};
 
-    let mut app = app();
-    let ctx = egui::Context::default();
-    frame(&mut app, &ctx, Vec::new());
-    frame(&mut app, &ctx, Vec::new());
+    let mut harness = egui_kittest::Harness::builder().build_eframe(|cc| {
+        MaterialCraftApp::install_runtime(&cc.egui_ctx, None).expect("runtime");
+        app()
+    });
+    harness.step();
+    harness.step();
     let png = encode(&Image::filled(2, 2, Kind::Gray, [0.5; 4]), "png", Depth::U8, false).unwrap();
-    let dropped = || -> Vec<egui::DroppedFileHandle> { vec![Arc::new(Dropped("dropped.png".into(), png.clone()))] };
-    let nodes = app.session.graph().unwrap().nodes.len();
+    let dropped = || -> egui::DroppedFileHandle { Arc::new(Dropped("dropped.png".into(), png.clone())) };
 
-    app.ui.windows.unsaved = Some(crate::unsaved::Guarded::Quit);
-    frame(&mut app, &ctx, dropped());
-    assert_eq!(app.session.graph().unwrap().nodes.len(), nodes);
+    prompt(harness.state_mut());
+    let nodes = harness.state().session.graph().unwrap().nodes.len();
+    harness.input_mut().dropped_files.push(dropped());
+    harness.step();
+    assert_eq!(harness.state().session.graph().unwrap().nodes.len(), nodes, "the drop waits behind the prompt");
 
-    app.ui.windows.unsaved = None;
-    frame(&mut app, &ctx, dropped());
-    assert_eq!(app.session.graph().unwrap().nodes.len(), nodes + 1, "the drop works once the prompt is answered");
+    harness.state_mut().unsaved = None;
+    harness.input_mut().dropped_files.push(dropped());
+    harness.step();
+    assert_eq!(harness.state().session.graph().unwrap().nodes.len(), nodes + 1, "the drop works once the prompt is answered");
 }

@@ -1,23 +1,21 @@
-//! Node creation shortcuts add a library entry under the pointer in the material graph
+//! Node creation shortcuts add a library entry under the pointer in the material graph: each bindable entry is the
+//! command `node.add.<entry id>`, whose keys are the user's keymap overrides
 
-use craft_keymap::{Chord, Key, Mods, Platform};
-use egui::{Event, InputState};
+use std::collections::BTreeMap;
+
+use craft_keymap::{Chord, Overrides, Platform};
+use materialcraft_engine::LibraryEntry;
 
 /// The library categories whose entries can have a creation shortcut
 pub(crate) const CATEGORIES: [&str; 2] = ["Atomic nodes", "Graph items"];
 
-/// The saved node-shortcut map as overrides for `node.add.<id>`, dropping a chord the app catalog already holds.
-#[allow(dead_code)] // P3(shell-w5): sh.A14
-pub(crate) fn migrate(old: &std::collections::BTreeMap<String, String>, platform: Platform) -> craft_keymap::Overrides {
-    let _ = (old, platform);
-    todo!("sh.A14")
-}
+/// The command id prefix of a node creation shortcut; the rest of the id is the library entry's id.
+pub(crate) const NODE_ADD: &str = "node.add.";
 
-/// The chord on a fresh key press, using the event's own modifiers
-pub(crate) fn event_chord(event: &Event, platform: Platform) -> Option<Chord> {
-    let Event::Key { key, pressed: true, repeat: false, modifiers, .. } = event else { return None };
-
-    Some(Chord::new(Mods::from_egui(modifiers, platform), Key::from_egui(*key)?))
+/// Whether `entry` can have a creation shortcut: an entry of [`CATEGORIES`] that the library provides.
+// PLAN: the Shortcuts page (shell-w11, `preference/shortcuts_page.rs:51`) lists its entries with this rule.
+pub(crate) fn bindable(entry: &LibraryEntry) -> bool {
+    entry.missing.is_none() && CATEGORIES.contains(&entry.category.as_str())
 }
 
 /// Preserve the stored syntax where Ctrl means Command on macOS
@@ -25,75 +23,50 @@ pub(crate) fn text(chord: Chord) -> String {
     chord.portable().replace("Ctrl+", "Control+").replace("Cmd+", "Ctrl+")
 }
 
-/// The entry whose shortcut was pressed this frame, if any
-pub(crate) fn pressed<'a>(shortcuts: &'a std::collections::BTreeMap<String, String>, input: &InputState, platform: Platform) -> Option<&'a str> {
-    if shortcuts.is_empty() {
-        return None;
-    }
+/// The saved node-shortcut map (entry id to shortcut text, `Ctrl` meaning Command on macOS) as overrides for
+/// `node.add.<id>`. A chord the app catalog already holds on `platform`, at app scope or on the graph canvas, is
+/// dropped, as the Preferences refused it when it was set; so is a text that does not parse.
+pub(crate) fn migrate(old: &BTreeMap<String, String>, platform: Platform) -> Overrides {
+    let app = crate::menus::shortcut_table().into_iter().map(|(_, text)| text);
+    let graph = crate::commands::GRAPH_DEFAULTS.iter().map(|key| key.chord);
+    let held: Vec<Chord> = app.chain(graph).filter_map(crate::menus::parse_shortcut).map(|chord| chord.effective(platform)).collect();
 
-    input.events.iter().filter_map(|event| event_chord(event, platform)).find_map(|pressed| {
-        shortcuts.iter().find_map(|(entry, text)| {
-            let mut assigned = crate::menus::parse_shortcut(text)?;
-            assigned.mods = assigned.mods.effective(platform);
-            (assigned == pressed).then_some(entry.as_str())
-        })
-    })
-}
-
-/// The app command or canvas action already bound to the chord
-pub(crate) fn taken_by(chord: Chord, platform: Platform) -> Option<&'static str> {
-    if chord.mods.is_none() {
-        match chord.key {
-            Key::Space | Key::Tab => return Some("Open node search"),
-            Key::F => return Some("Frame graph"),
-            Key::Escape | Key::Enter => return Some("Close or confirm"),
-            _ => {}
+    let mut overrides = Overrides::new();
+    for (entry, text) in old {
+        let Some(chord) = crate::menus::parse_shortcut(text) else { continue };
+        if held.contains(&chord.effective(platform)) {
+            continue;
         }
+        overrides.insert(format!("{NODE_ADD}{entry}"), vec![chord.to_string()]);
     }
-
-    crate::menus::shortcut_table().into_iter().find_map(|(id, text)| {
-        let mut assigned = crate::menus::parse_shortcut(text)?;
-        assigned.mods = assigned.mods.effective(platform);
-        (assigned == chord).then_some(id)
-    })
+    overrides
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use craft_keymap::{Key, Mods};
 
     #[test]
     fn a_shortcut_reads_back_as_the_keys_that_made_it() {
-        let plain = Chord::new(Mods::CMD, Key::B);
-        let both = Chord::new(Mods { cmd: true, ctrl: true, shift: true, ..Mods::NONE }, Key::B);
+        let saved: BTreeMap<String, String> = [
+            ("node:blur".to_owned(), "Ctrl+B".to_owned()),
+            ("node:levels".to_owned(), "Control+Shift+L".to_owned()),
+            ("node:blend".to_owned(), "Ctrl+S".to_owned()),
+        ]
+        .into();
 
-        assert_eq!(text(plain), "Ctrl+B");
-        assert_eq!(crate::menus::parse_shortcut(&text(both)), Some(both));
-        assert_eq!(crate::menus::parse_shortcut("Cmd+B"), Some(plain));
-    }
+        for platform in [Platform::Mac, Platform::Windows, Platform::Linux] {
+            let overrides = migrate(&saved, platform);
+            let bound = |entry: &str| {
+                let texts = overrides.get(&format!("{NODE_ADD}{entry}"))?;
+                Chord::parse(texts.first()?).ok().map(|chord| chord.effective(platform))
+            };
 
-    #[test]
-    fn a_shortcut_the_app_already_uses_is_named() {
-        assert_eq!(taken_by(Chord::new(Mods::CMD, Key::S), Platform::Windows), Some("file.save"));
-        assert_eq!(taken_by(Chord::plain(Key::F), Platform::Windows), Some("Frame graph"));
-        assert_eq!(taken_by(Chord::new(Mods::CTRL, Key::S), Platform::Mac), None);
-    }
-
-    #[test]
-    fn key_events_keep_their_own_modifiers_and_ignore_repeat() {
-        let key = egui::Key::B;
-        let event = |modifiers, repeat| Event::Key { key, physical_key: None, pressed: true, repeat, modifiers };
-        let plain = event(egui::Modifiers::NONE, false);
-        let alt = event(egui::Modifiers::ALT, false);
-        let raw = egui::RawInput { events: vec![plain, Event::ModifiersChanged(egui::Modifiers::ALT), alt], ..Default::default() };
-        let shortcuts = [("node:blur".to_owned(), "Alt+B".to_owned()), ("node:levels".to_owned(), "B".to_owned())].into();
-
-        egui::Context::default()
-            .run_ui(raw, |ui| {
-                assert_eq!(ui.input(|input| pressed(&shortcuts, input, Platform::Windows)), Some("node:levels"));
-            })
-            .drop_without_applying_deltas();
-
-        assert!(event_chord(&event(egui::Modifiers::ALT, true), Platform::Windows).is_none());
+            assert_eq!(bound("node:blur"), Some(Chord::new(Mods::CMD, Key::B).effective(platform)), "Ctrl in the saved text is Command on {platform:?}");
+            let control_shift = Chord::new(Mods { ctrl: true, shift: true, ..Mods::NONE }, Key::L);
+            assert_eq!(bound("node:levels"), Some(control_shift.effective(platform)), "Control stays the Control key on {platform:?}");
+            assert_eq!(bound("node:blend"), None, "Save already holds Ctrl+S on {platform:?}");
+        }
     }
 }

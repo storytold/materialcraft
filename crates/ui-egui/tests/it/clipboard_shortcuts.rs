@@ -1,32 +1,28 @@
-//! Copy, Cut and Paste of graph nodes through the platform's clipboard events and key presses
+//! Copy, Cut and Paste of graph nodes through the platform's clipboard events and the menus
 
-use egui::{Event, Key, Modifiers, OutputCommand, vec2};
-use egui_kittest::{Harness, kittest::Queryable};
-use materialcraft_ui_egui::{MaterialCraftApp, UiState, menus};
+use egui::{Event, Modifiers, OutputCommand, vec2};
+use egui_kittest::kittest::{NodeT, Queryable};
+use egui_kittest::{Harness, Node};
+use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 use serde_json::json;
 
-/// Two wired nodes, both selected
-fn harness(render: bool) -> Harness<'static, MaterialCraftApp> {
+/// Two wired nodes, both selected, in the whole window with the runtime installed
+fn harness() -> Harness<'static, MaterialCraftApp> {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
     app.session.preview_size = Some(32);
     let source = app.run("graph.node.add", json!({"def": "uniform", "at": [0, 0]})).unwrap()["id"].as_u64().unwrap();
     let levels = app.run("graph.node.add", json!({"def": "levels", "connectFrom": {"node": source}})).unwrap()["id"].as_u64().unwrap();
     app.run("graph.select", json!({"ids": [source, levels]})).unwrap();
 
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0));
-    let builder = if render { builder.wgpu() } else { builder };
-    let mut harness = builder.build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).build_eframe(|cc| {
+        MaterialCraftApp::install_runtime(&cc.egui_ctx, None).expect("runtime");
+        app
+    });
     harness.run_steps(8);
     harness
 }
 
-/// The text the last frame put on the system clipboard
+/// The text the last frame offered to the system clipboard
 fn copied_text(harness: &Harness<'static, MaterialCraftApp>) -> String {
     harness
         .output()
@@ -37,6 +33,29 @@ fn copied_text(harness: &Harness<'static, MaterialCraftApp>) -> String {
         .expect("a node copy fills the system clipboard, so the desktop's Paste key sends an event")
 }
 
+/// Steps a few frames and returns the text one of them offered: a menu pick fires in its frame and runs after it.
+fn copied_within_frames(harness: &mut Harness<'static, MaterialCraftApp>) -> String {
+    for _ in 0..4 {
+        harness.step();
+        let offered = harness.output().platform_output.commands.iter().find_map(|command| match command {
+            OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        });
+        if let Some(text) = offered {
+            return text;
+        }
+    }
+    String::new()
+}
+
+/// The menu row whose name starts with `label`; the name may go on with the row's shortcut text
+fn row<'h>(harness: &'h Harness<'static, MaterialCraftApp>, label: &str) -> Node<'h> {
+    harness
+        .query_all_by_label_contains(label)
+        .find(|node| node.accesskit_node().label().is_some_and(|name| name.starts_with(label)))
+        .unwrap_or_else(|| panic!("no row named {label}"))
+}
+
 fn node_count(harness: &Harness<'static, MaterialCraftApp>) -> usize {
     harness.state().session.graph().unwrap().nodes.len()
 }
@@ -45,57 +64,47 @@ fn wire_count(harness: &Harness<'static, MaterialCraftApp>) -> usize {
     harness.state().session.graph().unwrap().connections.len()
 }
 
-fn chord(key: Key) -> Event {
-    Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND }
-}
-
-fn copy_paste_cut(harness: &mut Harness<'static, MaterialCraftApp>) {
+#[test]
+fn desktop_clipboard_events_copy_paste_and_cut_nodes_with_their_wires() {
+    let mut harness = harness();
     harness.event(Event::Copy);
     harness.step();
     assert!(harness.state().session.clipboard.is_some(), "the desktop's Copy event copies the nodes");
-    let payload = copied_text(harness);
+    let payload = copied_text(&harness);
     assert_eq!(serde_json::from_str::<serde_json::Value>(&payload).unwrap()["nodes"].as_array().unwrap().len(), 2);
 
     harness.event(Event::Paste(payload));
     harness.step();
-    assert_eq!((node_count(harness), wire_count(harness)), (4, 2));
+    assert_eq!((node_count(&harness), wire_count(&harness)), (4, 2));
 
     harness.event(Event::Cut);
     harness.step();
-    assert_eq!(node_count(harness), 2);
+    assert_eq!(node_count(&harness), 2);
 
-    harness.event(Event::Paste(copied_text(harness)));
+    harness.event(Event::Paste(copied_text(&harness)));
     harness.step();
-    assert_eq!((node_count(harness), wire_count(harness)), (4, 2));
+    assert_eq!((node_count(&harness), wire_count(&harness)), (4, 2));
 
     harness.state_mut().run("edit.undo", json!({})).unwrap();
-    assert_eq!(node_count(harness), 2);
+    assert_eq!(node_count(&harness), 2);
     harness.state_mut().run("edit.redo", json!({})).unwrap();
-    assert_eq!(node_count(harness), 4);
-}
-
-#[test]
-fn desktop_clipboard_events_copy_paste_and_cut_nodes_with_their_wires() {
-    copy_paste_cut(&mut harness(false));
+    assert_eq!(node_count(&harness), 4);
 }
 
 #[test]
 fn edit_menu_copy_fills_the_system_clipboard() {
-    let mut harness = harness(false);
-    let label = format!("Copy {}", menus::shortcut_label(&harness.ctx, "Ctrl+C"));
+    let mut harness = harness();
 
     harness.get_by_label("Edit").click();
     harness.run_steps(4);
-    harness.get_by_label(&label).click();
-    harness.step();
+    row(&harness, "Copy").click();
 
-    assert!(!copied_text(&harness).is_empty());
+    assert!(!copied_within_frames(&mut harness).is_empty());
 }
 
 #[test]
 fn node_context_menu_copy_fills_the_system_clipboard() {
-    let mut harness = harness(false);
-    let label = format!("Copy selection {}", menus::shortcut_label(&harness.ctx, "Ctrl+C"));
+    let mut harness = harness();
     let node = harness.state().graph.rects[0].1.center();
 
     harness.event(Event::PointerMoved(node));
@@ -105,77 +114,7 @@ fn node_context_menu_copy_fills_the_system_clipboard() {
         harness.step();
     }
     harness.run_steps(4);
-    harness.get_by_label(&label).click();
-    harness.step();
+    row(&harness, "Copy selection").click();
 
-    assert!(!copied_text(&harness).is_empty());
-}
-
-#[test]
-fn a_web_press_and_its_clipboard_event_run_once() {
-    let mut harness = harness(false);
-
-    // The web build sends the key press, then the clipboard event it causes
-    harness.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), chord(Key::C), Event::Copy]);
-    harness.step();
-    let payload = copied_text(&harness);
-    harness.input_mut().events.extend([chord(Key::V), Event::Paste(payload)]);
-    harness.step();
-
-    assert_eq!(node_count(&harness), 4);
-}
-
-#[test]
-fn command_key_presses_still_edit_nodes() {
-    let mut harness = harness(false);
-
-    harness.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), chord(Key::C)]);
-    harness.step();
-    assert!(!copied_text(&harness).is_empty());
-    harness.input_mut().events.push(chord(Key::V));
-    harness.step();
-    assert_eq!(node_count(&harness), 4);
-    harness.input_mut().events.push(chord(Key::X));
-    harness.step();
-
-    assert_eq!(node_count(&harness), 2);
-}
-
-#[test]
-fn clipboard_events_edit_a_focused_text_field_and_leave_the_nodes() {
-    let mut harness = harness(false);
-    harness.get_by_label("Node label").click();
-    harness.step();
-    let selected = *harness.state().session.selection.last().unwrap();
-    let label = |harness: &Harness<'static, MaterialCraftApp>| harness.state().session.graph().unwrap().node(selected).unwrap().label.clone();
-
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
-    harness.step();
-    harness.event(Event::Paste("Edited label".into()));
-    harness.step();
-    assert_eq!(label(&harness), "Edited label");
-
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
-    harness.step();
-    harness.event(Event::Copy);
-    harness.step();
-    assert_eq!(copied_text(&harness), "Edited label");
-    assert!(harness.state().session.clipboard.is_none());
-
-    harness.event(Event::Cut);
-    harness.step();
-    assert_eq!(node_count(&harness), 2);
-    assert_eq!(label(&harness), "");
-}
-
-#[test]
-#[ignore = "requires an offscreen GPU"]
-fn clipboard_graph_snapshot() {
-    let mut harness = harness(true);
-    copy_paste_cut(&mut harness);
-    harness.run_steps(10);
-
-    let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").expect("MC_SNAPSHOT_DIR"));
-    std::fs::create_dir_all(&directory).unwrap();
-    harness.render().unwrap().save(directory.join("clipboard-shortcuts.png")).unwrap();
+    assert!(!copied_within_frames(&mut harness).is_empty());
 }

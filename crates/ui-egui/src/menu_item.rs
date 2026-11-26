@@ -1,7 +1,6 @@
 /// A row of the app's menu tables: the menu bar and the Explorer's row menus (`menu` names the row kind's context
 /// menu); a separator is the label `"-"`.
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)] // P3(shell-w5): sh.A15
 pub struct Row {
     /// The menu the row is in.
     pub menu: &'static str,
@@ -15,20 +14,16 @@ pub struct Row {
     pub shortcut: Option<&'static str>,
 }
 
-#[allow(dead_code)] // P3(shell-w5): sh.A15
 impl Row {
-    /// The framework's menu row for this row.
+    /// The framework's menu row for this row: its label translated, with the English kept for search, at the path of
+    /// its menu and submenu. The command board gives it its shortcut, enabled and checked state.
     pub fn to_craft(&self) -> craft_menu::Row {
-        todo!("sh.A15")
-    }
-}
+        let menu = crate::i18n::tr(self.menu);
+        let path: Vec<&str> = std::iter::once(menu).chain(self.sub.map(crate::i18n::tr)).collect();
+        if self.label == "-" {
+            return craft_menu::Row::separator(&path);
+        }
 
-/// A menu entry with an optional submenu and shortcut
-#[derive(Clone, Copy, Debug)]
-pub struct MenuItem {
-    pub menu: &'static str,
-    pub sub: Option<&'static str>,
-    pub label: &'static str,
-    pub id: &'static str,
-    pub shortcut: Option<&'static str>,
+        craft_menu::Row::new(&path, self.id, crate::i18n::tr(self.label)).english(self.label)
+    }
 }
