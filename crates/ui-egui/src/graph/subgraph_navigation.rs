@@ -45,7 +45,6 @@ pub(crate) fn open_function(app: &mut MaterialCraftApp, node: materialcraft_engi
     if !matches!(target, FunctionTarget::Pattern { .. }) {
         app.pattern_editor = None;
     }
-    app.graph.drag = None;
     app.function_editor = Some(FunctionEditor::new(app.session.graph, node, target));
     app.ui.dock.focus(Panel::Graph);
 }
@@ -95,37 +94,31 @@ fn open_graph(app: &mut MaterialCraftApp, index: usize) -> bool {
 
 /// The breadcrumb's entries; each value is the number of `parent()` steps back to that level, and the open level
 /// never reports.
-#[allow(dead_code)] // P3(graph-w13): ge.A12
 pub(crate) fn crumbs(app: &MaterialCraftApp) -> Vec<craft_ui::contract::Entry<usize>> {
-    let _ = app;
-    todo!("ge.A12")
-}
-
-/// Returns `steps` levels up.
-#[allow(dead_code)] // P3(graph-w13): ge.A12
-pub(crate) fn back(app: &mut MaterialCraftApp, steps: usize) {
-    let _ = (app, steps);
-    todo!("ge.A12")
-}
-
-pub(crate) fn breadcrumb(app: &MaterialCraftApp) -> String {
-    let mut path: Vec<String> = app
-        .graph_parents
-        .iter()
-        .filter_map(|parent| {
-            app.session
-                .open_packages()
-                .into_iter()
-                .find(|entry| entry.0 == parent.document)
-                .and_then(|entry| entry.1.graphs.get(parent.graph))
-                .map(|graph| graph.name.clone())
-        })
-        .collect();
+    let mut path: Vec<(String, usize)> = Vec::new();
+    let levels =
+        usize::from(app.function_editor.as_ref().is_some_and(|editor| editor.target != FunctionTarget::Graph)) + usize::from(crate::pattern::active(app));
+    let parents = app.graph_parents.len();
+    for (index, parent) in app.graph_parents.iter().enumerate() {
+        if let Some(label) = app
+            .session
+            .open_packages()
+            .into_iter()
+            .find(|entry| entry.0 == parent.document)
+            .and_then(|entry| entry.1.graphs.get(parent.graph))
+            .map(|graph| graph.name.clone())
+        {
+            path.push((label, levels + (parents - index)));
+        }
+    }
     if let Ok(graph) = app.session.graph() {
-        path.push(graph.name.clone());
+        path.push((graph.name.clone(), levels));
         let owner = app.function_editor.as_ref().and_then(|editor| editor.node).or_else(|| app.pattern_editor.as_ref().map(|editor| editor.node));
         if let Some(node) = owner.and_then(|id| graph.node(id).ok()) {
-            path.push(super::node_label(node));
+            let pattern_is_below_function =
+                crate::pattern::active(app) && app.function_editor.as_ref().is_some_and(|editor| editor.target != FunctionTarget::Graph);
+            let owner_level = levels - usize::from(pattern_is_below_function);
+            path.push((super::node_label(node), owner_level));
         }
     }
     if let Some(editor) = &app.function_editor {
@@ -137,22 +130,34 @@ pub(crate) fn breadcrumb(app: &MaterialCraftApp) -> String {
                     .and_then(|editor| editor.current(app))
                     .and_then(|graph| graph.nodes.iter().find(|item| item.id == *node))
                     .map(|node| node.kind.label());
+                let pattern_level = usize::from(app.pattern_editor.is_some());
                 if let Some(label) = label {
-                    path.push(label.into());
+                    path.push((label.into(), pattern_level));
                 }
-                path.push(parameter.clone());
+                path.push((parameter.clone(), 0));
             }
             FunctionTarget::Dynamic(parameter) => {
                 let descriptor = editor
                     .node
                     .and_then(|id| app.session.graph().ok()?.node(id).ok())
                     .and_then(|node| materialcraft_engine::nodes::ParameterDescriptor::for_node(&app.session.pkg, node, parameter));
-                path.push(descriptor.map_or_else(|| parameter.clone(), |descriptor| descriptor.label));
+                path.push((descriptor.map_or_else(|| parameter.clone(), |descriptor| descriptor.label), 0));
             }
-            FunctionTarget::Base(parameter) => path.push(parameter.label().into()),
-            FunctionTarget::Parameter(parameter) if parameter != "function" => path.push(parameter.clone()),
+            FunctionTarget::Base(parameter) => path.push((parameter.label().into(), 0)),
+            FunctionTarget::Parameter(parameter) if parameter != "function" => path.push((parameter.clone(), 0)),
             _ => {}
         }
     }
-    path.join(" / ")
+    let last = path.len().saturating_sub(1);
+    path.into_iter().enumerate().map(|(index, (label, steps))| craft_ui::contract::Entry::new(if index == last { 0 } else { steps }, label)).collect()
+}
+
+/// Returns `steps` levels up.
+pub(crate) fn back(app: &mut MaterialCraftApp, steps: usize) {
+    for _ in 0..steps {
+        if !can_return(app) {
+            break;
+        }
+        parent(app);
+    }
 }
