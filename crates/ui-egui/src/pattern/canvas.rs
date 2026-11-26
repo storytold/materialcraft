@@ -5,10 +5,9 @@ use super::PatternEditor;
 use super::kind::FxMapKind;
 use super::pattern_editor::{PatternWire, wires};
 use crate::MaterialCraftApp;
-use crate::graph::{LibraryDrag, PortHit, wire_id};
-// PLAN: `graph/mod.rs` declares `annotations` private (`mod annotations;`); graph-w10 makes it `pub(crate)` for the
-// Function and FX-Map hosts.
 use crate::graph::annotations;
+use crate::graph::{LibraryDrag, PortHit, wire_id};
+use crate::i18n::tr;
 use craft_behavior::canvas::CanvasView;
 use craft_behavior::kurbo::{Point, Rect as DocRect, Vec2 as DocVec};
 use craft_behavior::value::EditEvent;
@@ -16,7 +15,7 @@ use craft_behavior::{Selection, SelectionModel as _, keyed};
 use craft_ui::canvas::{Canvas, NavigationOptions, ViewCommands, ViewRequest, ViewTarget, WheelScheme, canvas_space};
 use craft_ui::canvas_controls::CanvasGrid;
 use craft_ui::contract::{Bind, CollectionEvent, DropAt, DropKind, DropPayload, DropPlace, Props as _, Show as _, ShowCollection as _, ShowContainer as _};
-use craft_ui::graph::{AnnotationEvent, Node, NodeEvent, NodeGraph, NodeId, NodeKind, PortLabels, PortRef, PortSide, Wire, wire_controls};
+use craft_ui::graph::{AnnotationEvent, AnnotationRect, Node, NodeEvent, NodeGraph, NodeId, NodeKind, PortLabels, PortRef, PortSide, Wire, wire_controls};
 use craft_ui::runtime::env::with_env;
 use egui::{Pos2, Rect, Ui, Vec2, pos2, vec2};
 use materialcraft_engine::PatternEdit;
@@ -153,7 +152,6 @@ fn canvas(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) {
     let start_view = editor.view;
     let kind_refs: Vec<&dyn NodeKind<()>> = kinds.iter().map(|kind| kind as &dyn NodeKind<()>).collect();
     let wire_selection = &mut editor.selected_wires;
-    // PLAN: graph-w6 re-exports ge.A1's `graph_zoom` from `state/mod.rs` (`mod graph_camera` is private there).
     let shown = with_env(
         ui,
         |scope| {
@@ -235,7 +233,7 @@ fn canvas(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) {
         }
     }
 
-    publish(app, &graph, &kinds, &ids, &rects, &live, &view, &layers);
+    publish(app, &graph, &kinds, &ids, &rects, &live, &view, &response.annotation_rects);
     // A menu Space opened has no request this pass: it opens at its graph point.
     let pointer = Some(to_screen(&view, editor.menu_at));
     super::context_menu::show(app, editor, ui, &response, pointer);
@@ -276,7 +274,7 @@ fn publish(
     rects: &[Rect],
     live: &[PatternWire],
     view: &CanvasView,
-    layers: &annotations::AnnotationLayers,
+    annotation_rects: &[AnnotationRect],
 ) {
     let port_at = |at: usize, port: usize| rects.get(at).zip(kinds.get(at)).map(|(rect, kind)| rect.min + kind.port_offset(port, rect.size()));
     let screen_rects =
@@ -304,6 +302,5 @@ fn publish(
             Some((wire.wire.clone(), wire_controls(start, PortSide::Bottom, end, PortSide::Top).map(|point| to_screen(view, point))))
         })
         .collect();
-    let (frames, comments, pins) = annotations::screen_rects(layers, view);
-    app.graph.publish(view.rect, screen_rects, ports, wires, annotations::screen_rects(layers, view));
+    app.graph.publish(view.rect, screen_rects, ports, wires, annotations::screen_rects(annotation_rects));
 }

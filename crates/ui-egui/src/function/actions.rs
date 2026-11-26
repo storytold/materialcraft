@@ -52,8 +52,7 @@ pub(super) fn invoke_editor(app: &mut MaterialCraftApp, editor: &mut FunctionEdi
     if command.starts_with("graph.wire.") || (command == "edit.delete" && !wires.is_empty()) {
         let command = if command == "edit.delete" { "graph.wire.delete" } else { command };
         let target = editor.command_target().map(materialcraft_engine::SelectionTarget::Function);
-        // PLAN: graph-w8 owns the retyped edit API; this tree still has the Vec-mutating signature.
-        crate::graph::wire_actions::edit(app, &mut wires.clone(), target, command);
+        crate::graph::wire_actions::edit(app, &wires, &mut editor.selected_wires, target, command);
         return true;
     }
 
@@ -64,7 +63,7 @@ pub(super) fn invoke_editor(app: &mut MaterialCraftApp, editor: &mut FunctionEdi
     let parameters = editor.selection_parameters(command);
     crate::graph::selection_commands::invoke(app, &mut editor.selection, command, parameters);
     if matches!(command, "edit.selectAll" | "edit.selectNone" | "edit.paste" | "edit.pasteWithoutLinks" | "edit.duplicate" | "edit.duplicateWithoutLinks") {
-        editor.selected_wires = Selection::default();
+        editor.selected_wires = craft_behavior::Selection::default();
     }
     true
 }
@@ -75,7 +74,6 @@ const ANNOTATIONS: [&str; 3] = ["graph.comment.add", "graph.frame.add", "graph.p
 /// Runs the Function canvas menu's own actions on the open editor: `ui.function.copyInfo {id}`,
 /// `ui.function.openReference {id}`, `ui.function.setOutput {id}`, `ui.function.add {operation, at, snap}` and
 /// `ui.function.annotate {command, params}`. False for any other command or without an editor.
-// PLAN: graph-w8's `graph/actions.rs` routing calls this for `ui.function.*` while the Function editor is active (ge.A21).
 pub(crate) fn invoke_ui(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &str, params: &Value) -> bool {
     if !command.starts_with("ui.function.") {
         return false;

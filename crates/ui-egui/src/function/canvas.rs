@@ -8,9 +8,6 @@ use super::{FunctionEditor, FunctionTarget};
 use crate::MaterialCraftApp;
 use crate::graph::editor_target::EditorTarget;
 use crate::graph::{NODE_W, PortHit, WireRef, wire_id};
-// PLAN: `graph/mod.rs` declares `annotations` (graph-w10), `search` and `node_search` (graph-w11) private; they must be
-// `pub(crate)` for this host, as for the FX-Map host; graph-w11 also retypes `search::show` to ge.A10's
-// `(app, ui, SearchEditor)` (this tree has the base's `pub(super)` `(app, ui, &GraphCamera)` form).
 use crate::graph::annotations;
 use crate::graph::node_search::SearchWire;
 use crate::graph::search::{self, SearchEditor};
@@ -285,10 +282,9 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
     }
 
     let (screen_rects, ports, wires) = publish_geometry(&graph.nodes, &ids, &rects, &live, &view);
-    let annotation_rects = annotations::screen_rects(&layers, &view);
+    let annotation_rects = annotations::screen_rects(&response.annotation_rects);
     app.graph.publish(response.collection.response.rect, screen_rects, ports, wires, annotation_rects);
     search::show(app, ui, SearchEditor::Function(editor));
-    // PLAN: graph-w14 retypes `context_menu::show` to ge.A13's `(app, editor, ui, &NodeGraphResponse<FunctionValueEdit>, &[u32])`; this tree still has the base's `node: Option<u32>` form.
     super::context_menu::show(app, editor, ui, &response, &ids);
     finish(app, editor);
 }

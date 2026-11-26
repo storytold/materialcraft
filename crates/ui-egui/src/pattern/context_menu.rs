@@ -3,7 +3,7 @@
 use craft_menu::{CommandRef, Item, Node};
 use craft_ui::canvas::{ViewCommands, ViewRequest};
 use craft_ui::contract::overlay::Anchor;
-use craft_ui::contract::{Bind, CollectionEvent, Show as _, Trigger};
+use craft_ui::contract::{Bind, CollectionEvent, ShowContainer as _, Trigger};
 use craft_ui::graph::{AnnotationEvent, NodeGraphResponse};
 use craft_ui::menu::Menu;
 use egui::{Pos2, Ui};
@@ -54,7 +54,7 @@ fn rows(app: &MaterialCraftApp, editor: &PatternEditor) -> Vec<Node> {
         rows.push(item("ui.pattern.setRoot", json!({"id": id}), "Set as root"));
     }
     rows.push(Node::Separator);
-    rows.push(edit_menu::row("file.save", json!({})));
+    rows.push(edit_menu::row("file.save", "Save package", json!({})));
     rows.extend(edit_menu::selection_rows(editor.selection_parameters("edit.copy")));
     if let Some(row) = wire_actions::swap_row(app, Some(SelectionTarget::Pattern(editor.node))) {
         rows.push(row);

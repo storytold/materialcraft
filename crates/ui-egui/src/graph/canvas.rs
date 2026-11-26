@@ -16,7 +16,7 @@ use craft_ui::canvas::{Canvas, NavigationOptions, ViewCommands, ViewRequest, Vie
 use craft_ui::canvas_controls::CanvasGrid;
 use craft_ui::contract::{Bind, DropKind, DropPlace, Props as _, Show as _, ShowCollection as _, ShowContainer as _};
 use craft_ui::display::Text;
-use craft_ui::graph::{Node, NodeGraph, NodeGraphResponse, NodeId as GraphNodeId, NodeKind, PortRef, Wire, wire_controls};
+use craft_ui::graph::{AnnotationRect, Node, NodeGraph, NodeGraphResponse, NodeId as GraphNodeId, NodeKind, PortRef, Wire, wire_controls};
 use craft_ui::runtime::env::{Env, with_env};
 use craft_ui::style::TypeRole;
 use egui::{Pos2, Rect, Ui, pos2, vec2};
@@ -231,7 +231,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     if let Some((response, view)) = shown.inner.flatten() {
         app.graph.pending_views.clear();
         app.graph.selected_wires = wire_selection;
-        publish(app, &list, &view, &layers);
+        publish(app, &list, &view, &response.annotation_rects);
         app.graph.inspected_node = super::node_selection::inspected(&app.session.selection, app.graph.inspected_node);
         canvas_events::apply(app, ui, &response, &list.ids);
         app.graph.inspected_node = super::node_selection::inspected(&app.session.selection, app.graph.inspected_node);
@@ -243,7 +243,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
 
 /// Stores what the canvas showed this pass in screen points, for `ui.inspect`, scripted input and the event mapping:
 /// the node cards, each node's ports in its kind's order, the wires' control points and the annotations' rects.
-fn publish(app: &mut MaterialCraftApp, list: &NodeList, view: &CanvasView, layers: &AnnotationLayers) {
+fn publish(app: &mut MaterialCraftApp, list: &NodeList, view: &CanvasView, annotation_rects: &[AnnotationRect]) {
     let screen_rect = |rect: &Rect| Rect::from_two_pos(to_screen(view, rect.min), to_screen(view, rect.max));
     let rects = list.ids.iter().zip(&list.positions).map(|(id, rect)| (*id, screen_rect(rect))).collect();
     let mut ports = Vec::new();
@@ -266,7 +266,7 @@ fn publish(app: &mut MaterialCraftApp, list: &NodeList, view: &CanvasView, layer
             Some((reference.clone(), wire_controls(from, from_side, to, to_side).map(|at| to_screen(view, at))))
         })
         .collect();
-    app.graph.publish(view.rect, rects, ports, wires, annotations::screen_rects(layers, view));
+    app.graph.publish(view.rect, rects, ports, wires, annotations::screen_rects(annotation_rects));
 }
 
 /// The failed and missing node counts at the canvas's bottom end corner, failures lowest; captions over the view,

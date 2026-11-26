@@ -20,11 +20,11 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     };
     let state = app.shortcuts.get_or_insert_with(DialogState::new);
     let mut keymap = (*keymap).clone();
-    let options = Options {
-        title: Some(tr("Shortcuts").to_owned()),
-        editable: false,
-        summary: false,
-        fixed: [
+    let mut options = Options::default();
+    options.title = Some(tr("Shortcuts").to_owned());
+    options.editable = false;
+    options.summary = false;
+    options.fixed = [
             ("Graph", "Node search (over the graph)", "Space / Tab"),
             ("Graph", "Frame all / the selection", "F"),
             ("Graph", "Zoom the graph and the views", "Wheel"),
@@ -35,10 +35,8 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
             ("3D View", "Turn the environment", "Shift+drag (3D view)"),
         ]
         .into_iter()
-        .map(|(group, label, keys)| FixedRow::new(tr(group), tr(label), keys))
-        .collect(),
-        ..Options::default()
-    };
+    .map(|(group, label, keys)| FixedRow::new(tr(group), tr(label), keys))
+    .collect();
     let _ = ShortcutsDialog::new(&mut keymap).options(&options).show(ui, state);
     if !state.is_open() {
         app.shortcuts = None;

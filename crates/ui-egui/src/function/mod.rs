@@ -13,7 +13,7 @@ pub use function_editor::FunctionEditor;
 pub use function_target::FunctionTarget;
 pub(crate) use panel::show_graph;
 
-mod actions;
+pub(crate) mod actions;
 mod node_face;
 mod panel;
 

@@ -18,10 +18,6 @@ use crate::MaterialCraftApp;
 use crate::explorer::ExplorerTarget;
 use crate::graph_drag_payload::GraphDragPayload;
 
-/// How close to a port, in screen points, a reverse wire's release counts as aimed at it: a release there opens no
-/// search (`input.rs:161` of the replaced dispatch).
-const PORT_REACH: f32 = 12.0;
-
 /// The framework selection of the session's `selected` nodes: `NodeId(i)` is the node at position `i` of `nodes`, the
 /// one list the pass builds from `graph.nodes`. The last selected node is the lead, the first the anchor.
 pub(super) fn given_selection(selected: &[NodeId], nodes: &[NodeId]) -> Selection<GraphNodeId> {
@@ -124,11 +120,11 @@ fn item(app: &mut MaterialCraftApp, nodes: &[NodeId], id: NodeId, event: &NodeEv
             }
             app.run("graph.connect", params);
         }
-        NodeEvent::WireEnded { from, detached, loose: Some(at), .. } => match detached.and_then(|wire| wire_ref(app, wire)) {
+        NodeEvent::WireEnded { from, detached, loose: Some(at), refused, .. } => match detached.and_then(|wire| wire_ref(app, wire)) {
             Some((node, port)) => {
                 app.run("graph.disconnect", json!({"to": node.0, "toPort": port}));
             }
-            None => loose_end(app, nodes, *from, *at),
+            None => loose_end(app, nodes, *from, *at, refused.is_some()),
         },
         NodeEvent::Clicked { port: None, .. } => {
             // A click on the node already shown, or one that deselected it, keeps the current preview.
@@ -146,9 +142,9 @@ fn item(app: &mut MaterialCraftApp, nodes: &[NodeId], id: NodeId, event: &NodeEv
 }
 
 /// A wire let go where no port took it: from an output, the node search for a node it feeds; from an input (a
-/// reverse wire), the search for a node whose output feeds it, unless the release was aimed at a port that refused
-/// it. Both only inside the canvas and with the preference on.
-fn loose_end(app: &mut MaterialCraftApp, nodes: &[NodeId], from: PortRef, at: Pos2) {
+/// reverse wire), the search for a node whose output feeds it, unless it was released over a port that `refused` it.
+/// Both only inside the canvas and with the preference on.
+fn loose_end(app: &mut MaterialCraftApp, nodes: &[NodeId], from: PortRef, at: Pos2, refused: bool) {
     let Some((end, output)) = port_ref(app, nodes, from) else { return };
     let screen = to_screen(app, at);
     if !app.ui.prefs.wire_drop_opens_node_search || !app.graph.view.contains(screen) {
@@ -159,9 +155,7 @@ fn loose_end(app: &mut MaterialCraftApp, nodes: &[NodeId], from: PortRef, at: Po
     // feeds it, so the ends follow those docs and the behaviour stays the sheet's.
     let wire = if output {
         SearchWire::To(end)
-    // PLAN: graph-w10's sheet removes `port_hit::nearest`; this 12-point refusal (sheet note 7e) is its one reader,
-    // so graph-w10 keeps it.
-    } else if super::port_hit::nearest(&app.graph.ports, screen, PORT_REACH).is_none() {
+    } else if !refused {
         SearchWire::From(end)
     } else {
         return;

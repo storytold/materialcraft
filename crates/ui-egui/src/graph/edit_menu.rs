@@ -1,8 +1,8 @@
 use serde_json::Value;
 
-/// Builds one edit command row with its parameters.
-pub(crate) fn row(command: &str, params: Value) -> craft_menu::Node {
-    craft_menu::Node::Item(craft_menu::Item::new(craft_keymap::CommandRef::with_params(command, params), crate::i18n::tr(label(command))))
+/// Builds one edit command row named `label` (English, translated here) with its parameters.
+pub(crate) fn row(command: &str, label: &str, params: Value) -> craft_menu::Node {
+    craft_menu::Node::Item(craft_menu::Item::new(craft_keymap::CommandRef::with_params(command, params), crate::i18n::tr(label)))
 }
 
 /// Builds the selection edit rows in their established menu order.
@@ -30,15 +30,4 @@ pub(crate) fn selection_rows(params: Value) -> Vec<craft_menu::Node> {
         rows.push(craft_menu::Node::Item(craft_menu::Item::new(craft_keymap::CommandRef::with_params(command, parameters), crate::i18n::tr(label))));
     }
     rows
-}
-
-fn label(command: &str) -> &'static str {
-    match command {
-        "graph.pin.add" => "Add Navigation pin",
-        "file.save" => "Save package",
-        "ui.graph.previousPin" => "Previous pin",
-        "ui.graph.nextPin" => "Next pin",
-        "graph.node.edit" => "Edit graph",
-        _ => command,
-    }
 }

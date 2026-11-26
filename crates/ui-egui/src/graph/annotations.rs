@@ -1,27 +1,19 @@
 //! The annotations of the active editor: backdrops, notes and markers on the framework node graph.
 
 use craft_behavior::EditEvent;
-use craft_behavior::canvas::CanvasView;
-use craft_behavior::kurbo::Point;
-use craft_ui::graph::{AnnotationEvent, AnnotationKey, Backdrop, Marker, Note};
+use craft_ui::graph::{AnnotationEvent, AnnotationKey, AnnotationRect, Backdrop, Marker, Note};
 use craft_ui::style::DataColor;
-use egui::{Color32, Pos2, Rect, Vec2, pos2, vec2};
+use egui::{Color32, Rect, Vec2, pos2, vec2};
 use materialcraft_engine::core::{CanvasAnnotations, Comment, Frame, Pin, linear_to_srgb};
 use materialcraft_engine::graph_grid::snap_position;
 use materialcraft_engine::{AnnotationSelection, FrameContents};
 use serde_json::json;
 
+use super::graph_view::AnnotationRects;
 use crate::MaterialCraftApp;
 
-/// The least size a frame resize leaves, in graph units.
-const FRAME_MIN: Vec2 = vec2(10.0, 10.0);
 /// The height a note covers before its text is laid out, in graph units, so a comment with no text still takes a press.
 const NOTE_HEIGHT: f32 = 16.0;
-/// The side of a pin in graph units, for the published rects `ui.inspect` and scripted clicks read; its bottom middle
-/// is the pin's tip, as the framework's marker.
-// shortcut: the framework sizes the pin by its icon token and adds the label, which this cannot measure; publish the
-// framework's marker rect once the node graph reports its parts' rects.
-const PIN_SIDE: f32 = 18.0;
 /// A move or resize shorter than this, in graph units, commits nothing.
 const SLOP: f32 = 0.5;
 
@@ -159,12 +151,13 @@ pub(crate) fn apply(app: &mut MaterialCraftApp, events: &[AnnotationEvent]) {
                 EditEvent::Cancel { .. } => app.graph.moving = None,
                 _ => {}
             },
+            // The framework reports the rect at the press plus the drag, so the preview and the commit take it as it is;
+            // the commit is the one edit, and its undo returns to the press rect.
             AnnotationEvent::Resize { key: AnnotationKey::Backdrop(id), edit, .. } => match edit {
-                EditEvent::Update { value, .. } => app.graph.resizing = resized(app, *id, *value).map(|rect| (*id, rect)),
+                EditEvent::Update { value, .. } => app.graph.resizing = Some((*id, *value)),
                 EditEvent::Commit { after, .. } | EditEvent::Set { after, .. } => {
-                    let rect = resized(app, *id, *after);
                     app.graph.resizing = None;
-                    committed |= rect.is_some_and(|rect| commit_resize(app, *id, rect));
+                    committed |= commit_resize(app, *id, *after);
                 }
                 EditEvent::Cancel { .. } => app.graph.resizing = None,
                 _ => {}
@@ -177,15 +170,19 @@ pub(crate) fn apply(app: &mut MaterialCraftApp, events: &[AnnotationEvent]) {
     }
 }
 
-/// The frames', comments' and pins' rects in screen points, for `GraphView::publish`.
-pub(crate) fn screen_rects(layers: &AnnotationLayers, view: &CanvasView) -> (Vec<(u64, Rect)>, Vec<(u64, Rect)>, Vec<(u64, Rect)>) {
-    let point = |p: Pos2| Point::new(f64::from(p.x), f64::from(p.y));
-    let screen = |rect: Rect| Rect::from_two_pos(view.to_screen(point(rect.min)), view.to_screen(point(rect.max)));
-    (
-        layers.frames.iter().map(|frame| (frame.id, screen(frame_rect(frame)))).collect(),
-        layers.comments.iter().map(|comment| (comment.id, screen(note_rect(comment)))).collect(),
-        layers.pins.iter().map(|pin| (pin.id, screen(pin_rect(pin)))).collect(),
-    )
+/// The frames', comments' and pins' rects where the node graph showed their parts this pass, in screen points, for
+/// `GraphView::publish`.
+pub(crate) fn screen_rects(shown: &[AnnotationRect]) -> AnnotationRects {
+    let mut rects = AnnotationRects::default();
+    for part in shown {
+        match part.key {
+            AnnotationKey::Backdrop(id) => rects.0.push((id, part.screen)),
+            AnnotationKey::Note(id) => rects.1.push((id, part.screen)),
+            AnnotationKey::Marker(id) => rects.2.push((id, part.screen)),
+            _ => {}
+        }
+    }
+    rects
 }
 
 /// Selects `key`, or clears the selection for `None`. Selecting a pin also leaves the explorer's inspected folder and
@@ -239,19 +236,6 @@ fn commit_resize(app: &mut MaterialCraftApp, id: u64, rect: Rect) -> bool {
     true
 }
 
-/// The rect of frame `id` resized by the drag the framework's `rect` reports, no smaller than [`FRAME_MIN`].
-///
-/// The framework adds the drag since the press to the rect it was handed this pass, which is the resize preview
-/// while one runs, so the drag is `rect`'s size less the handed size, and it applies to the stored rect.
-// PLAN: graph-w5's `Layers::gesture` resizes `self.backdrops`' rect, which is the host's preview mid-drag; it should
-// keep the rect from the press (Begin) so hosts need not undo the sum; this inverts it, exact unless the framework's
-// `backdrop_min` clamped the reported size.
-fn resized(app: &MaterialCraftApp, id: u64, rect: Rect) -> Option<Rect> {
-    let stored = frame_rect(&find_frame(app, id)?);
-    let handed = app.graph.resizing.filter(|(held, _)| *held == id).map_or(stored, |(_, preview)| preview);
-    Some(Rect::from_min_size(stored.min, (stored.size() + rect.size() - handed.size()).max(FRAME_MIN)))
-}
-
 fn find_frame(app: &MaterialCraftApp, id: u64) -> Option<Frame> {
     app.graph.annotation_target.items(&app.session).ok()?.frames.into_iter().find(|frame| frame.id == id)
 }
@@ -263,10 +247,6 @@ fn frame_rect(frame: &Frame) -> Rect {
 /// A comment's rect: its stored width, which its text wraps to; the framework grows the height to the text.
 fn note_rect(comment: &Comment) -> Rect {
     Rect::from_min_size(pos2(comment.pos[0], comment.pos[1]), vec2(comment.size[0], NOTE_HEIGHT))
-}
-
-fn pin_rect(pin: &Pin) -> Rect {
-    Rect::from_min_size(pos2(pin.pos[0] - PIN_SIDE / 2.0, pin.pos[1] - PIN_SIDE), Vec2::splat(PIN_SIDE))
 }
 
 /// A frame's stored linear colour as the sRGB fill it is shown with; alpha is the fill opacity.

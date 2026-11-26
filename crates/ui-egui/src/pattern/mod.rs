@@ -1,4 +1,4 @@
-mod actions;
+pub(crate) mod actions;
 mod canvas;
 mod context_menu;
 mod kind;

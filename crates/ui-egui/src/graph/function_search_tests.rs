@@ -6,7 +6,11 @@ use materialcraft_engine::new_session;
 use serde_json::json;
 
 use super::frames::Frames;
-use crate::graph::{editor_target::EditorTarget, node_search::SearchWire, search::{SearchEditor, candidates, open}};
+use crate::graph::{
+    editor_target::EditorTarget,
+    node_search::{SearchPick, SearchWire},
+    search::{candidates, open},
+};
 
 fn press(key: Key) -> Event {
     Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
@@ -156,13 +160,13 @@ fn function_search_lists_each_tagged_library_function_once() {
     let editor = frames.app.function_editor.as_ref().unwrap();
 
     for text in ["TaggedSearchFixture", "TaggedSearchFixture maths", "TaggedSearchFixture constant"] {
-        let candidates = candidates(&frames.app, &SearchEditor::Function(editor), text);
+        let candidates = candidates(&frames.app, Some(editor), text);
 
         assert_eq!(candidates.len(), 2, "one result per package, matching every category: {text}");
         let sources: BTreeSet<_> = candidates
             .iter()
-            .map(|candidate| match &candidate.entry {
-                crate::function::library::FunctionLibraryDrag::Instance { package, .. } => package.as_str(),
+            .map(|candidate| match &candidate.pick {
+                SearchPick::Function(crate::function::library::FunctionLibraryDrag::Instance { package, .. }) => package.as_str(),
                 _ => panic!("the fixture must be a library function"),
             })
             .collect();
@@ -170,7 +174,6 @@ fn function_search_lists_each_tagged_library_function_once() {
     }
 }
 
-#[test]
 #[test]
 fn processor_search_and_toolbar_keep_both_samplers_available() {
     use materialcraft_engine::{FunctionGraphTarget, core::NodeId};
@@ -183,12 +186,12 @@ fn processor_search_and_toolbar_keep_both_samplers_available() {
         let target = FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
         let parent_count = frames.app.session.graph().unwrap().nodes.len();
         let mut editor = frames.app.function_editor.take().unwrap();
-        let candidates = candidates(&frames.app, &SearchEditor::Function(&mut editor), "sample");
+        let candidates = candidates(&frames.app, Some(&editor), "sample");
         frames.app.function_editor = Some(editor);
         for operation in ["samplelum", "samplecol"] {
             assert!(
-                candidates.iter().any(|candidate| matches!(&candidate.entry,
-                crate::function::library::FunctionLibraryDrag::Operation(found) if found == operation)),
+                candidates.iter().any(|candidate| matches!(&candidate.pick,
+                SearchPick::Function(crate::function::library::FunctionLibraryDrag::Operation(found)) if found == operation)),
                 "{definition}: {operation}"
             );
 

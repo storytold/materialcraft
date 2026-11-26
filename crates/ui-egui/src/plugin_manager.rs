@@ -1,7 +1,7 @@
 //! Tools ▸ Plugin Manager: the list is empty until MaterialCraft supports plugins.
 
 use craft_behavior::{ColumnKey, ColumnWidth};
-use craft_ui::contract::{Bind, ColumnSpec, Show as _, ShowCollection as _, ShowContainer as _, TooltipSpec};
+use craft_ui::contract::{Bind, ColumnSpec, Props as _, Show as _, ShowCollection as _, ShowContainer as _, TooltipSpec};
 use craft_ui::{buttons::Button, layout_components::Row, list::ListRow, table::Table, text::TextField};
 
 use crate::MaterialCraftApp;
@@ -12,9 +12,9 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
     if !app.ui.windows.plugin_manager {
         return;
     }
-    let filter = TextField::search("Filter", craft_ui::contract::bind_tracked!(app.ui => plugin_filter));
+    let filter = TextField::search(tr("Filter"), Bind::bound(&mut app.ui.plugin_filter));
     let columns = vec![
-        ColumnSpec::new(ColumnKey::new("plugin"), tr("Plugins"), ColumnWidth::Fill { weight: 1.0 }),
+        ColumnSpec::new(ColumnKey::new("plugin"), tr("Plugins"), ColumnWidth::fill(1.0)),
         ColumnSpec::new(ColumnKey::new("loaded"), tr("Loaded"), ColumnWidth::Fixed(110.0)),
     ];
     let reason = tr("Plugins are not supported yet");

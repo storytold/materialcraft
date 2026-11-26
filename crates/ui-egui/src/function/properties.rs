@@ -1,4 +1,5 @@
 use crate::{MaterialCraftApp, graph::node_selection, i18n::tr};
+use craft_ui::contract::Show as _;
 use egui::Ui;
 use materialcraft_engine::{
     core::{FunctionGraph, Value},
@@ -31,7 +32,7 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
     let output = materialcraft_engine::nodes::function::output_node(graph).is_some_and(|n| n.id == id);
     let target = app.function_editor.as_ref().and_then(|e| e.command_target());
     let Some(target) = target else { return false };
-    craft_ui::patterns::Inspector::new(tr("Properties")).target(id).header(tr(label)).show(ui, |ui, _| {
+    let _ = craft_ui::patterns::panels::Inspector::new(tr("Properties")).target(id).header(tr(label)).show(ui, |ui, _| {
         if output {
             let _ = craft_ui::display::Text::new(tr("Output node")).show(ui);
         }
@@ -40,16 +41,16 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
             let _ = craft_ui::display::Text::new(format!("{}: {package}", tr("Source"))).show(ui);
             let _ = craft_ui::display::Text::new(tr(&instance.graph)).show(ui);
             if let Some(Err(error)) = &source {
-                let _ = craft_ui::display::Text::new(error).tone(craft_theme::variant::Tone::Bad).show(ui);
+                let _ = craft_ui::display::Text::new(error.as_str()).tone(craft_theme::variant::Tone::Bad).show(ui);
             }
         }
         if missing {
             let _ = craft_ui::display::Text::new(tr("Missing function operation")).tone(craft_theme::variant::Tone::Bad).show(ui);
             return;
         }
-        let Some(mut value) = value else { return };
+        let Some(value) = &value else { return };
         let events = if (op.starts_with("get_") || op == "isdefined")
-            && let Value::Text(name) = &value
+            && let Value::Text(name) = value
         {
             let entries: Vec<_> = target
                 .variables(&app.session, id)
@@ -64,7 +65,7 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
                 .show(ui);
             output.edit.events.map(Value::Text)
         } else {
-            crate::value_editor::show(ui, &value)
+            crate::value_editor::show(ui, value)
         };
         let _ = crate::edit_commit::send(
             app,

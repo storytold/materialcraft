@@ -1,4 +1,5 @@
 use crate::{MaterialCraftApp, i18n::tr};
+use craft_ui::contract::Show as _;
 use egui::Ui;
 use materialcraft_engine::core::Value;
 

@@ -119,6 +119,7 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
                                 ctx.open_url(egui::OpenUrl::new_tab(release.html_url.clone()));
                             }
                         }
+                        _ => {}
                     }
                 }
             }
@@ -165,8 +166,10 @@ pub(crate) fn scripted_status(app: &mut MaterialCraftApp, status: &str, version:
             "checking" => {
                 let (tx, rx) = channel();
                 app.updates_rt.held_check = Some(tx);
+                // The source is shared across threads; the lock makes the receiver one.
+                let rx = std::sync::Mutex::new(rx);
                 Arc::new(move || {
-                    let _ = rx.recv();
+                    let _ = rx.lock().map(|rx| rx.recv());
                     Ok(None)
                 })
             }

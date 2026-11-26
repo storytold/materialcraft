@@ -3,8 +3,8 @@
 use craft_behavior::IconId;
 use craft_ui::{
     graph::{NodeFooter, NodeHeader, NodeKind, NodeShape, PortDirection},
-    primitives::{Draw, IconSpec, Priority, SurfaceKind, TextRun, ThumbRequest},
-    style::{Corners, DataColor, StyleCx},
+    primitives::{Draw, IconSpec, Priority, TextRun, ThumbRequest},
+    style::{Corners, DataColor, StyleCx, SurfaceKind},
 };
 use materialcraft_engine::{core::Node, eval::Port, nodes::PortKind};
 

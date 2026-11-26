@@ -1,3 +1,4 @@
+use craft_ui::contract::ShowContainer as _;
 use egui::{Pos2, Ui};
 use materialcraft_engine::core::NodeId;
 use serde_json::{Value, json};
@@ -17,7 +18,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, graph: &craft_ui::gr
     let request = graph.collection.menu.as_ref();
     let event_at = graph.collection.events.iter().rev().find_map(|event| match event {
         craft_ui::contract::CollectionEvent::ContextMenu(request) => Some((Some(request.key), request.at)),
-        craft_ui::contract::CollectionEvent::EmptyContextMenu { at } => Some((None, *at)),
+        craft_ui::contract::CollectionEvent::EmptyContextMenu { at, .. } => Some((None, *at)),
         _ => None,
     });
     let target_index = event_at.and_then(|(node, _)| node).or_else(|| request.map(|request| request.key));
@@ -35,8 +36,7 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, graph: &craft_ui::gr
         app.run("graph.select", json!({"ids": selection}));
     }
     let screen = event_at.map(|(_, at)| at).or_else(|| request.map(|request| request.at)).unwrap_or(app.graph.view.min);
-    let view = crate::annotation::camera(app).view(app.graph.view);
-    let point = view.to_doc(screen);
+    let point = crate::annotation::camera(app).to_doc(screen);
     let at = Pos2::new(point.x as f32, point.y as f32);
     let instance = target.is_some_and(|id| app.session.graph().ok().and_then(|graph| graph.node(id).ok()).is_some_and(|node| node.def == "graph_instance"));
     let rows = if instance { target.map_or_else(Vec::new, |node| super::instance_context_menu::rows(app, node, at)) } else { rows(app, target, at) };

@@ -68,7 +68,7 @@ pub(crate) fn available_operations(app: &MaterialCraftApp) -> Vec<&'static str> 
         .unwrap_or_default()
 }
 
-pub(super) fn insert(app: &mut MaterialCraftApp, editor: &mut super::FunctionEditor, entry: &FunctionLibraryDrag, at: [f32; 2]) {
+pub(crate) fn insert(app: &mut MaterialCraftApp, editor: &mut super::FunctionEditor, entry: &FunctionLibraryDrag, at: [f32; 2]) {
     match entry {
         FunctionLibraryDrag::Operation(operation) => {
             editor.edit(app, FunctionEdit::Add { operation: operation.clone(), at, snap: app.ui.prefs.snap_to_grid }, false)

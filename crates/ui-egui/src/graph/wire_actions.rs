@@ -93,17 +93,18 @@ pub fn swap_selected_wires(app: &mut MaterialCraftApp) -> bool {
     invoke_selected(app, "graph.wire.swap")
 }
 
-/// Builds the swap command row when exactly two selected links can be swapped.
-pub(crate) fn swap_row(app: &MaterialCraftApp, target: materialcraft_engine::SelectionTarget) -> Option<Node> {
+/// Builds the swap command row when exactly two selected links of `target` (`None`: the material graph) can be swapped.
+pub(crate) fn swap_row(app: &MaterialCraftApp, target: Option<materialcraft_engine::SelectionTarget>) -> Option<Node> {
     let refs = match &target {
-        materialcraft_engine::SelectionTarget::Function(_) => app.function_editor.as_ref()?.selected_wire_refs(app),
-        materialcraft_engine::SelectionTarget::Pattern(_) => app.pattern_editor.as_ref()?.selected_wire_refs(app),
+        Some(materialcraft_engine::SelectionTarget::Function(_)) => app.function_editor.as_ref()?.selected_wire_refs(app),
+        Some(materialcraft_engine::SelectionTarget::Pattern(_)) => app.pattern_editor.as_ref()?.selected_wire_refs(app),
+        None => app.graph.selected_wire_refs(),
     };
-    can_swap(app, &refs, Some(&target)).then(|| Item::new(CommandRef::new("graph.wire.swap"), tr("Swap links")).into())
+    can_swap(app, &refs, target.as_ref()).then(|| Item::new(CommandRef::new("graph.wire.swap"), tr("Swap links")).into())
 }
 
 /// Shows the context menu for a link, with actions routed through the command board.
-pub(super) fn wire_menu(app: &mut MaterialCraftApp, ui: &mut egui::Ui, opener: &egui::Response, wire: WireRef, at: Pos2) {
+pub(crate) fn wire_menu(app: &mut MaterialCraftApp, ui: &mut egui::Ui, opener: &egui::Response, wire: WireRef, at: Pos2) {
     let selected = app.graph.selected_wire_refs();
     let count = selected.len();
     let wires = if count < 2 { vec![wire.clone()] } else { selected };
@@ -119,8 +120,8 @@ pub(super) fn wire_menu(app: &mut MaterialCraftApp, ui: &mut egui::Ui, opener: &
             .function_editor
             .as_ref()
             .and_then(|editor| editor.command_target())
-            .and_then(|target| swap_row(app, materialcraft_engine::SelectionTarget::Function(target))),
-        EditorTarget::Pattern => app.pattern_editor.as_ref().and_then(|editor| swap_row(app, materialcraft_engine::SelectionTarget::Pattern(editor.node))),
+            .and_then(|target| swap_row(app, Some(materialcraft_engine::SelectionTarget::Function(target)))),
+        EditorTarget::Pattern => app.pattern_editor.as_ref().and_then(|editor| swap_row(app, Some(materialcraft_engine::SelectionTarget::Pattern(editor.node)))),
         EditorTarget::Material => None,
     } {
         rows.push(row);

@@ -49,7 +49,7 @@ pub(crate) fn pin_target(app: &MaterialCraftApp, forward: bool) -> Option<Canvas
     let graph = app.graph.annotation_target.items(&app.session).ok()?;
     let view = crate::annotation::camera(app);
     let center = view.center;
-    let current = graph.pins.iter().position(|pin| (pin.pos[0] - center.x).abs() < 0.1 && (pin.pos[1] - center.y).abs() < 0.1);
+    let current = graph.pins.iter().position(|pin| (f64::from(pin.pos[0]) - center.x).abs() < 0.1 && (f64::from(pin.pos[1]) - center.y).abs() < 0.1);
     let count = graph.pins.len();
     if count == 0 {
         return None;
@@ -61,7 +61,9 @@ pub(crate) fn pin_target(app: &MaterialCraftApp, forward: bool) -> Option<Canvas
         (None, false) => count - 1,
     };
     let pin = graph.pins.get(index)?;
-    Some(CanvasView { center: craft_behavior::kurbo::Point::new(f64::from(pin.pos[0]), f64::from(pin.pos[1])), ..view })
+    let mut target = view;
+    target.center = craft_behavior::kurbo::Point::new(f64::from(pin.pos[0]), f64::from(pin.pos[1]));
+    Some(target)
 }
 
 /// Runs a graph action, including command parameters and editor-specific routing.

@@ -1,4 +1,5 @@
 use crate::{MaterialCraftApp, function::FunctionTarget, i18n::tr};
+use craft_ui::contract::{Show as _, ShowContainer as _};
 use egui::Ui;
 use materialcraft_engine::core::{FunctionGraph, Value};
 
@@ -19,15 +20,16 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     };
     let inspected = crate::graph::node_selection::inspected(&editor.selection, editor.inspected_node);
     let node_data = graph.nodes.iter().find(|node| Some(node.id) == inspected).cloned();
+    let root = graph.root;
     let mut edits = Vec::new();
     let mut function_target = None;
-    let mut inspector = craft_ui::patterns::Inspector::new(tr("FX-Map")).empty(tr("Select a node to edit its parameters"));
+    let mut inspector = craft_ui::patterns::panels::Inspector::new(tr("FX-Map")).empty(tr("Select a node to edit its parameters"));
     if let Some(node) = &node_data {
         inspector = inspector.target(node.id).header(tr(node.kind.label()));
     }
-    inspector.show(ui, |ui, _| {
+    let _ = inspector.show(ui, |ui, _| {
         let Some(node) = &node_data else { return };
-        if graph.root == Some(node.id) {
+        if root == Some(node.id) {
             let _ = craft_ui::display::Text::new(tr("Root node")).show(ui);
         }
         if let Some(definition) = materialcraft_engine::nodes::pattern::definition(node.kind) {

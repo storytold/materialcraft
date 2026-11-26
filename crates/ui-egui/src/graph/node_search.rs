@@ -4,7 +4,7 @@ use egui::Pos2;
 pub(crate) type PortKey = (materialcraft_engine::core::NodeId, String);
 
 /// The wire direction associated with a node search.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum SearchWire {
     /// The new node's output feeds this input.
     From(PortKey),
@@ -34,7 +34,7 @@ pub(crate) struct SearchCandidate {
 
 /// The state of the node search shared by graph editors.
 #[derive(Clone, Debug)]
-pub(super) struct NodeSearch {
+pub(crate) struct NodeSearch {
     pub(crate) at: Pos2,
     pub(crate) text: String,
     pub(crate) wire: Option<SearchWire>,

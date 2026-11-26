@@ -21,6 +21,8 @@ const AUTOSAVE: &str = "general.autosave";
 #[cfg(not(target_arch = "wasm32"))]
 const VERSIONS: &str = "general.autosaveVersions";
 const PREVIEW: &str = "general.previewSize";
+/// The Brightness options' ids: the index of each `appearance::brightness_choices` entry.
+const BRIGHTNESS_IDS: [&str; 4] = ["0", "1", "2", "3"];
 
 /// The most undo steps the history slider reaches
 const MAX_UNDO_STEPS: f64 = 10_000.0;
@@ -52,9 +54,8 @@ fn brightness(appearance: &AppChoice) -> usize {
 
 pub(super) fn page<'a>(prefs: &'a Prefs, texts: &'a Texts) -> PageSpec<'a> {
     let languages = crate::i18n::LANGUAGES.iter().map(|language| Entry::new(language.code, language.name)).collect();
-    let brightness_choices = crate::appearance::brightness_choices();
-    let brightness_value = brightness(&prefs.appearance).to_string();
-    let brightness_options = crate::appearance::brightness_labels().iter().enumerate().map(|(index, label)| Entry::new(index.to_string(), tr(label))).collect();
+    let brightness_value = BRIGHTNESS_IDS.get(brightness(&prefs.appearance)).copied().unwrap_or(BRIGHTNESS_IDS[0]);
+    let brightness_options = BRIGHTNESS_IDS.iter().zip(crate::appearance::brightness_labels()).map(|(id, label)| Entry::new(*id, label)).collect();
     let preview_value = crate::preview_resolution::SIZES
         .iter()
         .position(|size| *size == prefs.preview_size)

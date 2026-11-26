@@ -88,7 +88,7 @@ pub(super) fn rows(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
 
     let catalog = crate::library::entries(app);
     let store = app.thumbs.library_thumbs(&ctx);
-    let source = app.thumbs.library_source(&app.session.library);
+    let source = app.thumbs.library_source(&app.session.library, app.session.library_generation());
     let request = ThumbRequest::for_cell(ICON_SIDE, ctx.pixels_per_point());
 
     // The recorders report the chords of their own pass's keys, so a second pass of a frame records nothing again
