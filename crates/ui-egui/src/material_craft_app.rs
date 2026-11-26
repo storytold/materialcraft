@@ -5,6 +5,7 @@ use crate::{
 use materialcraft_engine::Session;
 use serde_json::Value;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 /// One message of the outbox: `step` posts each to the window's notice center and empties the outbox.
 pub struct Toast {
@@ -117,6 +118,10 @@ pub struct MaterialCraftApp {
     /// The Function JSON being edited: the node, the text and the text last applied
     #[allow(dead_code)] // P3(panels-w10): pn.A30
     pub(crate) function_json: Option<(materialcraft_engine::core::NodeId, String, String)>,
+    /// The Levels editor's histograms, per cook result and output port
+    // PLAN: pn.A30 lists panels-w6..w10 as readers, and no sheet names the one that reads `levels_histograms`
+    #[allow(dead_code)]
+    pub(crate) levels_histograms: std::collections::HashMap<(u64, usize), Arc<craft_imaging::ui::histogram::HistogramData>>,
     /// The held action waiting for the Save dialog the unsaved-changes prompt opened
     pub(crate) awaiting_save: Option<crate::unsaved::Guarded>,
     /// The window buttons to draw when the app draws the window frame; `None` while the desktop draws it (desktop only)
