@@ -1,6 +1,6 @@
-use super::{NODE_W, node_rect, shows_preview};
 use crate::MaterialCraftApp;
-use egui::{Pos2, Rect, pos2, vec2};
+use crate::graph::NODE_W;
+use egui::{Pos2, pos2};
 use serde_json::json;
 
 pub(super) fn view_center(app: &MaterialCraftApp) -> Pos2 {
@@ -28,29 +28,6 @@ pub fn add_node_near_selection(app: &mut MaterialCraftApp, def: &str) {
     };
 
     app.run("graph.node.add", params);
-}
-
-/// Frame the graph (or the selection) in the view
-pub(super) fn frame(app: &mut MaterialCraftApp, view: Rect, only_selection: bool) {
-    let thumbs = app.ui.prefs.thumbnails;
-    let Ok(g) = app.session.graph() else { return };
-
-    let mut r = Rect::NOTHING;
-    for n in &g.nodes {
-        if only_selection && !app.session.selection.contains(&n.id) {
-            continue;
-        }
-
-        let (inputs, outputs) = materialcraft_engine::eval::ports(&app.session.pkg, g, n);
-        r = r.union(node_rect(n, inputs.len(), outputs.len(), thumbs && shows_preview(&outputs)));
-    }
-    for f in &g.frames {
-        if !only_selection {
-            r = r.union(Rect::from_min_size(pos2(f.rect[0], f.rect[1] - 32.0), vec2(f.rect[2], f.rect[3] + 32.0)));
-        }
-    }
-
-    app.ui.graph_camera = super::GraphCamera::fit(view, r).state();
 }
 
 /// Import the resource and its graph node in one atomic undo entry

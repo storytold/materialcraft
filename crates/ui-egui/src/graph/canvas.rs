@@ -1,21 +1,33 @@
-use super::node_style::{PORT_RADIUS, header_color, node_label, node_rect, port_color, shows_preview};
-use super::{GraphCamera, GraphDrag, PortHit, WireRef};
-use super::{
-    navigation::frame,
-    port_hit::nearest as nearest_port,
-    wire_geometry::{bezier, bezier_points, wire_at},
-};
-use super::{node_card, node_card::port as port_pos, node_layout::NodeLayout};
+use super::annotations::{self, AnnotationLayers};
+use super::canvas_events;
+use super::node_kind::MaterialKind;
+use super::search::SearchEditor;
+use super::{LibraryDrag, PortHit, WireRef, wire_id};
+use crate::MaterialCraftApp;
+use crate::commands::GRAPH_SCOPE;
+use crate::explorer::ExplorerTarget;
+use crate::graph_drag_payload::GraphDragPayload;
 use crate::i18n::tr;
-use crate::{MaterialCraftApp, theme::Tokens};
-use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2, pos2, vec2};
+use crate::state::{GraphCamera, graph_zoom};
+use craft_behavior::kurbo::{Point, Rect as DocRect, Vec2 as DocVec};
+use craft_behavior::{CanvasView, Selection, keyed};
+use craft_theme::variant::Tone;
+use craft_ui::canvas::{Canvas, NavigationOptions, ViewCommands, ViewRequest, ViewTarget, WheelScheme, canvas_space};
+use craft_ui::canvas_controls::CanvasGrid;
+use craft_ui::contract::{Bind, DropKind, DropPlace, Props as _, Show as _, ShowCollection as _, ShowContainer as _};
+use craft_ui::display::Text;
+use craft_ui::graph::{Node, NodeGraph, NodeGraphResponse, NodeId as GraphNodeId, NodeKind, PortRef, Wire, wire_controls};
+use craft_ui::runtime::env::{Env, with_env};
+use craft_ui::style::TypeRole;
+use egui::{Pos2, Rect, Ui, pos2, vec2};
 use egui_phosphor::regular as icon;
 use materialcraft_engine::core::NodeId;
+use materialcraft_engine::nodes::PortKind;
+use std::collections::HashMap;
 
 /// The graph panel: toolbar row and canvas
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     if ui.rect_contains_pointer(ui.available_rect_before_wrap()) && ui.input(|input| input.pointer.primary_pressed() || input.pointer.secondary_pressed()) {
-        crate::properties::GraphPropertyDraft::commit(app);
         app.inspected_graph = None;
         app.inspected_folder = None;
     }
@@ -48,318 +60,233 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     canvas(app, ui);
 }
 
+/// The fit cap in points per graph unit: Fit on Screen never magnifies a small graph past it.
+const FIT_CAP: f64 = 1.5;
+
+/// How far above a frame its title reaches, in graph units: the fit keeps the title in view.
+const FRAME_TITLE: f32 = 32.0;
+
+/// The grid's major step in graph units and its minor lines per step (lines every 32 and 256 units).
+const GRID_STEP: f64 = 256.0;
+const GRID_SUBDIVISIONS: u32 = 8;
+
+/// One port of a node as the canvas publishes it: id, label, value kind and whether it is an output.
+type PortInfo = (String, String, PortKind, bool);
+
+/// The pass's nodes, in `graph.nodes` order: the framework graph's `NodeId(i)` is entry `i` of every list here, and
+/// none is sorted or filtered apart from the others.
+#[derive(Default)]
+struct NodeList {
+    ids: Vec<NodeId>,
+    /// Each node's card in graph units, moved by the running move preview.
+    positions: Vec<Rect>,
+    kinds: Vec<MaterialKind>,
+    /// Each node's ports in its kind's index order: the inputs, then the outputs.
+    ports: Vec<Vec<PortInfo>>,
+    failed: Vec<bool>,
+    bypassed: Vec<bool>,
+    wires: Vec<Wire>,
+    /// The reference of each wire, in `wires` order.
+    refs: Vec<WireRef>,
+    /// Every node and every frame with its title: what Fit on Screen shows.
+    extent: DocRect,
+}
+
+/// The material graph's nodes and wires for this pass, or nothing when no graph is open.
+fn node_list(app: &MaterialCraftApp, ctx: &egui::Context, layers: &AnnotationLayers) -> Option<NodeList> {
+    let graph = app.session.graph().ok()?;
+    let index = materialcraft_engine::core::GraphIndex::new(graph);
+    let carried = layers.carried();
+    let mut list = NodeList::default();
+    let mut bounds = Rect::NOTHING;
+    for node in &graph.nodes {
+        let (ins, outs) = materialcraft_engine::eval::ports_with_connections(&app.session.pkg, node, index.incoming(node.id).iter().copied());
+        let ports = ins.iter().map(|port| (port.id.clone(), port.label.clone(), port.kind, false));
+        let ports: Vec<PortInfo> = ports.chain(outs.iter().map(|port| (port.id.clone(), port.label.clone(), port.kind, true))).collect();
+        let kind = MaterialKind::new(app, ctx, node, ins, outs);
+        let mut pos = node.pos;
+        if let Some(by) = app.graph.node_move.filter(|by| by.length() > 0.5 && app.session.selection.contains(&node.id)) {
+            pos = materialcraft_engine::graph_grid::translate(pos, by.into(), app.ui.prefs.snap_to_grid);
+        }
+        let mut rect = kind.rect(pos);
+        if let Some((_, by)) = carried.filter(|(contents, _)| contents.nodes.contains(&node.id)) {
+            rect = rect.translate(by);
+        }
+        bounds = bounds.union(rect);
+        list.ids.push(node.id);
+        list.positions.push(rect);
+        list.kinds.push(kind);
+        list.ports.push(ports);
+        list.failed.push(app.session.cooked.nodes.get(&node.id).is_some_and(|result| result.error.is_some()));
+        list.bypassed.push(node.disabled);
+    }
+    for frame in &graph.frames {
+        let [x, y, w, h] = frame.rect;
+        bounds = bounds.union(Rect::from_min_size(pos2(x, y - FRAME_TITLE), vec2(w, h + FRAME_TITLE)));
+    }
+    list.extent = if bounds.is_positive() { doc_rect(bounds) } else { DocRect::ZERO };
+
+    let mut at = HashMap::new();
+    for (place, id) in list.ids.iter().enumerate() {
+        at.entry(*id).or_insert(place);
+    }
+    for connection in &graph.connections {
+        let (Some(&from), Some(&to)) = (at.get(&connection.from), at.get(&connection.to)) else { continue };
+        let port_of = |node: usize, id: &str, output: bool| list.ports.get(node)?.iter().position(|port| port.3 == output && port.0 == id);
+        let (Some(from_port), Some(to_port)) = (port_of(from, &connection.from_port, true), port_of(to, &connection.to_port, false)) else { continue };
+        let wire: WireRef = (connection.to, connection.to_port.clone());
+        let ends = (PortRef::new(GraphNodeId::new(from as u32), from_port), PortRef::new(GraphNodeId::new(to as u32), to_port));
+        list.wires.push(Wire::new(wire_id(&wire), ends.0, ends.1));
+        list.refs.push(wire);
+    }
+    Some(list)
+}
+
+/// A rect in graph units as the canvas's document rect.
+fn doc_rect(rect: Rect) -> DocRect {
+    DocRect::new(f64::from(rect.min.x), f64::from(rect.min.y), f64::from(rect.max.x), f64::from(rect.max.y))
+}
+
+/// The screen point of the graph point `at` through `view`.
+fn to_screen(view: &CanvasView, at: Pos2) -> Pos2 {
+    view.to_screen(Point::new(f64::from(at.x), f64::from(at.y)))
+}
+
+/// The material graph on a `Canvas`: the canvas pans and zooms with no edges, and the framework node graph inside it
+/// draws the nodes, wires and annotations and reports the gestures, which `canvas_events` maps onto commands. The
+/// body runs twice when the canvas measures first; only the run with a canvas space (the real one) returns the
+/// graph's response, so the events, the publish and the queue drop happen once per pass.
 fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
-    let theme = Tokens::get(ui.ctx());
-    let context = ui.ctx().clone();
-    let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
-    crate::widgets::name(&response, egui::Role::Canvas, "Node graph");
-    app.graph.view = rect;
     if app.ui.frame_all || app.graph.framed_graph != Some(app.session.graph) {
         app.ui.frame_all = false;
         app.graph.framed_graph = Some(app.session.graph);
-        app.graph.selected_wires.clear();
-        frame(app, rect, false);
+        app.graph.selected_wires = Selection::default();
+        app.graph.request_view(ViewRequest::Place(ViewCommands::FitOnScreen));
     }
 
-    let painter = ui.painter_at(rect);
+    let ctx = ui.ctx().clone();
+    let pixels_per_point = ctx.pixels_per_point();
+    let layers = annotations::layers(app);
+    let Some(list) = node_list(app, &ctx, &layers) else { return };
+    let (backdrops, notes, markers) = (layers.backdrops(), layers.notes(), layers.markers());
+    let kinds: Vec<&dyn NodeKind<()>> = list.kinds.iter().map(|kind| kind as &dyn NodeKind<()>).collect();
+    let graph_ids: Vec<GraphNodeId> = (0..list.ids.len() as u32).map(GraphNodeId::new).collect();
+    let source = keyed(&graph_ids, |id| *id);
+    let selection = canvas_events::given_selection(&app.session.selection, &list.ids);
+    let mut wire_selection = app.graph.selected_wires.clone();
+    let queued = app.graph.pending_views.clone();
+    let given = app.ui.graph_camera.view(app.graph.view);
+    let target = ViewTarget::unbounded(list.extent).fit_ceiling(FIT_CAP * f64::from(pixels_per_point));
+    // Fit Layers (F) shows the selected nodes, else the whole graph.
+    let picked = list.ids.iter().zip(&list.positions).filter(|(id, _)| app.session.selection.contains(*id)).fold(Rect::NOTHING, |all, (_, rect)| all.union(*rect));
+    let layer_bounds = || Some(if picked.is_positive() { doc_rect(picked) } else { list.extent });
+    let mut navigation = NavigationOptions::default();
+    navigation.wheel = WheelScheme::Zoom;
+    navigation.pinch_zooms = true;
+    navigation.invert_wheel_zoom = app.ui.prefs.invert_zoom;
 
-    // Background and grid
-    painter.rect_filled(rect, 0.0, Color32::from_rgb(0x2b, 0x2d, 0x31));
-    let mut camera = GraphCamera { origin: rect.min, pan: Vec2::from(app.ui.graph_camera.pan), zoom: app.ui.graph_camera.zoom };
-    camera.zoom_from_input(ui, rect, app.ui.prefs.zoom_direction());
-    app.ui.graph_camera = camera.state();
-    super::grid::paint(&painter, &camera, rect);
-    let pointer = context.input(|input| input.pointer.hover_pos());
+    let shown = with_env(
+        ui,
+        |scope| {
+            scope.values.set(graph_zoom(pixels_per_point));
+        },
+        |ui| {
+            Canvas::new(tr("Graph")).document(target).layer_bounds(&layer_bounds).queued(&queued).navigation(navigation).view(Bind::given(given)).show(
+                ui,
+                |ui, body| {
+                    let space = canvas_space(&body.env)?;
+                    let _ = CanvasGrid::new(tr("Grid"))
+                        .spacing(DocVec::new(GRID_STEP, GRID_STEP))
+                        .subdivisions(GRID_SUBDIVISIONS)
+                        .picture()
+                        .show_at(ui, body.rect);
+                    let mut graph = NodeGraph::new(&list.positions, &kinds, &list.wires)
+                        .label(tr("Node graph"))
+                        .command_scope(GRAPH_SCOPE)
+                        .selection(Bind::given(selection.clone()))
+                        .wire_selection(Bind::bound(&mut wire_selection))
+                        .backdrops(&backdrops)
+                        .notes(&notes)
+                        .markers(&markers)
+                        .annotation_selection(Bind::given(layers.selected()))
+                        .takes_drop(DropKind::new(DropPlace::Spot, |_: &GraphDragPayload, _| true))
+                        .takes_drop(DropKind::new(DropPlace::Spot, |target: &ExplorerTarget, _| matches!(target, ExplorerTarget::Resource { .. })))
+                        .takes_drop(DropKind::new(DropPlace::Spot, |_: &LibraryDrag, _| true));
+                    if let Some(transform) = space.view.layer_transform() {
+                        graph = graph.zoom(transform);
+                    }
+                    let response: NodeGraphResponse<()> = graph.show_items(ui, &source, &mut |id, _| {
+                        let at = id.0 as usize;
+                        let node = Node::new(*id, kinds[at]);
+                        node.failed(list.failed.get(at).copied().unwrap_or(false)).bypassed(list.bypassed.get(at).copied().unwrap_or(false))
+                    });
+                    Some((response, space.view))
+                },
+            )
+        },
+    );
 
-    let show_thumbnails = app.ui.prefs.thumbnails;
-    let Ok(graph) = app.session.graph() else { return };
+    let canvas_rect = shown.output.response.rect;
+    app.ui.graph_camera = GraphCamera::from_view(&shown.output.view.unwrap_or(given));
+    if let Some((response, view)) = shown.inner.flatten() {
+        app.graph.pending_views.clear();
+        app.graph.selected_wires = wire_selection;
+        publish(app, &list, &view, &layers);
+        app.graph.inspected_node = super::node_selection::inspected(&app.session.selection, app.graph.inspected_node);
+        canvas_events::apply(app, ui, &response, &list.ids);
+        app.graph.inspected_node = super::node_selection::inspected(&app.session.selection, app.graph.inspected_node);
+    }
 
-    let index = materialcraft_engine::core::GraphIndex::new(graph);
-    let selection: std::collections::BTreeSet<_> = app.session.selection.iter().copied().collect();
-    let node_delta = match &app.graph.drag {
-        Some(GraphDrag::Nodes { delta }) => *delta,
-        _ => Vec2::ZERO,
-    };
+    super::search::show(app, ui, SearchEditor::Material);
+    footer(app, ui, canvas_rect);
+}
 
-    // Layout every node and its ports
-    let mut layouts: Vec<NodeLayout> = Vec::with_capacity(graph.nodes.len());
-    for node in &graph.nodes {
-        let (ins, outs) = materialcraft_engine::eval::ports_with_connections(&app.session.pkg, node, index.incoming(node.id).iter().copied());
-        let mut r = node_rect(node, ins.len(), outs.len(), show_thumbnails && shows_preview(&outs));
-        if selection.contains(&node.id) && node_delta.length() > 0.5 {
-            let position = materialcraft_engine::graph_grid::translate(node.pos, node_delta.into(), app.ui.prefs.snap_to_grid);
-            r = r.translate(vec2(position[0] - node.pos[0], position[1] - node.pos[1]));
+/// Stores what the canvas showed this pass in screen points, for `ui.inspect`, scripted input and the event mapping:
+/// the node cards, each node's ports in its kind's order, the wires' control points and the annotations' rects.
+fn publish(app: &mut MaterialCraftApp, list: &NodeList, view: &CanvasView, layers: &AnnotationLayers) {
+    let screen_rect = |rect: &Rect| Rect::from_two_pos(to_screen(view, rect.min), to_screen(view, rect.max));
+    let rects = list.ids.iter().zip(&list.positions).map(|(id, rect)| (*id, screen_rect(rect))).collect();
+    let mut ports = Vec::new();
+    for (((id, rect), kind), node_ports) in list.ids.iter().zip(&list.positions).zip(&list.kinds).zip(&list.ports) {
+        for (index, (port, label, value, output)) in node_ports.iter().enumerate() {
+            let pos = to_screen(view, rect.min + kind.port_offset(index, rect.size()));
+            ports.push(PortHit { node: *id, output: *output, port: port.clone(), label: label.clone(), pos, kind: *value });
         }
-        r = r.translate(super::annotation_canvas::offset(app, |contents| contents.nodes.contains(&node.id)));
-        let dot = node.def == "dot";
-        let port_position = |i: usize, output: bool, total: usize| port_pos(r, i, total, output, dot);
-        layouts.push(NodeLayout {
-            id: node.id,
-            rect: r,
-            ins: ins.iter().enumerate().map(|(i, p)| (p.id.clone(), p.label.clone(), p.kind, port_position(i, false, ins.len()))).collect(),
-            outs: outs.iter().enumerate().map(|(i, p)| (p.id.clone(), p.label.clone(), p.kind, port_position(i, true, outs.len()))).collect(),
-        });
     }
-
-    app.graph.rects =
-        layouts.iter().map(|layout| (layout.id, Rect::from_min_max(camera.to_screen(layout.rect.min), camera.to_screen(layout.rect.max)))).collect();
-    app.graph.ports = layouts
+    let end = |port: PortRef| {
+        let (rect, kind) = (list.positions.get(port.node.0 as usize)?, list.kinds.get(port.node.0 as usize)?);
+        Some((rect.min + kind.port_offset(port.port, rect.size()), kind.port_side(port.port)))
+    };
+    let wires = list
+        .wires
         .iter()
-        .flat_map(|layout| {
-            let ins = layout.ins.iter().map(move |(id, label, kind, p)| PortHit {
-                node: layout.id,
-                output: false,
-                port: id.clone(),
-                label: label.clone(),
-                pos: *p,
-                kind: *kind,
-            });
-            let outs = layout.outs.iter().map(move |(id, label, kind, p)| PortHit {
-                node: layout.id,
-                output: true,
-                port: id.clone(),
-                label: label.clone(),
-                pos: *p,
-                kind: *kind,
-            });
-            ins.chain(outs)
-        })
-        .map(|mut h| {
-            h.pos = camera.to_screen(h.pos);
-            h
+        .zip(&list.refs)
+        .filter_map(|(wire, reference)| {
+            let ((from, from_side), (to, to_side)) = (end(wire.from)?, end(wire.to)?);
+            Some((reference.clone(), wire_controls(from, from_side, to, to_side).map(|at| to_screen(view, at))))
         })
         .collect();
+    app.graph.publish(view.rect, rects, ports, wires, annotations::screen_rects(layers, view));
+}
 
-    let frame_hits = super::annotation_canvas::frames(app, ui, &graph.frames, &camera);
-    app.graph.frames = frame_hits.iter().map(|frame| (frame.id, frame.rect)).collect();
-
-    let mut layout_indices = std::collections::BTreeMap::new();
-    for (index, layout) in layouts.iter().enumerate() {
-        layout_indices.entry(layout.id).or_insert(index);
-    }
-
-    // Wires
-    let cooked = &app.session.cooked;
-    let detached = match &app.graph.drag {
-        Some(GraphDrag::Wire { detached: Some(d), .. }) => Some(d.clone()),
-        _ => None,
-    };
-
-    let mut wires: Vec<(WireRef, [Pos2; 4])> = Vec::with_capacity(graph.connections.len());
-    for c in &graph.connections {
-        if detached.as_ref().is_some_and(|(node, p)| *node == c.to && *p == c.to_port) {
-            continue;
-        }
-
-        let a = layout_indices.get(&c.from).and_then(|index| layouts.get(*index)).and_then(|layout| layout.outs.iter().find(|p| p.0 == c.from_port));
-        let b = layout_indices.get(&c.to).and_then(|index| layouts.get(*index)).and_then(|layout| layout.ins.iter().find(|p| p.0 == c.to_port));
-        if let (Some(a), Some(b)) = (a, b) {
-            wires.push(((c.to, c.to_port.clone()), bezier_points(camera.to_screen(a.3), camera.to_screen(b.3))));
-        }
-    }
-
-    // Hover: not where a node card or a port sits on top of the wire
-    let over_card = |p: Pos2| app.graph.rects.iter().any(|(_, r)| r.contains(p)) || nearest_port(&app.graph.ports, p, 9.0).is_some();
-    let wire_hover = match &app.graph.drag {
-        None => pointer.filter(|p| rect.contains(*p) && !over_card(*p)).and_then(|p| wire_at(&wires, p)).cloned(),
-        Some(GraphDrag::WirePress { wire, .. }) => Some(wire.clone()),
-        Some(_) => None,
-    };
-
-    for (w, ctrl) in &wires {
-        let Some(c) = index.input_of(w.0, &w.1) else { continue };
-
-        let hot = selection.contains(&c.from) || selection.contains(&c.to);
-        let picked = app.graph.selected_wires.contains(w);
-        let hovered = wire_hover.as_ref() == Some(w);
-        let base = (2.0 * camera.zoom).clamp(1.0, 3.0);
-        let width = if hovered && !picked { base + 1.0 } else { base };
-        let color = if hovered {
-            Color32::WHITE
-        } else if hot {
-            theme.accent
-        } else {
-            Color32::from_gray(0xb4)
-        };
-        let stroke = super::wire_selection::stroke(picked, width, color, theme.accent);
-
-        painter.add(egui::epaint::CubicBezierShape::from_points_stroke(*ctrl, false, Color32::TRANSPARENT, stroke));
-    }
-
-    app.graph.wires = wires;
-
-    // Nodes
-    let small = FontId::proportional((9.0 * camera.zoom).clamp(5.5, 13.0));
-    let mut node_responses: Vec<(NodeId, egui::Response)> = Vec::new();
-    let mut dot_grabs: Vec<Rect> = Vec::new();
-    for layout in &layouts {
-        let Some(node) = index.node(layout.id) else { continue };
-
-        let screen_rect = Rect::from_min_max(camera.to_screen(layout.rect.min), camera.to_screen(layout.rect.max));
-        if !screen_rect.intersects(rect) {
-            continue;
-        }
-
-        let selected = selection.contains(&node.id);
-        let result = cooked.nodes.get(&node.id);
-        let error = result.and_then(|r| r.error.as_ref());
-
-        // A dot is tiny, so its grab area keeps a minimum on-screen size
-        let grab = if node.def == "dot" { node_card::dot_grab(screen_rect) } else { screen_rect };
-        if node.def == "dot" {
-            dot_grabs.push(grab);
-        }
-
-        let response = ui.interact(grab, ui.scope_id().with(("node", node.id.0)), Sense::click_and_drag());
-        crate::widgets::name(&response, egui::Role::Button, &node_label(node));
-        if node.def == "dot" {
-            node_card::paint_dot(&painter, screen_rect, if selected { theme.accent } else { Color32::from_gray(0xb4) });
-        } else {
-            node_card::paint(&painter, screen_rect, camera.zoom, &node_label(node), header_color(&node.def));
-            let header = node_card::header(screen_rect, camera.zoom);
-            let body = node_card::body(screen_rect, camera.zoom);
-            if let Some(node_result) = result
-                && let Some(image) = node_result.outputs.first().and_then(materialcraft_engine::eval::NodeOutput::as_image)
-                && show_thumbnails
-                && !app.graph.thumbnails_cleared
-            {
-                let side = body.width().min(body.height()) - 6.0 * camera.zoom;
-                let thumbnail_rect = Rect::from_center_size(body.center(), vec2(side, side));
-                node_card::paint_well(&painter, thumbnail_rect.expand(camera.zoom), camera.zoom);
-                let texture = app.thumbs.node(&context, node_result.key, 0, image);
-                painter.image(
-                    texture,
-                    thumbnail_rect,
-                    Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
-                    if node.disabled { Color32::from_gray(90) } else { Color32::WHITE },
-                );
-            } else if let Some(value) = result.and_then(|result| result.outputs.first()).and_then(materialcraft_engine::eval::NodeOutput::as_value) {
-                node_card::paint_well(&painter, body.shrink(4.0 * camera.zoom), camera.zoom);
-                node_card::paint_symbol(&painter, body, camera.zoom, &super::value_text::value_text(value), theme.text_strong);
-            } else if error.is_some() {
-                node_card::paint_symbol(&painter, body, camera.zoom, icon::WARNING, theme.danger);
-            } else if result.is_none() {
-                node_card::paint_symbol(&painter, body, camera.zoom, icon::HOURGLASS_MEDIUM, theme.text_dim);
-            }
-
-            // Footer: size and format
-            let footer = Rect::from_min_max(pos2(screen_rect.left(), body.bottom()), screen_rect.max);
-            if let Some(image) = result.and_then(|r| r.outputs.first().and_then(materialcraft_engine::eval::NodeOutput::as_image)) {
-                let bits = result.map_or(graph.format.bits(), |result| result.base.format.bits());
-
-                let format = format!("{}{bits}", if image.is_gray() { "L" } else { "C" });
-                let label_text = if let Some(limit) = app.session.preview_size {
-                    let [width, height] = graph.size_px();
-                    response.clone().on_hover_text(format!(
-                        "{} x {} ({bits}bpc)\n{}: {width} x {height}\n{}: {limit} px\n{}",
-                        image.width(),
-                        image.height(),
-                        tr("Parent size"),
-                        tr("Preview limit"),
-                        tr("Change Preview size while editing in Edit > Preferences. Exports use each node's configured output size.")
-                    ));
-                    format!("{}x{} {}", image.width(), image.height(), tr("Preview"))
-                } else {
-                    format!("{}x{} - {format}", image.width(), image.height())
-                };
-                painter.text(footer.center(), Align2::CENTER_CENTER, label_text, small.clone(), theme.text_dim);
-            }
-            if node.def == "output" {
-                painter.text(header.right_center() - vec2(4.0, 0.0), Align2::RIGHT_CENTER, icon::SIGN_OUT, small.clone(), Color32::WHITE);
-            }
-            let outline = if error.is_some() {
-                Stroke::new(2.0, Color32::from_rgb(0xff, 0x30, 0xd0))
-            } else if selected {
-                Stroke::new(2.0, theme.accent)
-            } else if response.hovered() {
-                Stroke::new(1.0, Color32::from_gray(0x90))
-            } else {
-                Stroke::new(1.0, Color32::from_gray(0x10))
-            };
-
-            node_card::outline(&painter, screen_rect, camera.zoom, outline);
-            if node.disabled {
-                painter.line_segment([screen_rect.left_top(), screen_rect.right_bottom()], Stroke::new(1.5, theme.danger));
-            }
-            if let Some(e) = error {
-                response.clone().on_hover_text(e);
-            }
-        }
-
-        node_responses.push((node.id, response));
-    }
-
-    let comment_hits = super::annotation_canvas::comments(app, ui, &graph.comments, &camera);
-    app.graph.comments = comment_hits.clone();
-    let pin_hits = super::annotation_canvas::pins(app, ui, &graph.pins, &camera);
-    app.graph.pins = pin_hits.clone();
-
-    // A dot body stays movable when port hit circles overlap it
-    let port_hover = pointer.filter(|p| !dot_grabs.iter().any(|grab| grab.contains(*p))).and_then(|p| nearest_port(&app.graph.ports, p, 9.0)).cloned();
-    for h in &app.graph.ports {
-        if !rect.contains(h.pos) {
-            continue;
-        }
-
-        let hot = port_hover.as_ref().is_some_and(|x| x.node == h.node && x.port == h.port && x.output == h.output);
-        let r = (PORT_RADIUS * camera.zoom).clamp(2.5, 7.0) * if hot { 1.4 } else { 1.0 };
-
-        painter.circle(h.pos, r, port_color(h.kind), Stroke::new(1.0, Color32::from_gray(0x18)));
-    }
-    let hovered_node = app.graph.rects.iter().rev().find(|(_, bounds)| super::port_label::visible(ui, *bounds)).map(|(id, _)| *id);
-    for port in &app.graph.ports {
-        if Some(port.node) != hovered_node || !rect.contains(port.pos) {
-            continue;
-        }
-
-        let anchor = if port.output { Align2::LEFT_CENTER } else { Align2::RIGHT_CENTER };
-
-        let offset = if port.output { vec2(10.0, 0.0) } else { vec2(-10.0, 0.0) };
-
-        super::port_label::paint(&painter, port.pos + offset, anchor, &port.label, camera.zoom, theme.text_strong);
-    }
-
-    // A wire under a comment is not hit
-    let wire_hover = wire_hover.filter(|_| !pointer.is_some_and(|p| comment_hits.iter().any(|(_, r)| r.contains(p))));
-    if wire_hover.is_some() {
-        context.set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-
-    app.graph.inspected_node = super::node_selection::inspected(&app.session.selection, app.graph.inspected_node);
-    super::input::handle(app, ui, &response, rect, &camera, &node_responses, &frame_hits, &comment_hits, &pin_hits, port_hover, wire_hover);
-    app.graph.inspected_node = super::node_selection::inspected(&app.session.selection, app.graph.inspected_node);
-
-    // GraphDrag previews
-    match &app.graph.drag {
-        Some(GraphDrag::Box { start }) => {
-            if let Some(p) = pointer {
-                super::node_selection::paint_box(&painter, *start, p, theme.accent);
-            }
-        }
-        Some(GraphDrag::Wire { from, .. }) => {
-            if let (Some(p), Some(src)) = (pointer, app.graph.ports.iter().find(|h| h.output && h.node == from.0 && h.port == from.1)) {
-                bezier(&painter, src.pos, p, Stroke::new(2.0, theme.accent));
-            }
-        }
-        Some(GraphDrag::InputWire { to }) => {
-            if let (Some(p), Some(dst)) = (pointer, app.graph.ports.iter().find(|h| !h.output && h.node == to.0 && h.port == to.1)) {
-                bezier(&painter, p, dst.pos, Stroke::new(2.0, theme.accent));
-            }
-        }
-        _ => {}
-    }
-
-    super::search::show(app, ui, &camera);
+/// The failed and missing node counts at the canvas's bottom end corner, failures lowest; captions over the view,
+/// which sense nothing, so every press stays the canvas's.
+fn footer(app: &MaterialCraftApp, ui: &mut Ui, rect: Rect) {
     let (failed, placeholders) = app.session.cook_failures();
-    let mut at = rect.right_bottom() - vec2(8.0, 8.0);
-    if !failed.is_empty() {
-        let text = format!("{} {} node(s) failed", icon::WARNING, failed.len());
-        at.y = painter.text(at, Align2::RIGHT_BOTTOM, text, FontId::proportional(11.0), theme.danger).top() - 2.0;
+    if failed.is_empty() && placeholders == 0 {
+        return;
     }
-
+    let env = Env::of(ui);
+    let (inset, gap) = (env.tokens.space.pad.regular, env.tokens.space.gap.tight);
+    let mut corner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(inset)).layout(egui::Layout::bottom_up(egui::Align::Max)));
+    corner.spacing_mut().item_spacing.y = gap;
+    if !failed.is_empty() {
+        let text = format!("{} {} {}", icon::WARNING, failed.len(), tr("node(s) failed"));
+        Text::new(text).role(TypeRole::Caption).tone(Tone::Bad).show(&mut corner);
+    }
     // Placeholders for missing SBS nodes are a soft warning, not a failure
     if placeholders > 0 {
-        let text = format!("{} {placeholders} missing node(s), see the Console", icon::WARNING);
-        painter.text(at, Align2::RIGHT_BOTTOM, text, FontId::proportional(11.0), theme.warning);
+        let text = format!("{} {placeholders} {}", icon::WARNING, tr("missing node(s), see the Console"));
+        Text::new(text).role(TypeRole::Caption).tone(Tone::Warn).show(&mut corner);
     }
 }
