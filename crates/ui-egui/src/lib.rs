@@ -44,6 +44,8 @@ mod value_input_editor;
 pub mod view2d;
 pub mod view3d;
 pub mod web_files;
+// owed by the panels and views sets: shell-w12 deletes this module; its readers move off it in their own sets.
+pub mod widgets;
 pub mod windows;
 
 #[cfg(not(target_arch = "wasm32"))]
