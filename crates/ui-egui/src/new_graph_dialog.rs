@@ -1,22 +1,23 @@
 //! File ▸ New ▸ Graph: template cards by category on the left; the graph's name, size and the
 //! package it goes in on the right
 
-use egui::{RichText, Ui, vec2};
-use egui_phosphor::regular as icon;
+use craft_ui::contract::{Bind, Entry, FieldLayout, Props as _, Show as _, ShowContainer as _, Sizing};
+use craft_ui::form::Field;
+use craft_ui::layout_components::Row;
+use craft_ui::patterns::form_dialogs::{CardCx, CardSource, DetailsCx, DocumentCard, DocumentSettings, DocumentTabs, NewDocumentDialog, PresetCategory};
+use craft_ui::pickers::Select;
+use craft_ui::runtime::env::Label;
+use craft_ui::shell::ThumbKey;
+use craft_ui::text::link_toggle;
+use egui::Ui;
 use materialcraft_engine::core::GraphKind;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::MaterialCraftApp;
 use crate::i18n::tr;
-use crate::template_card::{CARD_SIZE, FUNCTION_TEMPLATE, TemplateCard};
-use crate::theme::Tokens;
+use crate::template_card::{FUNCTION_TEMPLATE, TemplateCard};
 
-const WINDOW_SIZE: egui::Vec2 = vec2(1000.0, 640.0);
-const SETTINGS_WIDTH: f32 = 340.0;
-const CARD_GAP: f32 = 14.0;
-const BUTTON_WIDTH: f32 = 120.0;
-const ACTION_BAR_HEIGHT: f32 = 36.0;
-const COLUMN_GAP: f32 = 24.0;
 /// The sides a new graph can have, in pixels
 const SIDES: [u32; 6] = [256, 512, 1024, 2048, 4096, 8192];
 /// The categories the dialog lists: every template, or the templates of one kind of graph
@@ -42,35 +43,61 @@ fn choose(app: &mut MaterialCraftApp, card: &TemplateCard) {
     app.ui.new_graph_template = card.id.to_string();
 }
 
-pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
-    // P3(shell-w13): sh.A28: `show` takes the `Ui`; the body still draws through the context
-    let ctx = &ui.ctx().clone();
-    let size = crate::windows::dialog_size(ctx, WINDOW_SIZE);
-    let mut open = true;
-    let mut create = false;
-    let title = if app.ui.new_graph_kind == GraphKind::Function { tr("New function graph") } else { tr("New graph") };
-    crate::windows::modal(ctx, "new-graph", title, &mut open, size, |ui| {
-        ui.set_min_size(size);
-        let whole = ui.available_rect_before_wrap();
-        let settings_left = whole.right() - SETTINGS_WIDTH.min(size.x * 0.52);
-        let cards = egui::Rect::from_min_max(whole.min, egui::pos2(settings_left - COLUMN_GAP, whole.bottom()));
-        let settings = egui::Rect::from_min_max(egui::pos2(settings_left, whole.top()), whole.max);
-
-        card_grid(app, &mut ui.new_child(egui::UiBuilder::new().max_rect(cards)));
-        let bar = settings.with_min_y(settings.bottom() - ACTION_BAR_HEIGHT);
-        let form = settings.with_max_y(bar.top());
-        let mut form_ui = ui.new_child(egui::UiBuilder::new().max_rect(form));
-        let destination_available = egui::ScrollArea::vertical().auto_shrink([false, false]).show(&mut form_ui, |ui| graph_settings(app, ui)).inner;
-        create = graph_actions(app, &mut ui.new_child(egui::UiBuilder::new().max_rect(bar)), destination_available);
-
-        ui.advance_cursor_after_rect(whole);
-    });
-
-    if create {
-        open = !run(app);
+/// The id of a category's tab: the one mapping between `new_graph_category` and the dialog's tab binding
+fn category_id(kind: Option<GraphKind>) -> &'static str {
+    match kind {
+        None => "all",
+        Some(GraphKind::Material) => "material",
+        Some(GraphKind::Function) => "function",
     }
-    if !open {
-        app.ui.windows.new_graph = false;
+}
+
+/// The New graph dialog over the `new_graph_*` fields: each pass reads them into a `NewGraph` and writes the dialog's
+/// edits back, so the saved fields and the other writers of them (Home, the menus) stay as they are
+pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    let templates = app.thumbs.templates(ui.ctx());
+    let source = crate::thumbs::TemplateSource;
+    let title = if app.ui.new_graph_kind == GraphKind::Function { tr("New function graph") } else { tr("New graph") };
+    // PLAN: the dialog's card grid has no groups, so "All templates" lists the cards without the "Material"/"Function" heading lines; each card's line names its kind
+    let categories: Vec<PresetCategory<TemplateCard>> = CATEGORIES
+        .iter()
+        .map(|&(kind, label)| {
+            let cards = crate::template_card::cards().into_iter().filter(|card| kind.is_none_or(|kind| card.kind == kind)).collect();
+            PresetCategory::new(category_id(kind), tr(label), cards)
+        })
+        .collect();
+    let mut graph = NewGraph::of(app);
+    let mut tab = category_id(app.ui.new_graph_category).to_owned();
+    let mut open = app.ui.windows.new_graph;
+
+    let output = NewDocumentDialog::over(Bind::bound(&mut graph))
+        .title(title)
+        .tabs(DocumentTabs::Presets)
+        .categories(categories)
+        .tab(Bind::bound(&mut tab))
+        .opened(Bind::bound(&mut open))
+        .thumbnails(&templates, &source, |id| ThumbKey::Template(id.to_owned()))
+        .show(ui);
+
+    app.ui.windows.new_graph = open;
+    if let Some(&(kind, _)) = CATEGORIES.iter().find(|(kind, _)| category_id(*kind) == tab) {
+        app.ui.new_graph_category = kind;
+    }
+    graph.store(app);
+    if let Some(result) = output.result {
+        result.options.store(app);
+        // The framework Create path does not check DocumentSettings::fits; keep a closed package from being used.
+        let created = if result.options.fits() {
+            run(app)
+        } else {
+            app.toast(tr("The package chosen for the graph is no longer open"), true);
+            false
+        };
+        if created {
+            result.remember(ui.ctx());
+        } else {
+            app.ui.windows.new_graph = true;
+        }
     }
 }
 
@@ -95,136 +122,136 @@ fn run(app: &mut MaterialCraftApp) -> bool {
     created
 }
 
-/// The category list and the cards of the chosen category
-fn card_grid(app: &mut MaterialCraftApp, ui: &mut Ui) {
-    let tokens = Tokens::get(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(tr("Category")).strong());
-        let current = CATEGORIES.iter().find(|(kind, _)| *kind == app.ui.new_graph_category).map_or("", |(_, label)| label);
-        let combo = egui::ComboBox::from_id_salt("new-graph-category").width(ui.available_width().min(220.0)).selected_text(tr(current)).show_ui(ui, |ui| {
-            for (kind, label) in CATEGORIES {
-                ui.selectable_value(&mut app.ui.new_graph_category, kind, tr(label));
-            }
-        });
-        crate::widgets::name(&combo.response, egui::Role::ComboBox, "Category");
-    });
-    ui.add_space(10.0);
-
-    let cards: Vec<TemplateCard> =
-        crate::template_card::cards().into_iter().filter(|card| app.ui.new_graph_category.is_none_or(|kind| card.kind == kind)).collect();
-    egui::ScrollArea::vertical().id_salt("new-graph-cards").auto_shrink([false, false]).show(ui, |ui| {
-        for kind in [GraphKind::Material, GraphKind::Function] {
-            let group: Vec<&TemplateCard> = cards.iter().filter(|card| card.kind == kind).collect();
-            let Some(first) = group.first() else { continue };
-
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(tr(first.kind_label())).size(16.0).color(tokens.text_dim));
-                let line = ui.available_rect_before_wrap();
-                ui.painter().hline(line.left() + 8.0..=line.right(), line.center().y, egui::Stroke::new(1.0, tokens.separator));
-            });
-            ui.add_space(6.0);
-            let columns = ((ui.available_width() + CARD_GAP) / (CARD_SIZE.x + CARD_GAP)).floor().max(1.0) as usize;
-            for row in group.chunks(columns) {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = CARD_GAP;
-                    for card in row {
-                        let chosen = app.ui.new_graph_kind == card.kind && app.ui.new_graph_template == card.id;
-                        let preview = crate::windows::template_preview(app, ui.ctx(), card.id);
-                        let response = crate::template_card::show(ui, card, chosen, preview);
-                        if response.clicked() {
-                            choose(app, card);
-                        }
-                        if response.double_clicked() {
-                            choose(app, card);
-                            app.ui.new_graph_create_now = true;
-                        }
-                    }
-                });
-                ui.add_space(CARD_GAP);
-            }
-        }
-    });
+/// What the New graph dialog edits: the `new_graph_*` fields of the app's state, with the open packages the graph can
+/// go in
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct NewGraph {
+    kind: GraphKind,
+    template: String,
+    name: String,
+    width: u32,
+    height: u32,
+    linked: bool,
+    /// The package the graph goes in; `None` is a new package
+    package: Option<u64>,
+    /// The open packages as `(id, label)`, in the session's order
+    packages: Vec<(u64, String)>,
 }
 
-/// The graph's name, size and package. Returns whether the chosen package is available.
-fn graph_settings(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
-    let tokens = Tokens::get(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(tr("Graph name")).strong());
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(RichText::new(icon::QUESTION).color(tokens.text_dim))
-                .on_hover_text(tr("A graph's name is unique in its package; a taken name gets a number"));
-        });
-    });
-    let name = ui.add(egui::TextEdit::singleline(&mut app.ui.new_graph_name).desired_width(f32::INFINITY));
-    crate::widgets::name(&name, egui::Role::TextInput, "Graph name");
-    ui.add_space(14.0);
-
-    if app.ui.new_graph_kind == GraphKind::Material {
-        ui.label(RichText::new(tr("Size")).strong());
-        ui.horizontal(|ui| {
-            let side_width = (ui.available_width() - 40.0) * 0.5;
-            side_combo(ui, "new-graph-width", "Width", &mut app.ui.new_graph_size, side_width);
-            let link = crate::widgets::icon_button(ui, icon::LINK, tr("Keep the width and height the same"), app.ui.new_graph_linked, 24.0);
-            if link.clicked() {
-                app.ui.new_graph_linked = !app.ui.new_graph_linked;
-            }
-            if app.ui.new_graph_linked {
-                app.ui.new_graph_height = app.ui.new_graph_size;
-            }
-            ui.add_enabled_ui(!app.ui.new_graph_linked, |ui| side_combo(ui, "new-graph-height", "Height", &mut app.ui.new_graph_height, side_width));
-        });
-        ui.add_space(14.0);
+impl NewGraph {
+    /// The dialog's settings as the app holds them now
+    fn of(app: &MaterialCraftApp) -> Self {
+        let packages = app
+            .session
+            .open_packages()
+            .into_iter()
+            .map(|(id, package, path, _)| {
+                let label = match path {
+                    Some(path) => format!("{} — {path}", package.name),
+                    None => format!("{} (#{id})", package.name),
+                };
+                (id, label)
+            })
+            .collect();
+        NewGraph {
+            kind: app.ui.new_graph_kind,
+            template: app.ui.new_graph_template.clone(),
+            name: app.ui.new_graph_name.clone(),
+            width: app.ui.new_graph_size,
+            height: app.ui.new_graph_height,
+            linked: app.ui.new_graph_linked,
+            package: app.ui.new_graph_package,
+            packages,
+        }
     }
 
-    ui.label(RichText::new(tr("Create graph in")).strong());
-    let packages = app.session.open_packages();
-    let package_label = |id, name: &str, path: Option<&str>| match path {
-        Some(path) => format!("{name} — {path}"),
-        None => format!("{name} (#{id})"),
-    };
-    let destination_available = app.ui.new_graph_package.is_none_or(|target| packages.iter().any(|(id, ..)| *id == target));
-    let current = app.ui.new_graph_package.map_or_else(
-        || tr("New package").to_string(),
-        |target| {
-            packages
-                .iter()
-                .find(|(id, ..)| *id == target)
-                .map_or_else(|| tr("Choose a package").to_string(), |(id, package, path, _)| package_label(*id, &package.name, *path))
-        },
-    );
-    let combo = egui::ComboBox::from_id_salt("new-graph-package").width(ui.available_width()).selected_text(current).show_ui(ui, |ui| {
-        ui.selectable_value(&mut app.ui.new_graph_package, None, tr("New package"));
-        for (id, package, path, _) in &packages {
-            ui.selectable_value(&mut app.ui.new_graph_package, Some(*id), package_label(*id, &package.name, *path));
+    /// Writes the settings back to the app's fields; the chosen card goes through `choose`
+    fn store(&self, app: &mut MaterialCraftApp) {
+        if let Some(card) = crate::template_card::cards().iter().find(|card| card.id == self.template && card.kind == self.kind) {
+            choose(app, card);
         }
-    });
-    crate::widgets::name(&combo.response, egui::Role::ComboBox, "Create graph in");
-
-    destination_available
+        app.ui.new_graph_name.clone_from(&self.name);
+        app.ui.new_graph_size = self.width;
+        app.ui.new_graph_height = self.height;
+        app.ui.new_graph_linked = self.linked;
+        app.ui.new_graph_package = self.package;
+    }
 }
 
-fn graph_actions(app: &mut MaterialCraftApp, ui: &mut Ui, destination_available: bool) -> bool {
-    let mut create = std::mem::take(&mut app.ui.new_graph_create_now);
-    let button_width = BUTTON_WIDTH.min((ui.available_width() * 0.5 - ui.spacing().item_spacing.x).max(0.0));
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        if ui.add_sized([button_width, 28.0], egui::Button::new(tr("Cancel"))).clicked() {
-            app.ui.windows.new_graph = false;
+impl DocumentSettings for NewGraph {
+    type Preset = TemplateCard;
+    type Setup = ();
+    type Memory = ();
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    fn page(&self) -> (f64, f64) {
+        (f64::from(self.width), f64::from(self.height))
+    }
+
+    fn same_document(&self, other: &Self) -> bool {
+        self == other
+    }
+
+    /// The graph can be made while the package it goes in is still open
+    fn fits(&self) -> bool {
+        self.package.is_none_or(|target| self.packages.iter().any(|(id, _)| *id == target))
+    }
+
+    /// The name stays the app's: an empty one is the engine's to fill
+    fn open(&mut self, _setup: &(), _untitled: &str) {}
+
+    fn preset_card(card: &TemplateCard, cx: &CardCx<'_, Self>) -> DocumentCard<Self> {
+        let settings = NewGraph { kind: card.kind, template: card.id.to_owned(), ..cx.values.clone() };
+        DocumentCard::new(tr(card.label), tr(card.kind_label()), settings, CardSource::preset(None)).picture(card.id).tooltip(tr(card.description))
+    }
+
+    /// `DocumentTabs::Presets` shows no Recent tab
+    fn recent_cards(_cx: &CardCx<'_, Self>) -> Vec<DocumentCard<Self>> {
+        Vec::new()
+    }
+
+    /// `DocumentTabs::Presets` shows no Saved tab; a card is still made for the trait
+    fn saved_card(name: &str, saved: &Self, _cx: &CardCx<'_, Self>) -> DocumentCard<Self> {
+        DocumentCard::new(Label::from(name.to_owned()), String::new(), saved.clone(), CardSource::Recent)
+    }
+
+    fn apply_card(&mut self, card: &DocumentCard<Self>, _setup: &(), _memory: &mut ()) {
+        self.kind = card.settings.kind;
+        self.template.clone_from(&card.settings.template);
+    }
+
+    /// Size (a material graph only: two sides and the link that keeps them equal), then the package the graph goes in
+    fn details(ui: &mut Ui, values: &mut Self, _cx: &mut DetailsCx<'_, Self>) {
+        // PLAN: the name row is the dialog's own ("Name", without production's help mark); a taken name still gets a number from the engine
+        if values.kind == GraphKind::Material {
+            let sides: Vec<Entry<u32>> = SIDES.iter().map(|&side| Entry::new(side, format!("{side} px"))).collect();
+            Field::new(tr("Size")).layout(FieldLayout::Above).id_salt("size").show(ui, |ui, _| {
+                Row::new().show(ui, |ui, _| {
+                    let _ = Select::new(tr("Width"), Bind::bound(&mut values.width), &sides).sizing(Sizing::FillWidth).show(ui);
+                    let _ = link_toggle(tr("Keep the width and height the same"), Bind::bound(&mut values.linked)).show(ui);
+                    if values.linked {
+                        values.height = values.width;
+                    }
+                    let _ = Select::new(tr("Height"), Bind::bound(&mut values.height), &sides).enabled(!values.linked).sizing(Sizing::FillWidth).show(ui);
+                });
+            });
         }
 
-        let create_button = crate::widgets::primary_button(ui, tr("Create"));
-        create |= ui.add_enabled_ui(destination_available, |ui| ui.add_sized([button_width, 28.0], create_button)).inner.clicked();
-    });
-
-    create && destination_available && app.ui.windows.new_graph
-}
-
-/// A list of the sides a graph can have
-fn side_combo(ui: &mut Ui, id: &str, label: &str, side: &mut u32, width: f32) {
-    let combo = egui::ComboBox::from_id_salt(id).width(width).selected_text(format!("{side} px")).show_ui(ui, |ui| {
-        for option in SIDES {
-            ui.selectable_value(side, option, format!("{option} px"));
-        }
-    });
-    crate::widgets::name(&combo.response, egui::Role::ComboBox, label);
+        let mut destinations = vec![Entry::new(None, tr("New package"))];
+        destinations.extend(values.packages.iter().map(|(id, label)| Entry::new(Some(*id), label.clone())));
+        Field::new(tr("Create graph in")).layout(FieldLayout::Above).id_salt("package").show(ui, |ui, _| {
+            // A package closed while the dialog is open is no entry: the placeholder asks for another
+            let _ = Select::new(tr("Create graph in"), Bind::bound(&mut values.package), &destinations)
+                .placeholder(tr("Choose a package"))
+                .sizing(Sizing::FillWidth)
+                .show(ui);
+        });
+    }
 }

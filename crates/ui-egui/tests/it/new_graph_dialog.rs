@@ -9,13 +9,19 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState, menus};
 fn harness() -> Harness<'static, MaterialCraftApp> {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.ui.windows.home = false;
-    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    let mut harness = Harness::builder()
+        .with_size(vec2(1600.0, 960.0))
+        .with_pixels_per_point(1.0)
+        .with_context_setup(|ctx| {
+            MaterialCraftApp::install_runtime(ctx, None).expect("runtime");
+        })
+        .build_ui_state(
+            |ui, app: &mut MaterialCraftApp| {
+                app.step(&ui.ctx().clone());
+                app.draw(ui);
+            },
+            app,
+        );
     harness.run_steps(6);
     harness
 }
@@ -32,8 +38,10 @@ fn a_card_and_an_unlinked_size_make_the_graph_in_the_active_package() {
     let packages = harness.state().session.open_packages().len();
     open(&mut harness, "ui.newGraph");
 
-    harness.get(By::new().role(Role::ListItem).label("Atomic sample")).click();
+    // A template card's name starts with its title, then its kind and description
+    harness.get(By::new().role(Role::ListItem).label_contains("Atomic sample")).click();
     harness.run_steps(2);
+    // The link toggle between the two side lists, under the name the app gives it
     harness.get(By::new().role(Role::Button).label("Keep the width and height the same")).click();
     harness.run_steps(2);
     harness.state_mut().ui.new_graph_size = 512;

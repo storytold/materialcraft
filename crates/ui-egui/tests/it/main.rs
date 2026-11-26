@@ -3,7 +3,6 @@
 //! resize.rs isolates its bounded render wait from unrelated tests sharing the global Rayon pool.
 
 mod clipboard_shortcuts;
-mod dialogs;
 mod export_window;
 mod graph_properties;
 mod interface_scale;
