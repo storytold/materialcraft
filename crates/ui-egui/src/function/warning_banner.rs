@@ -18,7 +18,7 @@ pub(super) fn show(ui: &mut Ui, document: &Graph, target: &FunctionGraphTarget, 
             let _ = craft_ui::display::Text::new(format!("{}: {}", tr("Expected output"), expected.label())).shade(craft_ui::display::Shade::Muted).show(ui);
         }
         for message in &messages {
-            let _ = craft_ui::notices::Notice::new(craft_theme::variant::Tone::Warn, message.as_str()).tooltip(tip).show(ui);
+            let _ = craft_ui::notices::Notice::new(craft_theme::variant::Tone::Warn, message.clone()).tooltip(tip).show(ui);
         }
     });
 }

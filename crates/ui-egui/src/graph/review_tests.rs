@@ -159,8 +159,8 @@ fn instance_navigation_preserves_parent_view_and_material_across_renames() {
     assert!(menus::enabled(&app, "ui.graph.parent"));
     app.run("graph.rename", json!({"graph": 0, "name": "Renamed parent"})).unwrap();
     let crumbs = super::subgraph_navigation::crumbs(&app);
-    assert!(crumbs.iter().any(|entry| entry.label == "Renamed parent"));
-    assert!(crumbs.iter().any(|entry| entry.label == "Child"));
+    assert!(crumbs.iter().any(|entry| entry.label().as_str() == "Renamed parent"));
+    assert!(crumbs.iter().any(|entry| entry.label().as_str() == "Child"));
     menus::invoke(&mut app, &context, "ui.graph.parent");
     assert_eq!(app.session.graph, 0);
     assert_eq!(app.session.selection, vec![owner]);
@@ -179,7 +179,7 @@ fn dynamic_parameter_functions_return_to_the_owning_node() {
     app.run("graph.node.function", json!({"id": owner, "param": "intensity"})).unwrap();
     super::subgraph_navigation::open_function(&mut app, owner, FunctionTarget::Dynamic("intensity".into()));
     let crumbs = super::subgraph_navigation::crumbs(&app);
-    assert_eq!(crumbs.iter().rev().take(2).map(|entry| entry.label.as_str()).collect::<Vec<_>>(), ["Intensity", "Blur"]);
+    assert_eq!(crumbs.iter().rev().take(2).map(|entry| entry.label().as_str()).collect::<Vec<_>>(), ["Intensity", "Blur"]);
     let context = egui::Context::default();
     menus::invoke(&mut app, &context, "edit.selectAll");
     menus::invoke(&mut app, &context, "edit.delete");

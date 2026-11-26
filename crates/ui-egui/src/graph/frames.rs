@@ -1,7 +1,7 @@
 use crate::MaterialCraftApp;
+use craft_ui::testing::access::{AccessTree, tree_of};
 use egui::{Pos2, Rect, vec2};
 use materialcraft_engine::core::NodeId;
-use craft_ui::testing::access::{AccessTree, tree_of};
 
 /// The whole app in an offscreen egui context, driven one frame at a time
 pub(super) struct Frames {
@@ -18,7 +18,7 @@ impl Frames {
         let ctx = egui::Context::default();
         let app = MaterialCraftApp::headless(session, crate::UiState::default());
         let mut f = Frames { ctx, app, time: 0.0, canvas_text: Vec::new(), access: None };
-        f.app.install_runtime(&f.ctx, None).expect("runtime");
+        MaterialCraftApp::install_runtime(&f.ctx, None).expect("runtime");
         for _ in 0..3 {
             f.run(Vec::new(), egui::Modifiers::NONE);
         }
@@ -30,17 +30,18 @@ impl Frames {
         self.time += 0.05;
         let events = std::iter::once(egui::Event::ModifiersChanged(modifiers)).chain(events).collect();
         let screen_rect = Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 960.0)));
-        let input = egui::RawInput { events, screen_rect, time: Some(self.time), ..Default::default() };
-        let app = &mut self.app;
+        let mut input = egui::RawInput { events, screen_rect, time: Some(self.time), ..Default::default() };
         eframe::App::raw_input_hook(&mut self.app, &self.ctx, &mut input);
-        let mut output = self.ctx.run_ui(input, |ui| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        });
-        let mut frame = eframe::Frame::_new_kittest();
-        eframe::App::logic(&mut self.app, &self.ctx, &mut frame);
+        let app = &mut self.app;
+        let mut output = self.ctx.run_ui(input, |ui| app.draw(ui));
+        self.app.step(&self.ctx);
         self.access = Some(tree_of(&mut output));
-        let canvas_shapes: Vec<_> = output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if self.app.graph.view.contains(text.pos))).map(|shape| shape.shape.clone()).collect();
+        let canvas_shapes: Vec<_> = output
+            .shapes
+            .iter()
+            .filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if self.app.graph.view.contains(text.pos)))
+            .map(|shape| shape.shape.clone())
+            .collect();
         self.canvas_text = craft_ui::testing::text::painted(&canvas_shapes);
         // These interaction tests inspect shapes without uploading textures
         output.textures_delta.clear();
@@ -48,8 +49,17 @@ impl Frames {
 
     /// The bounds of a named control with `role` in the last frame.
     pub(super) fn rect_of(&self, role: egui::accesskit::Role, name: &str) -> Rect {
-        self.access.as_ref().into_iter().flat_map(AccessTree::keys).find(|key| self.access.as_ref().is_some_and(|tree| tree.role_of(*key) == Some(craft_ui::runtime::access::Role::Node(role)) && tree.name_of(*key) == Some(name)))
-            .and_then(|key| self.access.as_ref().and_then(|tree| tree.bounds_of(key))).unwrap_or_else(|| panic!("missing {role:?} control {name}"))
+        self.access
+            .as_ref()
+            .into_iter()
+            .flat_map(AccessTree::keys)
+            .find(|key| {
+                self.access
+                    .as_ref()
+                    .is_some_and(|tree| tree.role_of(*key) == Some(craft_ui::runtime::access::Role::Node(role)) && tree.name_of(*key) == Some(name))
+            })
+            .and_then(|key| self.access.as_ref().and_then(|tree| tree.bounds_of(key)))
+            .unwrap_or_else(|| panic!("missing {role:?} control {name}"))
     }
 
     /// The midpoint of a published wire curve.

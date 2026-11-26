@@ -42,10 +42,10 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, owner: materialcraft
     if let Some(current) = value.as_i32() {
         let entries: Vec<_> = options.iter().map(|(id, label)| craft_ui::contract::Entry::new(*id, tr(label))).collect();
         let mut selected = current;
-        let response = craft_ui::pickers::Select::new(tr(parameter), craft_ui::contract::Bind::bound(&mut selected), &entries)
+        let response = craft_ui::pickers::Select::new(tr(parameter).to_owned(), craft_ui::contract::Bind::bound(&mut selected), &entries)
             .placeholder(tr("Custom"))
             .show(ui);
-        let events = response.edit.events.map(Value::Int);
+        let events = response.events.map(Value::Int);
         let _ = crate::edit_commit::send(
             app,
             &events,

@@ -23,7 +23,7 @@ pub(crate) fn title(app: &MaterialCraftApp) -> Option<String> {
 pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
     let Some((graph, id)) = current(app) else { return false };
     let Some(node) = graph.node(id) else { return false };
-    let label = node_label(node);
+    let label = tr(node_label(node)).to_owned();
     let op = node.op.clone();
     let value = node.value.clone();
     let instance = node.instance.clone();
@@ -32,16 +32,16 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) -> bool {
     let output = materialcraft_engine::nodes::function::output_node(graph).is_some_and(|n| n.id == id);
     let target = app.function_editor.as_ref().and_then(|e| e.command_target());
     let Some(target) = target else { return false };
-    let _ = craft_ui::patterns::panels::Inspector::new(tr("Properties")).target(id).header(tr(label)).show(ui, |ui, _| {
+    let _ = craft_ui::patterns::panels::Inspector::new(tr("Properties")).target(id).header(label).show(ui, |ui, _| {
         if output {
             let _ = craft_ui::display::Text::new(tr("Output node")).show(ui);
         }
         if let Some(instance) = &instance {
             let package = if instance.package.is_empty() { tr("This package") } else { tr(&instance.package) };
             let _ = craft_ui::display::Text::new(format!("{}: {package}", tr("Source"))).show(ui);
-            let _ = craft_ui::display::Text::new(tr(&instance.graph)).show(ui);
+            let _ = craft_ui::display::Text::new(tr(&instance.graph).to_owned()).show(ui);
             if let Some(Err(error)) = &source {
-                let _ = craft_ui::display::Text::new(error.as_str()).tone(craft_theme::variant::Tone::Bad).show(ui);
+                let _ = craft_ui::display::Text::new(error.clone()).tone(craft_theme::variant::Tone::Bad).show(ui);
             }
         }
         if missing {
