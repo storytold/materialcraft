@@ -51,7 +51,7 @@ impl Brightness {
 #[derive(Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct LegacyPrefs {
-    brightness: Option<Brightness>,
+    brightness: Brightness,
     node_shortcuts: BTreeMap<String, String>,
 }
 
@@ -81,8 +81,7 @@ fn parse_eframe(bytes: &[u8]) -> Result<(UiState, Vec<SectionError>), String> {
 
 /// The one mapping of the removed preferences onto their replacements.
 fn apply_legacy_prefs(ui: &mut UiState, legacy: LegacyPrefs) {
-    let brightness = legacy.brightness.unwrap_or_default();
-    if let Some((theme, mode)) = crate::appearance::brightness_choices().get(brightness.index()).cloned() {
+    if let Some((theme, mode)) = crate::appearance::brightness_choices().get(legacy.brightness.index()).cloned() {
         ui.prefs.appearance = craft_theme::AppChoice::new(Some(theme), Some(mode), ui.prefs.appearance.size);
     }
     ui.shortcut_overrides = crate::node_shortcuts::migrate(&legacy.node_shortcuts, craft_keymap::Platform::current());
@@ -123,7 +122,7 @@ mod tests {
         let mut expected = UiState::default();
         apply_legacy_prefs(
             &mut expected,
-            LegacyPrefs { brightness: Some(Brightness::Light), node_shortcuts: [("blur".to_owned(), "Ctrl+Shift+B".to_owned())].into() },
+            LegacyPrefs { brightness: Brightness::Light, node_shortcuts: [("blur".to_owned(), "Ctrl+Shift+B".to_owned())].into() },
         );
         assert_eq!(imported.prefs.appearance, expected.prefs.appearance, "the brightness became the appearance");
         assert_eq!(imported.shortcut_overrides, expected.shortcut_overrides, "the node map became overrides");

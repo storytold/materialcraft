@@ -245,6 +245,8 @@ fn staging_name(name: &str) -> bool {
         return false;
     };
 
+    // craft_atomic stages `{digest}.png` as `.{digest}.png.{pid}-{n}.craft_tmp`.
+    let suffix = suffix.strip_prefix("png.").unwrap_or(suffix);
     digest_name(stem) && suffix.split_once('-').is_some_and(|(pid, counter)| pid.parse::<u32>().is_ok_and(|pid| pid > 0) && counter.parse::<u64>().is_ok())
 }
 

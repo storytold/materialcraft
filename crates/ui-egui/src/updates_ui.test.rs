@@ -113,6 +113,7 @@ fn frame(app: &mut MaterialCraftApp, ctx: &egui::Context) {
 fn the_menu_command_starts_a_check_on_the_next_frame() {
     let (mut app, checks, _) = app_with_source();
     let ctx = egui::Context::default();
+    MaterialCraftApp::install_runtime(&ctx, None).expect("runtime");
     frame(&mut app, &ctx);
     menus::invoke(&mut app, &ctx, COMMAND);
     assert!(app.updates_rt.check_requested);
@@ -173,7 +174,7 @@ fn an_offered_release_opens_the_prompt_over_the_window() {
     for _ in 0..3 {
         let mut raw = egui::RawInput::default();
         eframe::App::raw_input_hook(&mut app, &ctx, &mut raw);
-        ctx.run_ui(raw, |ui| show(&mut app, ui));
+        ctx.run_ui(raw, |ui| show(&mut app, ui)).textures_delta.clear();
         eframe::App::logic(&mut app, &ctx, &mut eframe::Frame::_new_kittest());
     }
     host.with(|host| assert!(host.get::<craft_update::stack_dialogs::UpdatePromptDialog>().is_some()));

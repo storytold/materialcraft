@@ -96,7 +96,8 @@ mod title_bar_tests {
         for _ in 0..2 {
             let mut raw = egui::RawInput::default();
             eframe::App::raw_input_hook(&mut app, &ctx, &mut raw);
-            let output = ctx.run_ui(raw, |ui| app.draw(ui));
+            let mut output = ctx.run_ui(raw, |ui| app.draw(ui));
+            output.textures_delta.clear();
             app.step(&ctx);
             labels = output
                 .platform_output
