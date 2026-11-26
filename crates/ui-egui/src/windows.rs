@@ -68,7 +68,8 @@ fn about(app: &mut MaterialCraftApp, ui: &mut Ui) {
         // Opens only after a click. No diagnostics, paths or documents are sent automatically.
         links.push(AboutLink::new(tr("Report a problem"), "https://github.com/storytold/materialcraft/issues/new"));
     }
-    let blurb = format!("{} {}", tr("Node-based procedural materials, built in pure Rust."), tr("An open-source Crafting App by the ArtCraft team and community."));
+    let blurb =
+        format!("{} {}", tr("Node-based procedural materials, built in pure Rust."), tr("An open-source Crafting App by the ArtCraft team and community."));
     let info = AboutInfo::new(crate::os_window::name_for(identity), blurb, version).links(links).built_with("MIT OR Apache-2.0");
 
     let mut open = true;
@@ -108,8 +109,7 @@ pub fn console(app: &mut MaterialCraftApp, ui: &mut Ui) {
 /// The History panel's footer: Undo and Redo, drawn by `docking.rs` through `DockPanels::footer`. Their enabled state
 /// comes from the command board, as the menu's does
 pub(crate) fn history_footer(_app: &mut MaterialCraftApp, ui: &mut Ui) {
-    let _ = BarItems::new(vec![BarItem::new("edit.undo").display(ItemDisplay::IconText), BarItem::new("edit.redo").display(ItemDisplay::IconText)])
-        .show(ui);
+    let _ = BarItems::new(vec![BarItem::new("edit.undo").display(ItemDisplay::IconText), BarItem::new("edit.redo").display(ItemDisplay::IconText)]).show(ui);
 }
 
 /// The History panel: one numbered row per undoable edit of the document, the newest current. Picking a row undoes
@@ -150,7 +150,8 @@ pub(crate) fn package_filters(open: bool, archive: bool) -> Vec<(&'static str, &
 pub(crate) fn package_dialog(open: bool, archive: bool) -> PickRequest {
     let request = if open { PickRequest::open("document") } else { PickRequest::save("document").suggested_extension(if archive { "mcraft" } else { "sbs" }) };
     // Browser SBS downloads wrap the XML and its resources in a transport ZIP, which opens as the package
-    let download: Option<(&'static str, &'static [&'static str])> = (open && cfg!(target_arch = "wasm32")).then_some(("SBS Package Download (*.zip)", &["zip"][..]));
+    let download: Option<(&'static str, &'static [&'static str])> =
+        (open && cfg!(target_arch = "wasm32")).then_some(("SBS Package Download (*.zip)", &["zip"][..]));
     package_filters(open, archive).into_iter().chain(download).fold(request, |request, (name, extensions)| request.filter(name, extensions))
 }
 

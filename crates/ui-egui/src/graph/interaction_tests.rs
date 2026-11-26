@@ -855,7 +855,8 @@ fn review_library_drop_respects_grid_preference() {
         frames.run(vec![Event::PointerButton { pos: position, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], Modifiers::NONE);
         egui::DragAndDrop::set_payload(&frames.ctx, super::LibraryDrag("node:blur".into()));
         let graph_position = frames.app.ui.graph_camera.view(frames.app.graph.view).to_doc(position);
-        let expected = materialcraft_engine::graph_grid::snap_position([graph_position.x as f32 - super::NODE_W * 0.5, graph_position.y as f32 - 20.0], snapping);
+        let expected =
+            materialcraft_engine::graph_grid::snap_position([graph_position.x as f32 - super::NODE_W * 0.5, graph_position.y as f32 - 20.0], snapping);
         let before = frames.app.session.graph().unwrap().nodes.len();
 
         frames.run(vec![Event::PointerButton { pos: position, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], Modifiers::NONE);

@@ -106,8 +106,7 @@ mod tests {
 
     fn open(files: &Arc<MemoryFiles>, legacy: &Path) -> (SettingsStore<UiState>, craft_settings::LoadReport) {
         // `Location::Memory` reads and writes nothing; a folder over in-memory files exercises the TOML document.
-        let options =
-            OpenOptions::new(Location::Dir(PathBuf::from("/settings"))).files(files.clone()).legacy(vec![eframe_legacy(legacy.to_path_buf())]);
+        let options = OpenOptions::new(Location::Dir(PathBuf::from("/settings"))).files(files.clone()).legacy(vec![eframe_legacy(legacy.to_path_buf())]);
         SettingsStore::open_with(options)
     }
 

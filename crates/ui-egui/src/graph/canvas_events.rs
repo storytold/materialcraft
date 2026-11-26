@@ -21,8 +21,7 @@ use crate::graph_drag_payload::GraphDragPayload;
 /// The framework selection of the session's `selected` nodes: `NodeId(i)` is the node at position `i` of `nodes`, the
 /// one list the pass builds from `graph.nodes`. The last selected node is the lead, the first the anchor.
 pub(super) fn given_selection(selected: &[NodeId], nodes: &[NodeId]) -> Selection<GraphNodeId> {
-    let items: Vec<GraphNodeId> =
-        selected.iter().filter_map(|id| nodes.iter().position(|node| node == id)).map(|at| GraphNodeId::new(at as u32)).collect();
+    let items: Vec<GraphNodeId> = selected.iter().filter_map(|id| nodes.iter().position(|node| node == id)).map(|at| GraphNodeId::new(at as u32)).collect();
     let (lead, anchor) = (items.last().copied(), items.first().copied());
     Selection::new(items, lead, anchor)
 }

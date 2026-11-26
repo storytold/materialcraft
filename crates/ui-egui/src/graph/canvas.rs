@@ -178,7 +178,8 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let given = app.ui.graph_camera.view(app.graph.view);
     let target = ViewTarget::unbounded(list.extent).fit_ceiling(FIT_CAP * f64::from(pixels_per_point));
     // Fit Layers (F) shows the selected nodes, else the whole graph.
-    let picked = list.ids.iter().zip(&list.positions).filter(|(id, _)| app.session.selection.contains(*id)).fold(Rect::NOTHING, |all, (_, rect)| all.union(*rect));
+    let picked =
+        list.ids.iter().zip(&list.positions).filter(|(id, _)| app.session.selection.contains(*id)).fold(Rect::NOTHING, |all, (_, rect)| all.union(*rect));
     let layer_bounds = || Some(if picked.is_positive() { doc_rect(picked) } else { list.extent });
     let mut navigation = NavigationOptions::default();
     navigation.wheel = WheelScheme::Zoom;
@@ -195,11 +196,8 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
                 ui,
                 |ui, body| {
                     let space = canvas_space(&body.env)?;
-                    let _ = CanvasGrid::new(tr("Grid"))
-                        .spacing(DocVec::new(GRID_STEP, GRID_STEP))
-                        .subdivisions(GRID_SUBDIVISIONS)
-                        .picture()
-                        .show_at(ui, body.rect);
+                    let _ =
+                        CanvasGrid::new(tr("Grid")).spacing(DocVec::new(GRID_STEP, GRID_STEP)).subdivisions(GRID_SUBDIVISIONS).picture().show_at(ui, body.rect);
                     let mut graph = NodeGraph::new(&list.positions, &kinds, &list.wires)
                         .label(tr("Node graph"))
                         .command_scope(GRAPH_SCOPE)

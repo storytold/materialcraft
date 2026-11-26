@@ -109,7 +109,7 @@ fn open_blocker(app: &MaterialCraftApp) -> Option<Blocker> {
         || windows.preferences
         || windows.about
         || windows.plugin_manager)
-    .then_some(Blocker::Dialog)
+        .then_some(Blocker::Dialog)
 }
 
 #[cfg(test)]

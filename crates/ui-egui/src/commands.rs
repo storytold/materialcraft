@@ -248,12 +248,7 @@ impl Now {
         } else {
             app.session.selection.len()
         };
-        Now {
-            editor: EditorTarget::resolve(app),
-            graph: app.session.graph().is_ok(),
-            selected,
-            available: crate::function::library::available_operations(app),
-        }
+        Now { editor: EditorTarget::resolve(app), graph: app.session.graph().is_ok(), selected, available: crate::function::library::available_operations(app) }
     }
 }
 

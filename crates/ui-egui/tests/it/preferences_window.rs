@@ -126,14 +126,7 @@ fn draft_preview_size_reaches_the_session_only_on_apply_or_ok() {
 
 /// The applied node creation shortcuts, as (command key, binding texts).
 fn node_overrides(harness: &Harness<'static, MaterialCraftApp>) -> Vec<(String, Vec<String>)> {
-    harness
-        .state()
-        .ui
-        .shortcut_overrides
-        .iter()
-        .filter(|(key, _)| key.starts_with("node.add."))
-        .map(|(key, texts)| (key.to_owned(), texts.to_vec()))
-        .collect()
+    harness.state().ui.shortcut_overrides.iter().filter(|(key, _)| key.starts_with("node.add.")).map(|(key, texts)| (key.to_owned(), texts.to_vec())).collect()
 }
 
 #[test]

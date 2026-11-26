@@ -106,7 +106,8 @@ fn start(app: &mut MaterialCraftApp, then: Then, pick: impl FnOnce(&dyn Files) -
 fn save_dialog(app: &MaterialCraftApp) -> PickRequest {
     let archive = app.session.path.as_deref().is_some_and(materialcraft_engine::file_cmds::is_mcraft);
     let request = crate::windows::package_dialog(false, archive);
-    let name = format!("{}.{}", materialcraft_engine::formats::safe_file_name(&app.session.pkg.name), request.suggested_extension.as_deref().unwrap_or_default());
+    let name =
+        format!("{}.{}", materialcraft_engine::formats::safe_file_name(&app.session.pkg.name), request.suggested_extension.as_deref().unwrap_or_default());
 
     request.file_name(name)
 }

@@ -142,8 +142,9 @@ fn library_render(library: &Arc<NodeLibrary>, key: &LibraryThumb, side: u32, can
 
     match key {
         LibraryThumb::Node(id) => render_native(id, side),
-        LibraryThumb::Graph { package, graph } => NodeLibrary::preview_cancellable(library, package, graph, side, cancel.flag())
-            .map(|image| image.resize(side, side, true).to_rgba8_display()),
+        LibraryThumb::Graph { package, graph } => {
+            NodeLibrary::preview_cancellable(library, package, graph, side, cancel.flag()).map(|image| image.resize(side, side, true).to_rgba8_display())
+        }
     }
 }
 

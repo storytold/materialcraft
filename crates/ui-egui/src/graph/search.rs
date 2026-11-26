@@ -50,8 +50,11 @@ pub(crate) fn candidates(app: &MaterialCraftApp, function: Option<&FunctionEdito
             for definition in materialcraft_engine::nodes::catalog().iter().filter(|d| d.id != "graph_instance") {
                 let hay = format!("{} {} {}", definition.label.to_lowercase(), definition.id.to_lowercase(), definition.category.to_lowercase());
                 if words.iter().all(|word| hay.contains(word)) {
-                    let candidate =
-                        SearchCandidate { label: tr(definition.label).to_string(), group: tr(definition.group()).to_string(), pick: SearchPick::Definition(definition.id) };
+                    let candidate = SearchCandidate {
+                        label: tr(definition.label).to_string(),
+                        group: tr(definition.group()).to_string(),
+                        pick: SearchPick::Definition(definition.id),
+                    };
                     all.push((definition.label.to_string(), candidate));
                 }
             }
@@ -152,7 +155,8 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, mut editor: SearchEd
             .empty("No matching node")
             .max_rows(12)
             .rows_stamp(stamp);
-        let mut item = |index: &usize, _cx: &mut craft_ui::contract::ItemCx<'_, '_, usize>| ListRow::new(rows[*index].label.clone()).trailing(rows[*index].group.clone());
+        let mut item =
+            |index: &usize, _cx: &mut craft_ui::contract::ItemCx<'_, '_, usize>| ListRow::new(rows[*index].label.clone()).trailing(rows[*index].group.clone());
         let response = list.show_items(ui, &SearchRows(&rows), &mut item);
         for event in response.events {
             if let CollectionEvent::Activate(index) = event {

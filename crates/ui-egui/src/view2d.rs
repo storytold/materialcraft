@@ -129,6 +129,7 @@ pub(crate) fn save_image(app: &mut MaterialCraftApp) {
     let Some((node, image)) = app.session.view2d_image().map(|(node, image)| (node, image.clone())) else { return };
 
     let name = shown_name(app, node).unwrap_or_else(|| "image".into());
-    let dialog = craft_host::PickRequest::save("export").file_name(format!("{name}.png")).filter("PNG", &["png"]).filter("OpenEXR", &["exr"]).filter("TGA", &["tga"]);
+    let dialog =
+        craft_host::PickRequest::save("export").file_name(format!("{name}.png")).filter("PNG", &["png"]).filter("OpenEXR", &["exr"]).filter("TGA", &["tga"]);
     crate::native_dialogs::ask(app, dialog, crate::native_dialogs::Then::SaveImage(Box::new(image)));
 }

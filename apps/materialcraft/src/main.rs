@@ -257,10 +257,7 @@ fn main() {
     use craft_window::policy;
     let window_frame = policy::decide_for(craft_window::Prefix::new("MATERIALCRAFT"), policy::Backend::from_env(), policy::TitleBarPref::Integrated);
     let mut viewport = policy::apply(
-        egui::ViewportBuilder::default()
-            .with_title(os_window::name_for(os_window::identity()))
-            .with_inner_size(DEFAULT_SIZE)
-            .with_min_inner_size(MIN_SIZE),
+        egui::ViewportBuilder::default().with_title(os_window::name_for(os_window::identity())).with_inner_size(DEFAULT_SIZE).with_min_inner_size(MIN_SIZE),
         &window_frame.frame,
     );
     // Stable keeps eframe's implicit app id, so its saved layout stays where it is; a Nightly
@@ -274,8 +271,7 @@ fn main() {
     // Scripted runs (agents, tests) set MATERIALCRAFT_NO_PREFS so they neither read nor overwrite the user's saved layout and settings: state goes to a throwaway file
     let persistence_path = persistence_path();
     // Without a persistence path eframe wrote `app.ron` in its own folder for the window's name.
-    let legacy_settings =
-        persistence_path.clone().or_else(|| eframe::storage_dir(os_window::name_for(os_window::identity())).map(|dir| dir.join("app.ron")));
+    let legacy_settings = persistence_path.clone().or_else(|| eframe::storage_dir(os_window::name_for(os_window::identity())).map(|dir| dir.join("app.ron")));
     let start = materialcraft_ui_egui::StartOptions { frame: Some(window_frame), settings: settings_location(), legacy_settings };
     let control = args.control;
     // Throwaway preferences are MATERIALCRAFT_NO_PREFS, not "a persistence path exists": a stable
