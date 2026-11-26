@@ -117,6 +117,17 @@ craft-texture = { git = "https://github.com/storytold/craft-libs", rev = "0b8bba
 
 # egui 0.37 and winit: the suite's forks (storytold/egui, storytold/winit), as craft-libs pins them.
 [patch.crates-io]
+# BEGIN port-kit framework overrides
+krilla = { path = "../craft-libs/vendor/krilla" }
+hayro = { path = "../craft-libs/vendor/hayro" }
+hayro-interpret = { path = "../craft-libs/vendor/hayro-interpret" }
+hayro-syntax = { path = "../craft-libs/vendor/hayro-syntax" }
+hayro-jbig2 = { path = "../craft-libs/vendor/hayro-jbig2" }
+hayro-cmap = { path = "../craft-libs/vendor/hayro-cmap" }
+hayro-postscript = { path = "../craft-libs/vendor/hayro-postscript" }
+linesweeper = { path = "../craft-libs/vendor/linesweeper" }
+vello_common = { path = "../craft-libs/vendor/vello_common" }
+vello_cpu = { path = "../craft-libs/vendor/vello_cpu" }
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 epaint = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
@@ -125,9 +136,25 @@ egui = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896
 egui-winit = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 egui_glow = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
-eframe = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
-winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+egui_extras = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+eframe = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+# END port-kit framework overrides
+# port-kit overridden: ecolor = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: emath = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: epaint = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: egui = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: egui-winit = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: egui_glow = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: eframe = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+# port-kit overridden: winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+# port-kit overridden: egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 # egui-phosphor has no release for egui 0.37 (vendor/egui-phosphor/VENDORED.md).
 egui-phosphor = { path = "vendor/egui-phosphor" }
 
@@ -183,3 +210,52 @@ opt-level = 3
 selection = ["materialcraft", "materialcraft-ui-egui"]
 tracked = ["egui", "eframe"]
 unset_env = ["MATERIALCRAFT_BUILD_CHANNEL", "MATERIALCRAFT_VERSION", "MATERIALCRAFT_BUILD_SHA", "MATERIALCRAFT_BUILD_DATE", "MATERIALCRAFT_REQUIRE_WINRES", "SOURCE_DATE_EPOCH"]
+
+# BEGIN port-kit framework patch
+[patch."https://github.com/storytold/craft-libs"]
+craft-appkit = { path = "../craft-libs/crates/appkit" }
+craft-atomic = { path = "../craft-libs/crates/atomic" }
+craft-behavior = { path = "../craft-libs/crates/behavior" }
+craft-cloud-ui = { path = "../craft-libs/crates/cloud-ui" }
+craft-codepage = { path = "../craft-libs/crates/codepage" }
+craft-dds = { path = "../craft-libs/crates/dds" }
+craft-dialogs = { path = "../craft-libs/crates/dialogs" }
+craft-docpath = { path = "../craft-libs/crates/docpath" }
+craft-font-catalog = { path = "../craft-libs/crates/font-catalog" }
+craft-fonts-build = { path = "../craft-libs/crates/fonts-build" }
+craft-host = { path = "../craft-libs/crates/host" }
+craft-i18n = { path = "../craft-libs/crates/i18n" }
+craft-image-codecs = { path = "../craft-libs/crates/image-codecs" }
+craft-jpeg = { path = "../craft-libs/crates/jpeg" }
+craft-keymap = { path = "../craft-libs/crates/keymap" }
+craft-materialx = { path = "../craft-libs/crates/materialx" }
+craft-mcmat = { path = "../craft-libs/crates/mcmat" }
+craft-menu = { path = "../craft-libs/crates/menu" }
+craft-mesh = { path = "../craft-libs/crates/mesh" }
+craft-metadata = { path = "../craft-libs/crates/metadata" }
+craft-mime = { path = "../craft-libs/crates/mime" }
+craft-pdf = { path = "../craft-libs/crates/pdf" }
+craft-platform = { path = "../craft-libs/crates/platform" }
+craft-png = { path = "../craft-libs/crates/png" }
+craft-quit = { path = "../craft-libs/crates/quit" }
+craft-sbs = { path = "../craft-libs/crates/sbs" }
+craft-settings = { path = "../craft-libs/crates/settings" }
+craft-svg = { path = "../craft-libs/crates/svg" }
+craft-texture = { path = "../craft-libs/crates/texture" }
+craft-theme = { path = "../craft-libs/crates/theme" }
+craft-tiff = { path = "../craft-libs/crates/tiff" }
+craft-tracked = { path = "../craft-libs/crates/tracked" }
+craft-ui = { path = "../craft-libs/crates/ui" }
+craft-ui-canvas = { path = "../craft-libs/crates/ui-canvas" }
+craft-ui-contract = { path = "../craft-libs/crates/ui-contract" }
+craft-ui-macros = { path = "../craft-libs/crates/ui-macros" }
+craft-ui-panels = { path = "../craft-libs/crates/ui-panels" }
+craft-ui-patterns = { path = "../craft-libs/crates/ui-patterns" }
+craft-ui-shell = { path = "../craft-libs/crates/ui-shell" }
+craft-ui-widgets = { path = "../craft-libs/crates/ui-widgets" }
+craft-update = { path = "../craft-libs/crates/update" }
+craft-win32 = { path = "../craft-libs/crates/win32" }
+craft-window = { path = "../craft-libs/crates/window" }
+craft-xml = { path = "../craft-libs/crates/xml" }
+craft-zip = { path = "../craft-libs/crates/zip" }
+# END port-kit framework patch
