@@ -86,7 +86,7 @@ fn scene(app: &mut MaterialCraftApp, ui: &mut Ui) {
         ui.close();
     }
     if ui.button(tr("Load mesh...")).clicked() {
-        crate::web_files::load_mesh(app, ui.ctx());
+        crate::web_files::load_mesh(app);
         ui.close();
     }
 
