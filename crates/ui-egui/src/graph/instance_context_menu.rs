@@ -1,45 +1,48 @@
-use crate::{MaterialCraftApp, i18n::tr};
-use egui::{Pos2, Ui};
 use materialcraft_engine::core::NodeId;
 use serde_json::{Value, json};
 
-use super::context_menu::{action, add_nodes, outputs};
+use crate::MaterialCraftApp;
 
-pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, at: Pos2, node: NodeId) {
-    outputs(app, ui, Some(node));
-    if let Some(parameters) = crate::material_preview_menu::show(ui, &app.session, app.session.graph, node) {
-        app.run("view.3d.assign", parameters);
-    }
-    ui.separator();
-    action(app, ui, "Add Comment", "graph.comment.add", json!({"at": [at.x, at.y]}));
-    action(app, ui, "Add Frame", "graph.frame.add", json!({"rect": [at.x, at.y, 400.0, 260.0]}));
-    if ui.button(tr("Copy info to clipboard")).clicked() {
-        if let Some(info) = app.run("graph.node.info", json!({"id": node}))
-            && let Some(text) = info.get("text").and_then(Value::as_str)
-        {
-            ui.ctx().copy_text(text.into());
-        }
-        ui.close();
-    }
-    ui.separator();
-    ui.menu_button(tr("Manage parameters"), |ui| {
-        action(app, ui, "Reset parameters", "graph.node.reset", json!({"id": node}));
-    });
-    ui.separator();
-    ui.menu_button(tr("Create"), |ui| {
-        ui.menu_button(tr("Add node"), |ui| add_nodes(app, ui, at));
-        action(app, ui, "Add Dot node", "graph.node.add", json!({"def": "dot", "at": [at.x, at.y]}));
-        action(app, ui, "Add Navigation pin", "graph.pin.add", json!({"at": [at.x, at.y]}));
-    });
-    ui.separator();
-    if ui.add_enabled(crate::menus::enabled(app, "graph.node.edit"), egui::Button::new(tr("Open reference"))).clicked() {
-        crate::menus::invoke(app, ui.ctx(), "graph.node.edit");
-        ui.close();
-    }
-    ui.separator();
-    let label = format!("{} ({})", tr("Create graph from selection"), app.session.selection.len());
-    action(app, ui, &label, "graph.createFromSelection", Value::Null);
-    for (label, command) in [
+fn item(command: &str, label: &str, params: Value) -> craft_menu::Node {
+    craft_menu::Node::Item(craft_menu::Item::new(craft_keymap::CommandRef::with_params(command, params), crate::i18n::tr(label)))
+}
+
+/// Builds context rows for a graph instance, including the selection commands supported there.
+pub(super) fn rows(app: &MaterialCraftApp, node: NodeId, at: egui::Pos2) -> Vec<craft_menu::Node> {
+    let mut rows = super::context_menu::instance_output_rows(app, node);
+    rows.extend(crate::material_preview_menu::rows(app, app.session.graph, node));
+    rows.extend([
+        craft_menu::Node::Separator,
+        item("graph.comment.add", "Add Comment", json!({"at": [at.x, at.y]})),
+        item("graph.frame.add", "Add Frame", json!({"rect": [at.x, at.y, 400.0, 260.0]})),
+        item("ui.graph.copyInfo", "Copy info to clipboard", json!({"id": node.0})),
+        craft_menu::Node::Separator,
+        craft_menu::Node::submenu(crate::i18n::tr("Manage parameters"), vec![item("graph.node.reset", "Reset parameters", json!({"id": node.0}))]),
+        craft_menu::Node::Separator,
+    ]);
+    let point = json!([at.x, at.y]);
+    let catalog = materialcraft_engine::nodes::catalog()
+        .iter()
+        .filter(|definition| definition.id != "dot")
+        .map(|definition| (definition.id, definition.label, if definition.id == "output" { "Output" } else { definition.category }));
+    rows.push(craft_menu::Node::submenu(
+        crate::i18n::tr("Create"),
+        vec![
+            craft_menu::Node::submenu(
+                crate::i18n::tr("Add node"),
+                super::add_node_menu::rows("graph.node.add", catalog, |id| json!({"def": id, "at": point, "snapToGrid": app.ui.prefs.snap_to_grid})),
+            ),
+            item("graph.node.add", "Add Dot node", json!({"def": "dot", "at": point})),
+            item("graph.pin.add", "Add Navigation pin", json!({"at": point})),
+        ],
+    ));
+    rows.extend([
+        craft_menu::Node::Separator,
+        item("graph.node.edit", "Open reference", Value::Null),
+        craft_menu::Node::Separator,
+        item("graph.createFromSelection", &format!("{} ({})", crate::i18n::tr("Create graph from selection"), app.session.selection.len()), Value::Null),
+    ]);
+    let commands = [
         ("Copy selection", "edit.copy"),
         ("Delete selection", "edit.delete"),
         ("Delete and relink", "edit.deleteRelink"),
@@ -48,11 +51,10 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, at: Pos2, node: Node
         ("Select upstream nodes", "graph.selectUpstream"),
         ("Select downstream nodes", "graph.selectDownstream"),
         ("Disable selection", "graph.node.disable"),
-    ] {
-        action(app, ui, label, command, Value::Null);
+    ];
+    rows.extend(commands.into_iter().map(|(label, command)| item(command, label, Value::Null)));
+    if let Some(row) = super::wire_actions::swap_row(app, None) {
+        rows.push(row);
     }
-    if super::wire_actions::swap_button(app, ui, &app.graph.selected_wires, None) {
-        super::wire_actions::swap_selected_wires(app);
-        ui.close();
-    }
+    rows
 }

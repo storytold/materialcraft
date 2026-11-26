@@ -2,10 +2,27 @@ use egui::{Pos2, Ui};
 use materialcraft_engine::core::NodeId;
 use serde_json::{Value, json};
 
-use crate::{MaterialCraftApp, i18n::tr, menus};
+use crate::MaterialCraftApp;
 
-pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, at: Pos2, node: Option<NodeId>) {
-    if let Some(node) = node
+fn item(command: &str, label: &str, params: Value) -> craft_menu::Node {
+    craft_menu::Node::Item(craft_menu::Item::new(craft_keymap::CommandRef::with_params(command, params), crate::i18n::tr(label)))
+}
+
+fn submenu(label: &str, children: Vec<craft_menu::Node>) -> craft_menu::Node {
+    craft_menu::Node::submenu(crate::i18n::tr(label), children)
+}
+
+/// Shows graph context rows from a collection context request or an empty canvas request.
+pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, graph: &craft_ui::graph::NodeGraphResponse<()>, nodes: &[NodeId]) {
+    let request = graph.collection.menu.as_ref();
+    let event_at = graph.collection.events.iter().rev().find_map(|event| match event {
+        craft_ui::contract::CollectionEvent::ContextMenu(request) => Some((Some(request.key), request.at)),
+        craft_ui::contract::CollectionEvent::EmptyContextMenu { at } => Some((None, *at)),
+        _ => None,
+    });
+    let target_index = event_at.and_then(|(node, _)| node).or_else(|| request.map(|request| request.key));
+    let target = target_index.and_then(|key| nodes.get(key.0 as usize).copied());
+    if let Some(node) = target
         && app.session.selection.last() != Some(&node)
     {
         let mut selection = app.session.selection.clone();
@@ -17,100 +34,85 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, at: Pos2, node: Opti
         selection.push(node);
         app.run("graph.select", json!({"ids": selection}));
     }
+    let screen = event_at.map(|(_, at)| at).or_else(|| request.map(|request| request.at)).unwrap_or(app.graph.view.min);
+    let view = crate::annotation::camera(app).view(app.graph.view);
+    let point = view.to_doc(screen);
+    let at = Pos2::new(point.x as f32, point.y as f32);
+    let instance = target.is_some_and(|id| app.session.graph().ok().and_then(|graph| graph.node(id).ok()).is_some_and(|node| node.def == "graph_instance"));
+    let rows = if instance { target.map_or_else(Vec::new, |node| super::instance_context_menu::rows(app, node, at)) } else { rows(app, target, at) };
+    let menu = craft_ui::menu::Menu::context(crate::i18n::tr("Graph context menu"), &graph.collection.response);
+    let _ = menu.show(ui, |ui, _| craft_menu::context::rows(ui, &rows));
+}
 
-    ui.set_min_width(290.0);
-    if let Some(node) = node
-        && app.session.graph().ok().and_then(|graph| graph.node(node).ok()).is_some_and(|node| node.def == "graph_instance")
-    {
-        super::instance_context_menu::show(app, ui, at, node);
-        return;
+fn rows(app: &MaterialCraftApp, node: Option<NodeId>, at: Pos2) -> Vec<craft_menu::Node> {
+    let point = json!([at.x, at.y]);
+    let mut rows = Vec::new();
+    if node.is_some() {
+        rows.push(item("graph.node.edit", "Edit graph", Value::Null));
+        rows.push(craft_menu::Node::Separator);
     }
-    if node.is_some() && menus::enabled(app, "graph.node.edit") {
-        action(app, ui, "Edit graph", "graph.node.edit", Value::Null);
-        ui.separator();
-    }
-
-    ui.menu_button(tr("Add node"), |ui| add_nodes(app, ui, at));
-    action(app, ui, "Add Comment", "graph.comment.add", json!({"at": [at.x, at.y]}));
-    action(app, ui, "Add Frame", "graph.frame.add", json!({"rect": [at.x, at.y, 400.0, 260.0]}));
-    action(app, ui, "Add Navigation pin", "graph.pin.add", json!({"at": [at.x, at.y]}));
-    action(app, ui, "Add Dot node", "graph.node.add", json!({"def": "dot", "at": [at.x, at.y]}));
-    ui.separator();
-
+    let entries = materialcraft_engine::nodes::catalog()
+        .iter()
+        .filter(|definition| definition.id != "dot")
+        .map(|definition| (definition.id, definition.label, if definition.id == "output" { "Output" } else { definition.category }));
+    rows.push(submenu(
+        "Add node",
+        super::add_node_menu::rows("graph.node.add", entries, |id| json!({"def": id, "at": point, "snapToGrid": app.ui.prefs.snap_to_grid})),
+    ));
+    rows.extend([
+        item("graph.comment.add", "Add Comment", json!({"at": point})),
+        item("graph.frame.add", "Add Frame", json!({"rect": [at.x, at.y, 400.0, 260.0]})),
+        item("graph.pin.add", "Add Navigation pin", json!({"at": point})),
+        item("graph.node.add", "Add Dot node", json!({"def": "dot", "at": point})),
+        craft_menu::Node::Separator,
+    ]);
     if let Some(node) = node {
-        if let Some(parameters) = crate::material_preview_menu::show(ui, &app.session, app.session.graph, node) {
-            app.run("view.3d.assign", parameters);
-        }
+        rows.extend(crate::material_preview_menu::rows(app, app.session.graph, node));
     } else {
-        action(app, ui, "View outputs in 3D view", "ui.graph.viewOutputs", Value::Null);
-        action(app, ui, "Reset and view outputs in 3D view", "ui.graph.resetViewOutputs", Value::Null);
+        rows.push(item("ui.graph.viewOutputs", "View outputs in 3D view", Value::Null));
+        rows.push(item("ui.graph.resetViewOutputs", "Reset and view outputs in 3D view", Value::Null));
     }
-    outputs(app, ui, node);
-    action(app, ui, "Compute nodes thumbnails", "ui.graph.computeThumbnails", Value::Null);
-    action(app, ui, "Clear nodes thumbnails", "ui.graph.clearThumbnails", Value::Null);
-    action(app, ui, "Save package", "file.save", Value::Null);
-    if let Some(command) = super::edit_menu::selection(ui, |command| menus::enabled(app, command)) {
-        let parameters = if matches!(command, "edit.paste" | "edit.pasteWithoutLinks") { json!({"at": [at.x, at.y]}) } else { Value::Null };
-        app.run(command, parameters);
+    rows.extend(output_rows(app, node));
+    rows.extend([
+        item("ui.graph.computeThumbnails", "Compute nodes thumbnails", Value::Null),
+        item("ui.graph.clearThumbnails", "Clear nodes thumbnails", Value::Null),
+        item("file.save", "Save package", Value::Null),
+    ]);
+    rows.extend(super::edit_menu::selection_rows(json!({"at": point})));
+    if let Some(row) = super::wire_actions::swap_row(app, None) {
+        rows.push(row);
     }
-    if super::wire_actions::swap_button(app, ui, &app.graph.selected_wires, None) {
-        super::wire_actions::swap_selected_wires(app);
-        ui.close();
-    }
-    action(app, ui, "Previous pin", "ui.graph.previousPin", Value::Null);
-    action(app, ui, "Next pin", "ui.graph.nextPin", Value::Null);
+    rows.extend([item("ui.graph.previousPin", "Previous pin", Value::Null), item("ui.graph.nextPin", "Next pin", Value::Null)]);
+    rows
 }
 
-pub(super) fn add_nodes(app: &mut MaterialCraftApp, ui: &mut Ui, at: Pos2) {
-    let definitions = materialcraft_engine::nodes::catalog().iter().filter(|definition| definition.id != "dot");
-    let entries = definitions.map(|definition| (definition.id, definition.label, if definition.id == "output" { "Output" } else { definition.category }));
-    if let Some(definition) = super::add_node_menu::show(app, ui, entries) {
-        app.run("graph.node.add", json!({"def": definition, "at": [at.x, at.y], "snapToGrid": app.ui.prefs.snap_to_grid}));
-    }
+pub(super) fn instance_output_rows(app: &MaterialCraftApp, node: NodeId) -> Vec<craft_menu::Node> {
+    output_rows(app, Some(node))
 }
 
-pub(super) fn outputs(app: &mut MaterialCraftApp, ui: &mut Ui, node: Option<NodeId>) {
-    let targets: Vec<_> = app
-        .session
-        .graph()
-        .into_iter()
-        .flat_map(|graph| graph.nodes.iter().map(move |node| (graph, node)))
-        .filter(|(_, candidate)| node == Some(candidate.id) || (node.is_none() && candidate.def == "output"))
-        .flat_map(|(graph, node)| {
-            if node.def == "output" {
-                return vec![(node.id, 0, super::node_label(node))];
+fn output_rows(app: &MaterialCraftApp, node: Option<NodeId>) -> Vec<craft_menu::Node> {
+    let Some(graph) = app.session.graph().ok() else { return Vec::new() };
+    let targets: Vec<_> = graph
+        .nodes
+        .iter()
+        .filter(|candidate| node == Some(candidate.id) || (node.is_none() && candidate.def == "output"))
+        .flat_map(|candidate| {
+            if candidate.def == "output" {
+                return vec![(candidate.id, 0, super::node_label(candidate))];
             }
-
-            materialcraft_engine::eval::ports(&app.session.pkg, graph, node)
+            materialcraft_engine::eval::ports(&app.session.pkg, graph, candidate)
                 .1
                 .into_iter()
                 .enumerate()
-                .map(move |(index, port)| (node.id, index, format!("{} / {}", super::node_label(node), port.label)))
+                .map(|(port, output)| (candidate.id, port, format!("{} / {}", super::node_label(candidate), output.label)))
                 .collect()
         })
         .collect();
-
-    ui.add_enabled_ui(!targets.is_empty(), |ui| {
-        ui.menu_button(tr("View output in 2D view"), |ui| {
-            for (node, port, label) in targets {
-                if ui.button(label).clicked() {
-                    app.run("view.2d", json!({"node": node.0, "port": port}));
-                    app.ui.dock.focus(crate::docking::Panel::View2d);
-                    ui.close();
-                }
-            }
-        });
-    });
-}
-
-pub(super) fn action(app: &mut MaterialCraftApp, ui: &mut Ui, label: &str, command: &str, parameters: Value) {
-    if super::edit_menu::button(ui, label, command, menus::enabled(app, command)) {
-        if command.starts_with("ui.") || matches!(command, "file.save" | "graph.node.edit") {
-            menus::invoke(app, ui.ctx(), command);
-        } else {
-            app.run(command, parameters);
-        }
-
-        ui.close();
+    if targets.is_empty() {
+        return Vec::new();
     }
+    vec![submenu(
+        "View output in 2D view",
+        targets.into_iter().map(|(node, port, label)| item("ui.graph.view2d", &label, json!({"node": node.0, "port": port}))).collect(),
+    )]
 }

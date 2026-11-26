@@ -1,35 +1,13 @@
-use crate::{i18n::tr, menus};
-use egui::Ui;
+use serde_json::Value;
 
-/// The row of one edit command with its parameters.
-#[allow(dead_code)] // P3(graph-w12): ge.A11
-pub(crate) fn row(command: &str, params: serde_json::Value) -> craft_menu::Node {
-    let _ = (command, params);
-    todo!("ge.A11")
+/// Builds one edit command row with its parameters.
+pub(crate) fn row(command: &str, params: Value) -> craft_menu::Node {
+    craft_menu::Node::Item(craft_menu::Item::new(craft_keymap::CommandRef::with_params(command, params), crate::i18n::tr(label(command))))
 }
 
-/// The selection edit rows (cut, copy, delete, duplicate) with their parameters.
-#[allow(dead_code)] // P3(graph-w12): ge.A11
-pub(crate) fn selection_rows(params: serde_json::Value) -> Vec<craft_menu::Node> {
-    let _ = params;
-    todo!("ge.A11")
-}
-
-pub(crate) fn button(ui: &mut Ui, label: &str, command: &str, enabled: bool) -> bool {
-    let mut button = egui::Button::new(tr(label));
-    if let Some(shortcut) = menus::shortcut_of(command).map(|text| menus::shortcut_label(ui.ctx(), text)) {
-        button = button.shortcut_text(shortcut);
-    }
-    let clicked = ui.add_enabled(enabled, button).clicked();
-    if clicked {
-        ui.close();
-    }
-    clicked
-}
-
-pub(crate) fn selection(ui: &mut Ui, enabled: impl Fn(&str) -> bool) -> Option<&'static str> {
-    let mut chosen = None;
-    for (label, command) in [
+/// Builds the selection edit rows in their established menu order.
+pub(crate) fn selection_rows(params: Value) -> Vec<craft_menu::Node> {
+    let commands = [
         ("Paste", "edit.paste"),
         ("Paste without link", "edit.pasteWithoutLinks"),
         ("Select all", "edit.selectAll"),
@@ -42,13 +20,25 @@ pub(crate) fn selection(ui: &mut Ui, enabled: impl Fn(&str) -> bool) -> Option<&
         ("Select upstream nodes", "graph.selectUpstream"),
         ("Select downstream nodes", "graph.selectDownstream"),
         ("Disable selection", "graph.node.disable"),
-    ] {
+    ];
+    let mut rows = Vec::with_capacity(commands.len() + 1);
+    for (label, command) in commands {
         if command == "edit.copy" {
-            ui.separator();
+            rows.push(craft_menu::Node::Separator);
         }
-        if button(ui, label, command, enabled(command)) {
-            chosen = Some(command);
-        }
+        let parameters = if matches!(command, "edit.paste" | "edit.pasteWithoutLinks") { params.clone() } else { Value::Null };
+        rows.push(craft_menu::Node::Item(craft_menu::Item::new(craft_keymap::CommandRef::with_params(command, parameters), crate::i18n::tr(label))));
     }
-    chosen
+    rows
+}
+
+fn label(command: &str) -> &'static str {
+    match command {
+        "graph.pin.add" => "Add Navigation pin",
+        "file.save" => "Save package",
+        "ui.graph.previousPin" => "Previous pin",
+        "ui.graph.nextPin" => "Next pin",
+        "graph.node.edit" => "Edit graph",
+        _ => command,
+    }
 }
