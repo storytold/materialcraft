@@ -1,7 +1,6 @@
+use crate::{MaterialCraftApp, function::FunctionTarget, i18n::tr};
 use egui::Ui;
 use materialcraft_engine::core::{FunctionGraph, Value};
-
-use crate::{MaterialCraftApp, function::FunctionTarget, i18n::tr};
 
 pub(crate) fn title(app: &MaterialCraftApp) -> String {
     let kind = app.pattern_editor.as_ref().and_then(|editor| {
@@ -14,60 +13,53 @@ pub(crate) fn title(app: &MaterialCraftApp) -> String {
 
 pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let Some(mut editor) = app.pattern_editor.take() else { return };
-
-    let Some(graph) = editor.current(app) else { return };
-
+    let Some(graph) = editor.current(app) else {
+        app.pattern_editor = Some(editor);
+        return;
+    };
+    let inspected = crate::graph::node_selection::inspected(&editor.selection, editor.inspected_node);
+    let node_data = graph.nodes.iter().find(|node| Some(node.id) == inspected).cloned();
     let mut edits = Vec::new();
     let mut function_target = None;
-
-    let inspected = crate::graph::node_selection::inspected(&editor.selection, editor.inspected_node);
-    if let Some(node) = graph.nodes.iter().find(|node| Some(node.id) == inspected) {
-        ui.heading(tr(node.kind.label()));
+    let mut inspector = craft_ui::patterns::Inspector::new(tr("FX-Map")).empty(tr("Select a node to edit its parameters"));
+    if let Some(node) = &node_data {
+        inspector = inspector.target(node.id).header(tr(node.kind.label()));
+    }
+    inspector.show(ui, |ui, _| {
+        let Some(node) = &node_data else { return };
         if graph.root == Some(node.id) {
-            ui.label(tr("Root node"));
+            let _ = craft_ui::display::Text::new(tr("Root node")).show(ui);
         }
         if let Some(definition) = materialcraft_engine::nodes::pattern::definition(node.kind) {
             for parameter in &definition.params {
-                ui.push_id(parameter.id, |ui| {
-                    ui.label(tr(parameter.label));
-                    ui.horizontal_wrapped(|ui| {
-                        let value = node.parameters.get(parameter.id).unwrap_or(&parameter.default);
-                        if matches!(value, Value::Function(_)) {
-                            if ui.small_button(tr("Edit function")).clicked() {
-                                function_target = Some(FunctionTarget::Pattern { node: node.id, parameter: parameter.id.to_string() });
-                            }
-                            if ui.small_button(tr("Reset")).clicked() {
-                                edits.push((materialcraft_engine::PatternEdit::Value { id: node.id, parameter: parameter.id.into(), value: None }, false));
-                            }
-                        } else {
-                            let mut value = value.clone();
-                            if super::parameter_value::show(ui, parameter.id, &mut value) {
-                                edits.push((
-                                    materialcraft_engine::PatternEdit::Value { id: node.id, parameter: parameter.id.into(), value: Some(value.clone()) },
-                                    true,
-                                ));
-                            }
-                            if ui.small_button(tr("Function")).clicked() {
-                                edits.push((
-                                    materialcraft_engine::PatternEdit::Value {
-                                        id: node.id,
-                                        parameter: parameter.id.into(),
-                                        value: Some(Value::Function(Box::new(FunctionGraph::constant(value)))),
-                                    },
-                                    false,
-                                ));
-                                function_target = Some(FunctionTarget::Pattern { node: node.id, parameter: parameter.id.to_string() });
-                            }
+                let _ = craft_ui::display::Text::new(tr(parameter.label)).show(ui);
+                let _ = craft_ui::layout_components::Row::new().wrap(true).show(ui, |ui, _| {
+                    let value = node.parameters.get(parameter.id).unwrap_or(&parameter.default);
+                    if matches!(value, Value::Function(_)) {
+                        if craft_ui::buttons::Button::new(tr("Edit function")).show(ui).response.clicked() {
+                            function_target = Some(FunctionTarget::Pattern { node: node.id, parameter: parameter.id.to_string() });
                         }
-                    });
-                    ui.add_space(6.0);
+                        if craft_ui::buttons::Button::new(tr("Reset")).show(ui).response.clicked() {
+                            edits.push((materialcraft_engine::PatternEdit::Value { id: node.id, parameter: parameter.id.into(), value: None }, false));
+                        }
+                    } else {
+                        super::parameter_value::show(app, ui, editor.node, node.id, parameter.id, value);
+                        if craft_ui::buttons::Button::new(tr("Function")).show(ui).response.clicked() {
+                            edits.push((
+                                materialcraft_engine::PatternEdit::Value {
+                                    id: node.id,
+                                    parameter: parameter.id.into(),
+                                    value: Some(Value::Function(Box::new(FunctionGraph::constant(value.clone())))),
+                                },
+                                false,
+                            ));
+                            function_target = Some(FunctionTarget::Pattern { node: node.id, parameter: parameter.id.to_string() });
+                        }
+                    }
                 });
             }
         }
-    } else {
-        ui.heading(tr("FX-Map"));
-        ui.label(tr("Select a node to edit its parameters"));
-    }
+    });
     for (edit, merge) in edits {
         editor.edit(app, edit, merge);
     }

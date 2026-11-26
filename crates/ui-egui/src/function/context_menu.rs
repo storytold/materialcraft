@@ -1,127 +1,78 @@
 use super::FunctionEditor;
-use crate::{MaterialCraftApp, graph::edit_menu, i18n::tr, menus};
+use crate::{
+    MaterialCraftApp,
+    graph::{add_node_menu, edit_menu, wire_actions},
+    i18n::tr,
+};
 use egui::Ui;
-use materialcraft_engine::FunctionEdit;
+use materialcraft_engine::{FunctionEdit, SelectionTarget};
 use serde_json::json;
 
-pub(super) fn show(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui, node: Option<u32>) {
-    ui.set_min_width(290.0);
-    if let Some(node) = node {
-        node_actions(app, editor, ui, node);
-    } else {
-        background_actions(app, editor, ui);
+pub(super) fn show(
+    app: &mut MaterialCraftApp,
+    editor: &mut FunctionEditor,
+    ui: &mut Ui,
+    graph: &craft_ui::graph::NodeGraphResponse<super::canvas::FunctionValueEdit>,
+    ids: &[u32],
+) {
+    let rows = graph.collection.menu.as_ref().and_then(|request| {
+        ids.get(request.key.0 as usize).map(|id| node_actions(app, editor, *id))
+    }).unwrap_or_else(|| background_actions(app, editor));
+    if let Some(request) = graph.collection.menu.as_ref() {
+        let _ = craft_ui::menu::Menu::context(tr("Function graph"), &graph.collection.response)
+            .anchor(craft_ui::contract::overlay::Anchor::Point(request.at))
+            .show(ui, |ui, _| craft_menu::context::rows(ui, &rows));
     }
-    selection_actions(app, editor, ui);
 }
 
-fn node_actions(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui, node: u32) {
-    annotations(app, editor, ui);
-    if ui.button(tr("Copy info to clipboard")).clicked() {
-        if let Some(info) = app.run("graph.function.node.info", json!({"target": editor.command_target(), "id": node}))
-            && let Some(text) = info.get("text").and_then(serde_json::Value::as_str)
-        {
-            ui.ctx().copy_text(text.into());
-        }
-        ui.close();
+fn node_actions(app: &MaterialCraftApp, editor: &FunctionEditor, node: u32) -> Vec<craft_menu::Node> {
+    let mut rows = vec![
+        edit_menu::row("ui.function.annotate", json!({"command":"graph.comment.add", "params":{"at":[editor.menu_at.x, editor.menu_at.y]}})),
+        edit_menu::row("ui.function.annotate", json!({"command":"graph.frame.add", "params":{"rect":[editor.menu_at.x, editor.menu_at.y, 400, 260]}})),
+        edit_menu::row("ui.function.copyInfo", json!({"id":node})),
+    ];
+    if editor.current(app).and_then(|g| g.node(node)).is_some_and(|n| n.instance.is_some()) {
+        rows.push(edit_menu::row("ui.function.openReference", json!({"id":node})));
     }
-    ui.separator();
-    if editor.current(app).and_then(|graph| graph.node(node)).is_some_and(|node| node.instance.is_some()) && ui.button(tr("Open reference")).clicked() {
-        editor.open_reference = Some(node);
-        ui.close();
-    }
-    if let Some(graph) = editor.current(app)
-        && graph.node(node).is_some_and(|node| materialcraft_engine::nodes::function::can_be_output(&node.op))
+    if let (Some(graph), Some(target)) = (editor.current(app), editor.command_target())
+        && graph.node(node).is_some_and(|n| materialcraft_engine::nodes::function::can_be_output(&n.op))
     {
-        let output = graph.output == Some(node);
-        let compatible = editor
-            .command_target()
-            .zip(app.session.graph().ok())
-            .is_some_and(|(target, document)| materialcraft_engine::function_output::validate(document, &target, graph, node).is_ok());
-        if ui.add_enabled(editor.selection.len() == 1 && !output && compatible, egui::Button::new(tr("Set as output node"))).clicked() {
-            editor.edit(app, FunctionEdit::Output { id: node }, false);
-            ui.close();
-        }
-        ui.separator();
+        let enabled = editor.selection.len() == 1
+            && graph.output != Some(node)
+            && app.session.graph().ok().is_some_and(|doc| materialcraft_engine::function_output::validate(doc, &target, graph, node).is_ok());
+        rows.push(if enabled {
+            edit_menu::row("ui.function.setOutput", json!({"id":node}))
+        } else {
+            edit_menu::row("ui.function.setOutput", json!({"id":node})).enabled(false)
+        });
     }
-    let label = format!("{} ({})", tr("Create graph from selection"), editor.selection.len());
     let command = "graph.createFromSelection";
-    if edit_menu::button(ui, &label, command, super::actions::editor_enabled(app, editor, command).unwrap_or(false)) {
-        super::actions::invoke_editor(app, editor, command);
-    }
+    let _ = app;
+    rows.extend(edit_menu::selection_rows(editor.selection_parameters(command)));
+    rows
 }
 
-fn background_actions(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui) {
-    let Some(target) = editor.command_target() else { return };
-
-    let mut add = None;
-    ui.menu_button(tr("Add node"), |ui| {
-        let entries =
-            target.available_operations(&app.session).filter(|operation| operation.id != "passthrough").map(|operation| (operation.id, operation.label, ""));
-        add = crate::graph::add_node_menu::show(app, ui, entries);
-    });
-    annotations(app, editor, ui);
-    if edit_menu::button(ui, "Add Navigation pin", "graph.pin.add", true) {
-        app.run("graph.pin.add", json!({"at": [editor.menu_at.x, editor.menu_at.y]}));
-        editor.selection.clear();
+fn background_actions(app: &MaterialCraftApp, editor: &FunctionEditor) -> Vec<craft_menu::Node> {
+    let Some(target) = editor.command_target() else { return Vec::new() };
+    let entries = target.available_operations(&app.session).filter(|op| op.id != "passthrough").map(|op| (op.id, op.label, ""));
+    let mut rows = add_node_menu::rows(
+        "ui.function.add",
+        entries,
+        |id| json!({"operation":id, "at":[editor.menu_at.x, editor.menu_at.y], "snap":app.ui.prefs.snap_to_grid}),
+    );
+    rows.push(edit_menu::row("ui.function.annotate", json!({"command":"graph.comment.add", "params":{"at":[editor.menu_at.x, editor.menu_at.y]}})));
+    rows.push(edit_menu::row("ui.function.annotate", json!({"command":"graph.frame.add", "params":{"rect":[editor.menu_at.x, editor.menu_at.y, 400, 260]}})));
+    rows.push(edit_menu::row("ui.function.annotate", json!({"command":"graph.pin.add", "params":{"at":[editor.menu_at.x, editor.menu_at.y]}})));
+    rows.push(edit_menu::row(
+        "ui.function.add",
+        json!({"operation":"passthrough", "at":[editor.menu_at.x, editor.menu_at.y], "snap":app.ui.prefs.snap_to_grid}),
+    ));
+    rows.push(edit_menu::row("file.save", json!({})));
+    rows.extend(edit_menu::selection_rows(editor.selection_parameters("edit.selectAll")));
+    rows.push(edit_menu::row("ui.graph.previousPin", json!({})));
+    rows.push(edit_menu::row("ui.graph.nextPin", json!({})));
+    if let Some(row) = wire_actions::swap_row(app, SelectionTarget::Function(target)) {
+        rows.push(row);
     }
-    if ui.button(tr("Add Dot node")).clicked() {
-        add = Some("passthrough");
-        ui.close();
-    }
-    ui.separator();
-    if edit_menu::button(ui, "Save package", "file.save", menus::enabled(app, "file.save")) {
-        menus::invoke(app, ui.ctx(), "file.save");
-    }
-    for (label, command) in [("Paste", "edit.paste"), ("Paste without link", "edit.pasteWithoutLinks"), ("Select all", "edit.selectAll")] {
-        selection_action(app, editor, ui, label, command);
-    }
-    for (label, command) in [("Previous pin", "ui.graph.previousPin"), ("Next pin", "ui.graph.nextPin")] {
-        if edit_menu::button(ui, label, command, menus::enabled(app, command)) {
-            crate::graph::actions::invoke(app, &ui.ctx().clone(), command, &serde_json::Value::Null); // P3(graph-w14): ge.A21
-            editor.set_camera(app.ui.graph_camera);
-        }
-    }
-    ui.separator();
-    if let Some(operation) = add {
-        editor.edit(app, FunctionEdit::Add { operation: operation.into(), at: editor.menu_at.into(), snap: app.ui.prefs.snap_to_grid }, false);
-    }
-}
-
-fn annotations(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui) {
-    for (label, command, parameters) in [
-        ("Add Comment", "graph.comment.add", json!({"at": [editor.menu_at.x, editor.menu_at.y]})),
-        ("Add Frame", "graph.frame.add", json!({"rect": [editor.menu_at.x, editor.menu_at.y, 400, 260]})),
-    ] {
-        if edit_menu::button(ui, label, command, true) {
-            app.run(command, parameters);
-            editor.selection.clear();
-        }
-    }
-}
-
-fn selection_actions(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui) {
-    for (label, command) in [
-        ("Copy selection", "edit.copy"),
-        ("Delete selection", "edit.delete"),
-        ("Delete and relink", "edit.deleteRelink"),
-        ("Duplicate selection", "edit.duplicate"),
-        ("Duplicate selection without link", "edit.duplicateWithoutLinks"),
-        ("Select upstream nodes", "graph.selectUpstream"),
-        ("Select downstream nodes", "graph.selectDownstream"),
-    ] {
-        selection_action(app, editor, ui, label, command);
-    }
-    let target = editor.command_target().map(materialcraft_engine::SelectionTarget::Function);
-    if crate::graph::wire_actions::swap_button(app, ui, &editor.selected_wires, target.as_ref()) {
-        crate::graph::wire_actions::edit(app, &mut editor.selected_wires, target, "graph.wire.swap");
-        ui.close();
-    }
-    selection_action(app, editor, ui, "Disable selection", "graph.node.disable");
-}
-
-fn selection_action(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui, label: &str, command: &str) {
-    let enabled = super::actions::editor_enabled(app, editor, command).unwrap_or_else(|| menus::enabled(app, command));
-    if edit_menu::button(ui, label, command, enabled) && !super::actions::invoke_editor(app, editor, command) {
-        app.run(command, json!({}));
-    }
+    rows
 }

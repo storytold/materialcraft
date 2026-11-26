@@ -1,8 +1,9 @@
+use crate::{MaterialCraftApp, i18n::tr};
 use egui::Ui;
 use materialcraft_engine::core::Value;
 
-pub(super) fn show(ui: &mut Ui, name: &str, value: &mut Value) -> bool {
-    let options: &[(i32, &str)] = match name {
+pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, owner: materialcraft_engine::core::NodeId, node: u32, parameter: &str, value: &Value) {
+    let options: &[(i32, &str)] = match parameter {
         "patterntype" => &[
             (0, "None"),
             (1, "Input image"),
@@ -26,20 +27,29 @@ pub(super) fn show(ui: &mut Ui, name: &str, value: &mut Value) -> bool {
         ],
         "blendingmode" => &[(0, "Add"), (1, "Blend"), (2, "Max")],
         "imagefiltering" => &[(0, "Nearest"), (1, "Bilinear")],
-        _ => return crate::value_editor::show(ui, value),
-    };
-
-    let Some(mut index) = value.as_i32() else { return false };
-    let previous = index;
-    let label = options.iter().find(|(id, _)| *id == index).map_or("Custom", |(_, label)| *label);
-    egui::ComboBox::from_id_salt(name).selected_text(label).show_ui(ui, |ui| {
-        for (id, label) in options {
-            ui.selectable_value(&mut index, *id, *label);
+        _ => {
+            let events = crate::value_editor::show(ui, value);
+            let _ = crate::edit_commit::send(
+                app,
+                &events,
+                "graph.pattern.edit",
+                |v| serde_json::json!({"id":owner.0,"edit":materialcraft_engine::PatternEdit::Value{id:node,parameter:parameter.into(),value:Some(v.clone())},"merge":true}),
+            );
+            return;
         }
-    });
-    if index == previous {
-        return false;
+    };
+    if let Some(current) = value.as_i32() {
+        let entries: Vec<_> = options.iter().map(|(id, label)| craft_ui::contract::Entry::new(*id, tr(label))).collect();
+        let mut selected = current;
+        let response = craft_ui::pickers::Select::new(tr(parameter), craft_ui::contract::Bind::bound(&mut selected), &entries)
+            .placeholder(tr("Custom"))
+            .show(ui);
+        let events = response.edit.events.map(Value::Int);
+        let _ = crate::edit_commit::send(
+            app,
+            &events,
+            "graph.pattern.edit",
+            |v| serde_json::json!({"id":owner.0,"edit":materialcraft_engine::PatternEdit::Value{id:node,parameter:parameter.into(),value:Some(v.clone())},"merge":true}),
+        );
     }
-    *value = Value::Int(index);
-    true
 }

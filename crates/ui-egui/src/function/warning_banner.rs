@@ -1,4 +1,4 @@
-use crate::{i18n::tr, theme::Tokens};
+use crate::i18n::tr;
 use egui::Ui;
 use materialcraft_engine::{
     FunctionGraphTarget,
@@ -11,16 +11,16 @@ pub(super) fn show(ui: &mut Ui, document: &Graph, target: &FunctionGraphTarget, 
     if messages.is_empty() && expected.is_none() {
         return;
     }
-
-    let tokens = Tokens::get(ui.ctx());
-    egui::Frame::NONE.fill(tokens.panel).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
-        ui.set_width(ui.available_width());
+    let _ = craft_ui::layout_components::Column::new().show(ui, |ui, _| {
         if let Some(expected) = expected {
-            ui.colored_label(tokens.text_dim, format!("{}: {}", tr("Expected output"), expected.label()));
+            let _ = craft_ui::display::Text::new(format!("{}: {}", tr("Expected output"), expected.label())).shade(craft_ui::display::Shade::Muted).show(ui);
         }
         for message in messages {
-            ui.colored_label(tokens.warning, format!("{}  {message}", egui_phosphor::regular::WARNING))
-                .on_hover_text(tr("Choose an output of the expected type and connect it to a value source, such as a constant or variable input"));
+            craft_ui::notices::Notice::new(craft_theme::variant::Tone::Warn, message)
+                .show_with_tip(ui, |ui| {
+                    let _ = craft_ui::display::Text::new(tr("Choose an output of the expected type and connect it to a value source, such as a constant or variable input"))
+                        .show(ui);
+                });
         }
     });
 }
