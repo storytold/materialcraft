@@ -3,28 +3,37 @@
 use egui::accesskit::Role;
 use egui::vec2;
 use egui_kittest::Harness;
-use egui_kittest::kittest::{By, Queryable};
+use egui_kittest::kittest::{By, NodeT, Queryable};
 use materialcraft_ui_egui::{MaterialCraftApp, UiState, menus};
 
 fn harness() -> Harness<'static, MaterialCraftApp> {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.ui.windows.home = false;
-    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_eframe(move |cc| {
+        MaterialCraftApp::install_runtime(&cc.egui_ctx, None).expect("runtime");
+        app
+    });
     harness.run_steps(6);
     harness
 }
 
+/// Opens the menu titled `menu` and picks its row whose name holds `item`.
 fn choose(harness: &mut Harness<'static, MaterialCraftApp>, menu: &str, item: &str) {
-    harness.get(By::new().role(Role::Button).label(menu)).click();
+    harness.get(By::new().role(Role::MenuItem).label(menu)).click();
     harness.run_steps(3);
-    harness.get(By::new().role(Role::Button).label_contains(item)).click();
+    let rows = [Role::MenuItem, Role::MenuItemCheckBox, Role::MenuItemRadio];
+    harness
+        .get_all(By::new().label_contains(item))
+        .find(|node| rows.contains(&node.accesskit_node().role()))
+        .expect("the menu lists the item")
+        .click();
     harness.run_steps(3);
+}
+
+/// Whether the main toolbar shows, found by its Open button's command label.
+fn toolbar_shown(harness: &Harness<'static, MaterialCraftApp>) -> bool {
+    let open = craft_ui::runtime::commands::resolve(&harness.ctx, "file.open").label.clone();
+    harness.query_all(By::new().role(Role::Toolbar)).any(|bar| bar.query_by(By::new().role(Role::Button).label(&open)).is_some())
 }
 
 #[test]
@@ -64,11 +73,11 @@ fn cancel_rendering_is_only_offered_while_a_cook_runs() {
 #[test]
 fn the_main_toolbar_and_the_plugin_manager_open_from_the_menus() {
     let mut harness = harness();
-    assert!(harness.query_by_label("Open package... (Ctrl+O)").is_some());
+    assert!(toolbar_shown(&harness));
 
     choose(&mut harness, "Windows", "Main toolbar");
     assert!(!harness.state().ui.prefs.show_toolbar);
-    assert!(harness.query_by_label("Open package... (Ctrl+O)").is_none(), "the toolbar is hidden");
+    assert!(!toolbar_shown(&harness), "the toolbar is hidden");
 
     choose(&mut harness, "Tools", "Plugin Manager...");
     assert!(harness.state().ui.windows.plugin_manager);

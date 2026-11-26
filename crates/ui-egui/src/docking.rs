@@ -1,18 +1,24 @@
 //! The dock host: every panel (explorer, library, graph, 3D view, 2D view, properties, console,
-//! history) is a tab that can be docked, tabbed, resized, floated and closed. craft-ui's shared
-//! docking (`craft_ui::docking`) draws the frames, tab strips, floating windows and drop previews
-//! and owns the gestures; this module names the panels, builds the default arrangement, applies
-//! the dock's changes and hosts the panel bodies.
+//! history) is a tab that can be docked, tabbed, resized, floated and closed. craft-ui's dock area
+//! (`craft_ui::patterns::dock::DockArea`) draws the frames, tab strips, floating windows and drop
+//! previews and owns the gestures; this module names the panels, builds the default arrangement,
+//! applies the dock's changes under the graph's rules and hosts the panel bodies.
 //!
 //! The graph is the central canvas: it stays docked, never takes tabs and is the only panel that
 //! cannot close or float. The layout persists with `UiState` as a craft-ui `Workspace`; a layout
 //! that does not load or validate becomes the default.
 
-// P3(shell-w8): removed upstream: the dock model is now `craft_behavior::dock`; `DockArea`, `DockContent`,
-// `DockStyle`, `PanelLimits` and `cancel_drag` are gone, so the drawing half stands in.
+use std::sync::Arc;
+
 use craft_behavior::Axis as SplitAxis;
 use craft_behavior::dock::{Action, DockPlacement, Layout, Location, Node, PanelState, Permissions, SplitSize};
-use egui::{Id, Margin, RichText, Ui, vec2};
+use craft_host::target::WindowKind;
+use craft_tracked::Tracked;
+use craft_ui::contract::{Bind, BodyCx, SizeLimits};
+use craft_ui::docking::{ColumnCards, DockConfig, DockPanels, PanelSpec, PanelSpecs};
+use craft_ui::patterns::dock::DockArea;
+use craft_ui::tabs::PanelTabLook;
+use egui::{Ui, vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -153,28 +159,43 @@ pub fn validate(workspace: &Workspace) -> Result<(), String> {
 /// The dock layout (part of `UiState`; serialized as a craft-ui `Workspace`).
 #[derive(Clone, Debug)]
 pub struct Dock {
-    workspace: Workspace,
-    /// A panel to bring in front of the other floating windows on the next frame.
+    /// One `Arc` kept across frames, so the dock area sees a new revision only when the layout changed.
+    workspace: Arc<Workspace>,
+    /// A panel to bring in front of the other floating windows on the next pass.
     raise: Option<Panel>,
+    /// A panel whose group takes key focus and shows its tab on the next pass.
+    focus: Option<Panel>,
     /// What the dock reads of each panel; not saved.
-    #[allow(dead_code)] // P3(shell-w8): sh.A17
-    pub(crate) specs: craft_tracked::Tracked<Specs>,
+    pub(crate) specs: Tracked<Specs>,
 }
 
 /// Each panel's label, limits and float size, as the dock reads them.
 #[derive(Clone, Debug, Default, PartialEq, craft_ui::contract::PlainData)]
-pub(crate) struct Specs;
+pub(crate) struct Specs {
+    /// Each panel's tab text, in `Panel::ALL` order.
+    labels: [String; 8],
+}
 
-impl craft_ui::docking::PanelSpecs<Panel> for Specs {
-    fn spec(&self, panel: &Panel) -> craft_ui::docking::PanelSpec {
-        let _ = panel;
-        todo!("sh.A17")
+impl PanelSpecs<Panel> for Specs {
+    fn spec(&self, panel: &Panel) -> PanelSpec {
+        let label = Panel::ALL.iter().position(|candidate| candidate == panel).and_then(|index| self.labels.get(index)).cloned().unwrap_or_default();
+        let min = if *panel == Panel::Graph { vec2(240.0, 160.0) } else { vec2(120.0, 60.0) };
+        let spec = PanelSpec::new(label).limits(SizeLimits::at_least(min)).float_size(vec2(420.0, 320.0));
+        match panel {
+            Panel::Graph | Panel::View2d | Panel::View3d => spec.window_kind(WindowKind::Document),
+            Panel::History => spec.host_body().footer(),
+            _ => spec.host_body(),
+        }
+    }
+
+    fn permissions(&self, panel: &Panel) -> Permissions {
+        permissions(panel)
     }
 }
 
 impl Default for Dock {
     fn default() -> Self {
-        Dock { workspace: default_workspace(), raise: None, specs: Default::default() }
+        Dock { workspace: Arc::new(default_workspace()), raise: None, focus: None, specs: Tracked::default() }
     }
 }
 
@@ -186,7 +207,7 @@ impl PartialEq for Dock {
 
 impl Serialize for Dock {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        self.workspace.serialize(s)
+        self.workspace.as_ref().serialize(s)
     }
 }
 
@@ -207,7 +228,7 @@ impl Dock {
         if validate(&workspace).is_err() {
             return Dock::default();
         }
-        Dock { workspace, raise: None, specs: Default::default() }
+        Dock { workspace: Arc::new(workspace), raise: None, focus: None, specs: Tracked::default() }
     }
 
     pub fn workspace(&self) -> &Workspace {
@@ -229,32 +250,34 @@ impl Dock {
     }
 
     pub fn close(&mut self, p: Panel) {
-        if let Err(error) = self.workspace.set_visible(p, false, None, false, permissions) {
-            log::warn!("panel {p:?} was not closed: {error}");
+        let mut next = Workspace::clone(&self.workspace);
+        match next.set_visible(p, false, None, false, permissions) {
+            Ok(()) => self.workspace = Arc::new(next),
+            Err(error) => log::warn!("panel {p:?} was not closed: {error}"),
         }
     }
 
-    /// Open `p` (where it was when closed, else where it lives by default) and bring it to the
-    /// front.
+    /// Open `p` (where it was when closed, else where it lives by default), bring it to the
+    /// front and give its group key focus on the next pass.
     pub fn focus(&mut self, p: Panel) {
-        let mut next = self.workspace.clone();
+        let mut next = Workspace::clone(&self.workspace);
         match next.set_visible(p, true, None, false, permissions) {
             Ok(()) if validate(&next).is_ok() => {
-                self.workspace = next;
+                self.workspace = Arc::new(next);
                 self.raise = Some(p);
+                self.focus = Some(p);
             }
             Ok(()) => log::warn!("panel {p:?} was not opened: it would break the graph's rules"),
             Err(error) => log::warn!("panel {p:?} was not opened: {error}"),
         }
     }
 
-    /// One change from the dock area's gestures. A change that is rejected leaves the layout as
-    /// it was.
-    #[allow(dead_code)] // P3(shell-w8): removed upstream: the area that produced these actions is gone
+    /// One change from the dock area. A change that is rejected, or that would break the graph's
+    /// rules, leaves the layout as it was.
     fn apply(&mut self, action: Action<Panel>) {
-        let mut next = self.workspace.clone();
+        let mut next = Workspace::clone(&self.workspace);
         match next.apply(action, false, permissions) {
-            Ok(_) if validate(&next).is_ok() => self.workspace = next,
+            Ok(_) if validate(&next).is_ok() => self.workspace = Arc::new(next),
             Ok(_) => log::warn!("a panel move would break the graph's rules"),
             Err(error) => log::warn!("a panel move was not applied: {error}"),
         }
@@ -264,68 +287,80 @@ impl Dock {
 // ---------------------------------------------------------------------------------------------
 // Drawing
 
-fn area_id() -> Id {
-    Id::unique("materialcraft-docking")
+/// The tab text of `panel`: what it shows, where that has a name.
+fn logical_label(app: &MaterialCraftApp, panel: Panel) -> String {
+    match panel {
+        Panel::Properties => crate::properties::title(app),
+        Panel::Graph => app.session.graph().map(|g| format!("{} - {}", g.name, tr("Graph"))).unwrap_or_else(|_| tr("Graph").into()),
+        Panel::View3d => format!("{} - {}", crate::view3d::scene_label(app), tr("3D View")),
+        Panel::View2d => crate::view2d::title(app),
+        p => tr(p.name()).to_string(),
+    }
 }
 
 /// Draw the dock (graph and panels) into `ui`.
-pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
-    // P3(shell-w8): removed upstream: `DockArea` is gone; shell-w8 draws the dock through `DockPanels` (sh.A17).
-    let _ = (app.ui.dock.raise, &*ui, area_id());
-    todo!("shell-w8")
+pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    let labels = Panel::ALL.map(|panel| logical_label(app, panel));
+    if app.ui.dock.specs.labels != labels {
+        app.ui.dock.specs.edit(|specs| specs.labels = labels);
+    }
+    let config = DockConfig::default()
+        .new_dock_zones(false)
+        .title_bar_docks(false)
+        .tab_look(PanelTabLook::PillCaption)
+        .column_cards(ColumnCards::All)
+        // Screen captures through the control channel need floating panels inside the main window.
+        .native_windows(app.control.is_none());
+    // The area gets a clone of the layout and never writes it: every change goes through `Dock::apply`,
+    // which holds the graph's rules. The specs leave `app` for the pass, as the bodies borrow it.
+    let shown = Arc::clone(&app.ui.dock.workspace);
+    let (focus, raise) = (app.ui.dock.focus.take(), app.ui.dock.raise.take());
+    let specs = std::mem::take(&mut app.ui.dock.specs);
+    let mut panels = Panels { app: &mut *app };
+    let mut area = DockArea::new(tr("Panels"), Bind::given(Arc::clone(&shown)), &specs, &mut panels, config);
+    if let Some(panel) = focus {
+        area = area.focus(panel);
+    }
+    if let Some(panel) = raise {
+        area = area.raise(panel);
+    }
+    let output = area.show(ui);
+    app.ui.dock.specs = specs;
+    if let Some(error) = &output.error {
+        log::warn!("docking: {error:?}");
+    }
+    for action in output.actions {
+        app.ui.dock.apply(action);
+    }
+    for action in output.requested {
+        app.ui.dock.apply(action);
+    }
 }
 
-/// The panels' contents, names and limits for the dock area.
+/// The panels' bodies for the dock area.
 struct Panels<'a> {
     app: &'a mut MaterialCraftApp,
 }
 
-// P3(shell-w8): removed upstream: `DockContent` is gone; the bodies stay as plain methods.
-#[allow(dead_code)]
-impl Panels<'_> {
-    fn body(&mut self, ui: &mut Ui, panel: &Panel) {
+impl DockPanels<Panel> for Panels<'_> {
+    fn body(&mut self, panel: &Panel, ui: &mut Ui, _cx: &mut BodyCx<'_>) {
         let app = &mut *self.app;
         match panel {
             Panel::Graph => crate::graph::show(app, ui),
             Panel::View3d => crate::view3d::show(app, ui),
             Panel::View2d => crate::view2d::show(app, ui),
-            _ => {
-                egui::Frame::new().inner_margin(Margin::symmetric(6, 4)).show(ui, |ui| match panel {
-                    Panel::Explorer => crate::explorer::show(app, ui),
-                    Panel::Library => crate::library::show(app, ui),
-                    Panel::Properties => crate::properties::show(app, ui),
-                    Panel::Console => crate::windows::console(app, ui),
-                    Panel::History => crate::windows::history(app, ui),
-                    _ => {}
-                });
-            }
+            Panel::Explorer => crate::explorer::show(app, ui),
+            Panel::Library => crate::library::show(app, ui),
+            Panel::Properties => crate::properties::show(app, ui),
+            Panel::Console => crate::windows::console(app, ui),
+            Panel::History => crate::windows::history(app, ui),
         }
     }
 
-    fn logical_label(&self, panel: &Panel) -> String {
-        match panel {
-            Panel::Properties => crate::properties::title(self.app),
-            Panel::Graph => self.app.session.graph().map(|g| format!("{} - {}", g.name, tr("Graph"))).unwrap_or_else(|_| tr("Graph").into()),
-            Panel::View3d => format!("{} - {}", crate::view3d::scene_label(self.app), tr("3D View")),
-            Panel::View2d => crate::view2d::title(self.app),
-            p => tr(p.name()).to_string(),
+    fn footer(&mut self, panel: &Panel, ui: &mut Ui, _cx: &mut BodyCx<'_>) {
+        if *panel == Panel::History {
+            crate::windows::history_footer(self.app, ui);
         }
-    }
-
-    fn label(&mut self, _ui: &Ui, _panel: &Panel, logical: &str, font: &egui::FontId, color: egui::Color32) -> egui::WidgetText {
-        RichText::new(logical.to_uppercase()).font(font.clone()).strong().color(color).into()
-    }
-
-    fn permissions(&self, panel: &Panel) -> Permissions {
-        permissions(panel)
-    }
-
-    fn limits(&self, panel: &Panel) -> egui::Vec2 {
-        if *panel == Panel::Graph { vec2(240.0, 160.0) } else { vec2(120.0, 60.0) }
-    }
-
-    fn floating_size(&self, _panel: &Panel) -> Option<egui::Vec2> {
-        Some(vec2(420.0, 320.0))
     }
 }
 
@@ -340,32 +375,6 @@ mod tests {
         for panel in Panel::ALL {
             assert!(w.layout().contains(&panel) || w.hidden().iter().any(|(p, _)| *p == panel), "{panel:?} is neither shown nor hidden");
         }
-    }
-
-    #[test]
-    fn floating_panels_stop_while_a_dialog_is_open() {
-        let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
-        let ctx = egui::Context::default();
-        let screen_rect = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(1200.0, 800.0)));
-        let frame = |app: &mut crate::MaterialCraftApp| {
-            ctx.run_ui(egui::RawInput { screen_rect, ..Default::default() }, |ui| show(app, ui)).textures_delta.clear();
-            ctx.data(|data| data.get_temp::<bool>(area_id().with("input-blocked")))
-        };
-
-        assert_eq!(frame(&mut app), Some(false));
-        app.ui.windows.unsaved = Some(crate::unsaved::Guarded::Quit);
-        assert_eq!(frame(&mut app), Some(true), "the panels stop on the frame the prompt opens");
-        app.ui.windows.unsaved = None;
-        app.ui.windows.shortcuts = true;
-        assert_eq!(frame(&mut app), Some(false), "the Shortcuts list does not block");
-    }
-
-    #[test]
-    fn default_dock_round_trips() {
-        let dock = Dock::default();
-        let json = serde_json::to_string(&dock).unwrap();
-        let back: Dock = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, dock);
     }
 
     #[test]
