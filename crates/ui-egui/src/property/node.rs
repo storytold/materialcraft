@@ -12,7 +12,10 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft
 
     // Header: label (renamable) and description
     ui.horizontal(|ui| {
-        ui.painter().rect_filled(Rect::from_min_size(ui.cursor().min + vec2(0.0, 2.0), vec2(4.0, 16.0)), 1.0, crate::graph::header_color(&node.def));
+        let header = craft_ui::style::StyleCx::with_root(ui.ctx(), |cx| {
+            craft_ui::style::rgba_color(cx.token_group::<crate::graph::node_colors::NodeColors>().header(&node.def))
+        });
+        ui.painter().rect_filled(Rect::from_min_size(ui.cursor().min + vec2(0.0, 2.0), vec2(4.0, 16.0)), 1.0, header);
         ui.add_space(8.0);
         let mut label = if node.label.is_empty() { crate::graph::node_label(node) } else { node.label.clone() };
         let response = ui.add(egui::TextEdit::singleline(&mut label).desired_width(ui.available_width() - 4.0).font(egui::TextStyle::Heading));
