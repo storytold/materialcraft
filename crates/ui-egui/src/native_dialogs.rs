@@ -1,16 +1,15 @@
-//! The desktop's file dialogs: queued on [`craft_dialogs::Dialogs`], shown at the end of a frame and answered on a later one
+//! The file pickers: asked through the host's file service and answered on a later frame. One pick is open at a time
 
-use craft_dialogs::{Answer, FileDialog};
+use craft_host::{Files, PickId, PickRequest, Picked};
 use materialcraft_engine::image::Image;
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(not(target_arch = "wasm32"))]
+use serde_json::json;
 
 use crate::MaterialCraftApp;
 use crate::i18n::tr;
 
-pub(crate) type Dialogs = craft_dialogs::Dialogs<Then>;
-
 /// What the app does with an answered dialog
-#[allow(dead_code)] // P3(shell-w9): sh.A7 (`DownloadPackage`, `Download`)
 pub(crate) enum Then {
     OpenPackage,
     /// `document` is the package the request was for; `before_action` finishes a Save in the unsaved-changes prompt
@@ -46,7 +45,8 @@ pub(crate) enum Then {
     ExportLog(String),
     /// The parameters `graph.input.bind` runs with, before the path
     BindInput(Value, GraphRef),
-    /// A browser save of the package: success is `Downloaded` or `Saved`; `before_action` finishes a Save in the unsaved-changes prompt.
+    /// A browser save of the package: success is `Downloaded` or `Saved`; `before_action` finishes a Save in the
+    /// unsaved-changes prompt.
     DownloadPackage {
         /// The package the save was for.
         document: u64,
@@ -57,7 +57,7 @@ pub(crate) enum Then {
         /// The path the save was requested for.
         path: String,
     },
-    /// A browser download with no follow-up beyond its toast.
+    /// A download with no follow-up beyond its toast.
     Download,
 }
 
@@ -75,62 +75,59 @@ impl GraphRef {
     }
 }
 
-/// A queue for an app that has no window to wake yet (offscreen snapshots and tests)
-pub(crate) fn unattached() -> Dialogs {
-    craft_dialogs::Dialogs::new(craft_dialogs::Wake::none()) // P3(shell-w9): sh.A7 `Dialogs::new` takes a `Wake`
-}
-
-/// A queue whose answers wake the window
-pub(crate) fn attached(ctx: &egui::Context) -> Dialogs {
-    let ctx = ctx.clone();
-    craft_dialogs::Dialogs::new(craft_dialogs::Wake::new(move || ctx.request_repaint())) // P3(shell-w9): sh.A7
-}
-
-/// Whether a file dialog is open or waiting: the file-dialog source of `Modality::capture`.
-#[allow(dead_code)] // P3(shell-w9): sh.A7
+/// Whether a file pick is open or waiting for its answer: the file-dialog source of `Modality::capture`.
 pub(crate) fn pending(app: &MaterialCraftApp) -> bool {
-    let _ = app;
-    todo!("sh.A7")
+    !app.picks.is_empty()
+}
+
+/// Asks the host for a file, then does `then` with the answer. While another pick waits, the request is dropped: the
+/// host cannot bring an open picker forward.
+pub(crate) fn ask(app: &mut MaterialCraftApp, request: PickRequest, then: Then) {
+    start(app, then, |files| files.pick(request));
 }
 
 /// Asks the host to write `bytes` where the user picks (a download in the browser), then does `then` with the answer.
-#[allow(dead_code)] // P3(shell-w9): sh.A7
-pub(crate) fn save(app: &mut MaterialCraftApp, request: craft_host::PickRequest, bytes: Vec<u8>, then: Then) {
-    let _ = (app, request, bytes, then);
-    todo!("sh.A7")
+/// The same one-pick rule as [`ask`] applies.
+pub(crate) fn save(app: &mut MaterialCraftApp, request: PickRequest, bytes: Vec<u8>, then: Then) {
+    start(app, then, |files| files.save(request, bytes));
 }
 
-/// Queue a dialog unless one is already open or waiting, in which case the open one comes forward
-pub(crate) fn ask(app: &mut MaterialCraftApp, dialog: FileDialog, then: Then) {
-    if app.dialogs.is_open() || app.dialogs.queued() > 0 {
-        app.dialogs.raise();
-    } else {
-        app.dialogs.ask(dialog, then);
+/// The one place a pick starts: the host's file service is read at each call, so a replaced host takes the next pick
+fn start(app: &mut MaterialCraftApp, then: Then, pick: impl FnOnce(&dyn Files) -> PickId) {
+    if pending(app) {
+        return;
     }
+
+    let id = pick(app.host.files());
+    app.picks.insert(id, then);
 }
 
-fn save_dialog(app: &MaterialCraftApp) -> FileDialog {
+#[cfg(not(target_arch = "wasm32"))]
+fn save_dialog(app: &MaterialCraftApp) -> PickRequest {
     let archive = app.session.path.as_deref().is_some_and(materialcraft_engine::file_cmds::is_mcraft);
-    let extension = if archive { "mcraft" } else { "sbs" };
-    let name = format!("{}.{extension}", materialcraft_engine::formats::safe_file_name(&app.session.pkg.name));
+    let request = crate::windows::package_dialog(false, archive);
+    let name = format!("{}.{}", materialcraft_engine::formats::safe_file_name(&app.session.pkg.name), request.suggested_extension.as_deref().unwrap_or_default());
 
-    crate::windows::package_dialog(false, archive).file_name(name)
+    request.file_name(name)
 }
 
 /// File ▸ Save as and Save a copy as: choose where to write the active package
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn save_package(app: &mut MaterialCraftApp, copy: bool) {
     let then = Then::SavePackage { document: app.session.document_id, copy, before_action: false };
-    let dialog = save_dialog(app);
-    ask(app, dialog, then);
+    let request = save_dialog(app);
+    ask(app, request, then);
 }
 
 /// Help ▸ Export log: ask where to write a diagnostic event log
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn export_log(app: &mut MaterialCraftApp) {
     let text = log_for_export(&app.session);
-    let dialog = craft_dialogs::FileDialog::save().file_name("materialcraft-log.txt").filter(tr("Text"), &["txt"]);
-    ask(app, dialog, Then::ExportLog(text));
+    let request = PickRequest::save("document").file_name("materialcraft-log.txt").filter(tr("Text"), &["txt"]);
+    ask(app, request, Then::ExportLog(text));
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn log_for_export(session: &materialcraft_engine::Session) -> String {
     use std::fmt::Write as _;
 
@@ -154,38 +151,108 @@ fn log_for_export(session: &materialcraft_engine::Session) -> String {
     text
 }
 
-/// Save in the unsaved-changes prompt, for a package without a path: waits behind any open dialog
-pub(crate) fn save_before_action(app: &mut MaterialCraftApp) {
-    let then = Then::SavePackage { document: app.session.document_id, copy: false, before_action: true };
-    let dialog = save_dialog(app);
-    app.dialogs.ask(dialog, then);
+/// Apply the answers that arrived since the last frame. The app's frame logic calls it once per frame, outside the
+/// passes, so a second pass of a frame never applies an answer again
+pub(crate) fn poll(app: &mut MaterialCraftApp) {
+    let mut ids: Vec<PickId> = app.picks.keys().copied().collect();
+    ids.sort_unstable();
+    for id in ids {
+        let Some(picked) = app.host.files().take_answer(id) else { continue };
+        if let Some(then) = app.picks.remove(&id) {
+            answered(app, then, picked);
+        }
+    }
 }
 
-/// Apply the answers that arrived since the last frame. Call once per frame
-pub(crate) fn poll(app: &mut MaterialCraftApp) {
-    for (then, answer) in app.dialogs.take_answers() {
-        match answer {
-            Answer::Paths(paths) => match paths.into_iter().next() {
-                Some(path) => chosen(app, then, &path),
-                None => cancelled(app, then),
-            },
-            // P3(shell-w9): sh.A7: a Save panel now answers `Saved`
-            Answer::Saved { path, .. } => chosen(app, then, &path),
-            Answer::Cancelled | Answer::Message(_) => cancelled(app, then),
-            Answer::Unavailable(why) => {
-                app.toast(format!("{}: {why}", tr("The file dialog could not be shown")), true);
-                cancelled(app, then);
-            }
+fn answered(app: &mut MaterialCraftApp, then: Then, picked: Picked) {
+    match picked {
+        // A hosted browser page answers a package save with the file it made
+        Picked::Saved { .. } if matches!(then, Then::DownloadPackage { .. }) => downloaded(app, then),
+        #[cfg(not(target_arch = "wasm32"))]
+        Picked::Paths(paths) => match paths.into_iter().next() {
+            Some(path) => chosen(app, then, &path),
+            None => cancelled(app, then),
+        },
+        #[cfg(not(target_arch = "wasm32"))]
+        Picked::Saved { path, .. } => chosen(app, then, &path),
+        // The browser reads and writes no paths: an open answers with the file's contents, a save with a download
+        #[cfg(target_arch = "wasm32")]
+        Picked::Paths(_) | Picked::Saved { .. } => cancelled(app, then),
+        Picked::Contents(files) => match files.into_iter().next() {
+            Some((name, bytes)) => chosen_bytes(app, then, &name, bytes),
+            None => cancelled(app, then),
+        },
+        Picked::Downloaded(name) => {
+            app.toast(format!("{} {name}", tr("Downloaded")), false);
+            downloaded(app, then);
+        }
+        Picked::Cancelled => cancelled(app, then),
+        Picked::Unavailable(why) => {
+            app.toast(format!("{}: {why}", tr("The file dialog could not be shown")), true);
+            cancelled(app, then);
+        }
+        Picked::Failed(message) => {
+            app.toast(message, true);
+            cancelled(app, then);
         }
     }
 }
 
 fn cancelled(app: &mut MaterialCraftApp, then: Then) {
-    if matches!(then, Then::SavePackage { before_action: true, .. }) {
+    let held_save = match then {
+        Then::SavePackage { before_action, .. } => before_action,
+        Then::DownloadPackage { before_action, .. } => before_action,
+        _ => false,
+    };
+    if held_save {
         crate::unsaved::finish_save_dialog(app, false);
     }
 }
 
+/// A save the host finished itself (the browser's download): the package records the path it stands for, and a held
+/// Save in the unsaved-changes prompt goes on
+fn downloaded(app: &mut MaterialCraftApp, then: Then) {
+    let held_save = match then {
+        Then::DownloadPackage { document, copy, before_action, path } => {
+            crate::web_files::PackageSave::downloaded(app, document, copy, &path);
+            before_action
+        }
+        Then::SavePackage { before_action, .. } => before_action,
+        _ => false,
+    };
+    if held_save {
+        crate::unsaved::finish_save_dialog(app, true);
+    }
+}
+
+/// A browser open: the picked file's name and bytes. Only opens of a package, a bitmap, a resource or a mesh are
+/// answered with contents in the browser
+fn chosen_bytes(app: &mut MaterialCraftApp, then: Then, name: &str, bytes: Vec<u8>) {
+    match then {
+        Then::OpenPackage => crate::web_files::load(app, name, bytes, false),
+        Then::ImportBitmap(target) => {
+            if GraphRef::active(app) == target {
+                crate::web_files::load(app, name, bytes, true);
+            } else {
+                not_applied(app);
+            }
+        }
+        Then::LoadMesh { document } => {
+            if app.session.document_id == document {
+                crate::web_files::mesh(app, name, &bytes);
+            } else {
+                not_applied(app);
+            }
+        }
+        Then::ImportResource { document, vector, folder } => match materialcraft_engine::file_cmds::validate_resource_extension(name, vector) {
+            Ok(()) => crate::web_files::import_resource_bytes(app, document, name, bytes, &folder),
+            Err(error) => app.toast(error.to_string(), true),
+        },
+        then => cancelled(app, then),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn chosen(app: &mut MaterialCraftApp, then: Then, path: &std::path::Path) {
     let picked = path.display().to_string();
     match then {
@@ -265,7 +332,6 @@ fn chosen(app: &mut MaterialCraftApp, then: Then, path: &std::path::Path) {
             parameters["path"] = json!(picked);
             app.run("graph.input.bind", parameters);
         }
-        Then::DownloadPackage { .. } | Then::Download => todo!("sh.A7"), // P3(shell-w9): sh.A7
     }
 }
 
@@ -275,6 +341,7 @@ fn not_applied(app: &mut MaterialCraftApp) {
 }
 
 /// Save `document` to the chosen path, activating it first when another package became active meanwhile
+#[cfg(not(target_arch = "wasm32"))]
 fn save_to(app: &mut MaterialCraftApp, document: u64, copy: bool, picked: &str) -> bool {
     if app.session.document_id != document && app.run("package.activate", json!({"document": document})).is_none() {
         return false;
@@ -292,6 +359,7 @@ fn save_to(app: &mut MaterialCraftApp, document: u64, copy: bool, picked: &str) 
     true
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn save_image(app: &mut MaterialCraftApp, image: &Image, path: &std::path::Path) {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png").to_ascii_lowercase();
     let depth = if ext == "exr" { materialcraft_engine::formats::Depth::F32 } else { materialcraft_engine::formats::Depth::U16 };
