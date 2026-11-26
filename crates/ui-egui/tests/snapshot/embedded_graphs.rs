@@ -17,9 +17,9 @@ fn fresh_embedded_graphs_open_only_after_explicit_editing() {
         let original = app.session.pkg.clone();
         let mut harness = harness(app, 1600.0, 960.0);
         settle(&mut harness, 4);
-        let canvas = harness.get(By::new().role(egui::accesskit::Role::Canvas).label("Node graph")).rect();
+        let canvas = harness.get(By::new().role(egui::accesskit::Role::Group).label("Node graph")).rect();
         let position = harness
-            .query_all(By::new().role(egui::accesskit::Role::Button).label(label))
+            .query_all(By::new().role(egui::accesskit::Role::GraphicsObject).label(label))
             .map(|node| node.rect().center())
             .find(|position| canvas.contains(*position))
             .expect("the newly created node must be on the canvas");
@@ -36,8 +36,10 @@ fn fresh_embedded_graphs_open_only_after_explicit_editing() {
 
         if definition == "fx_map" {
             assert_eq!(harness.state().pattern_editor.as_ref().unwrap().node, owner);
-            let canvas = harness.get(By::new().role(egui::accesskit::Role::Canvas).label("FX-Map graph")).rect();
-            assert!(harness.query_all(By::new().role(egui::accesskit::Role::Button).label("Quadrant")).any(|node| canvas.contains(node.rect().center())));
+            let canvas = harness.get(By::new().role(egui::accesskit::Role::Group).label("FX-Map graph")).rect();
+            assert!(
+                harness.query_all(By::new().role(egui::accesskit::Role::GraphicsObject).label("Quadrant")).any(|node| canvas.contains(node.rect().center()))
+            );
         } else {
             assert_eq!(harness.state().function_editor.as_ref().unwrap().node, Some(owner));
             assert!(harness.query(By::new().label_contains("No output node defined")).is_some());

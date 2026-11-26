@@ -78,13 +78,13 @@ fn function_instances_drop_into_compatible_canvases_and_return_from_their_source
         let instance = target.current(&harness.state().session).unwrap().nodes.iter().find(|node| node.instance.is_some()).unwrap().id;
         assert_eq!(harness.state().session.document_id, target_document);
         assert_eq!(harness.state().session.graph, 0);
-        harness.get(By::new().role(egui::accesskit::Role::Button).label("Reusable color")).click_secondary();
+        harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Reusable color")).click_secondary();
         settle(&mut harness, 2);
         harness.get(By::new().label("Set as output node")).click();
         settle(&mut harness, 3);
         assert_eq!(target.current(&harness.state().session).unwrap().output, Some(instance));
         save(&mut harness, &directory, &format!("function-instance-{kind}"));
-        let position = harness.get(By::new().role(egui::accesskit::Role::Button).label("Reusable color")).rect().center();
+        let position = harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Reusable color")).rect().center();
         let history = harness.state().session.history();
         double_click(&mut harness, position);
         assert_eq!(harness.state().session.document_id, target_document, "double-click must not open the {kind} instance source");
@@ -97,7 +97,7 @@ fn function_instances_drop_into_compatible_canvases_and_return_from_their_source
         assert_eq!(harness.state().function_editor.as_ref().unwrap().node, owner);
         assert_eq!(target.current(&harness.state().session).unwrap().output, Some(instance));
         assert_eq!(harness.state().session.history(), history);
-        harness.get(By::new().role(egui::accesskit::Role::Button).label("Reusable color")).click_secondary();
+        harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Reusable color")).click_secondary();
         settle(&mut harness, 2);
         save(&mut harness, &directory, &format!("function-instance-{kind}-menu"));
         harness.get(By::new().label("Open reference")).click();

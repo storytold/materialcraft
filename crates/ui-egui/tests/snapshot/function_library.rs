@@ -62,7 +62,7 @@ fn bottom_library_drags_functions_into_function_and_processor_canvases() {
         assert!(division.instance.is_none(), "native operations must not become SBS instances");
         assert_eq!(division.inputs.len(), 2);
 
-        harness.get(By::new().role(egui::accesskit::Role::Button).label("Division"));
+        harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Division"));
         save(&mut harness, &directory, &format!("library-native-{kind}"));
 
         harness.state_mut().ui.library_search = "sbs://functions.sbs#Functions/Random/GlobalRandom".into();
@@ -106,7 +106,7 @@ fn bottom_library_drags_functions_into_function_and_processor_canvases() {
 
         assert!(matches!(missing.source, Some(Err(_))));
 
-        let bounds = harness.get(By::new().role(egui::accesskit::Role::Button).label("MissingFunction")).rect();
+        let bounds = harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("MissingFunction")).rect();
         let image = harness.render().unwrap();
         let magenta = (2..12).any(|y| {
             (2..60).any(|x| {
@@ -134,7 +134,7 @@ fn bundled_even_count_opens_as_an_editable_arithmetic_tree() {
     settle(&mut harness, 5);
 
     for label in ["Get Float", "Floor", "Float", "Division", "Ceil"] {
-        harness.get(By::new().role(egui::accesskit::Role::Button).label(label));
+        harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label(label));
     }
     let function = harness.state().session.graph().unwrap().function.as_ref().unwrap();
     assert_eq!(function.nodes.len(), 5);
@@ -170,7 +170,7 @@ fn samplers_drag_into_both_processor_canvases() {
             assert_eq!(function.nodes.len(), before.nodes.len() + 1, "{definition}: {label}");
             let added = function.nodes.iter().find(|node| !before.nodes.iter().any(|previous| previous.id == node.id)).unwrap();
             assert_eq!(added.op, operation);
-            harness.get(By::new().role(egui::accesskit::Role::Button).label(label));
+            harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label(label));
             let after = function.clone();
             harness.state_mut().session.undo().unwrap();
             assert_eq!(target.current(&harness.state().session).unwrap(), &before);

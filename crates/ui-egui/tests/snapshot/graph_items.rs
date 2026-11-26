@@ -39,7 +39,7 @@ fn navigation_pin_library_drop_and_properties_in_every_canvas() {
         assert_eq!(target.items(&harness.state().session).unwrap().pins.len(), 1, "{kind}");
         let input = By::new().role(Role::TextInput).label("Navigation Pin description");
         assert!(harness.query(input.clone()).is_some(), "{kind}");
-        assert!(harness.ctx.egui_wants_keyboard_input(), "new pin description must receive focus: {kind}");
+        assert!(harness.get(input.clone()).is_focused(), "new pin description must receive focus: {kind}");
         harness.event(Event::ModifiersChanged(Modifiers::COMMAND));
         harness.event(Event::Key { key: Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
         harness.step();
@@ -48,9 +48,13 @@ fn navigation_pin_library_drop_and_properties_in_every_canvas() {
         harness.event(Event::Text("Review checkpoint".into()));
         settle(&mut harness, 3);
         assert_eq!(target.items(&harness.state().session).unwrap().pins[0].name, "Review checkpoint", "{kind}");
+        harness.state_mut().session.undo();
+        assert_ne!(target.items(&harness.state().session).unwrap().pins[0].name, "Review checkpoint", "typing is one undo step: {kind}");
+        harness.state_mut().session.redo();
+        assert_eq!(target.items(&harness.state().session).unwrap().pins[0].name, "Review checkpoint", "redo restores the description: {kind}");
         save(&mut harness, &directory, &format!("navigation-pin-{kind}"));
 
-        let marker = harness.state().graph.pins[0].1.left_center() + vec2(6.0, 0.0);
+        let marker = harness.state().graph.pins.first().map(|pin| pin.1.left_center() + vec2(6.0, 0.0)).unwrap();
         harness.event(Event::PointerMoved(marker));
         harness.step();
         for pressed in [true, false] {

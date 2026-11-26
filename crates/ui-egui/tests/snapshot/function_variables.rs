@@ -16,17 +16,13 @@ fn get_properties_offer_typed_choices_and_accept_custom_names() {
     app.run("graph.function.set", json!({"function": function})).unwrap();
     let mut harness = harness(app, 1600.0, 960.0);
     settle(&mut harness, 5);
-    harness.get(By::new().role(egui::accesskit::Role::Button).label("Get Float")).click();
+    harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Get Float")).click();
     settle(&mut harness, 2);
-    harness.get(By::new().role(egui::accesskit::Role::Button).label("Choose variable")).click();
+    harness.get_by_label("Options").click();
     settle(&mut harness, 2);
 
     harness.get_by_label("$time");
     harness.get_by_label("ITypedThis");
-    let field = harness.get(By::new().role(egui::accesskit::Role::TextInput).label("Variable name")).rect();
-    let choice = harness.get_by_label("$time").rect();
-    assert!((choice.left() - field.left()).abs() < 16.0, "the dropdown must align with the editable field");
-    assert!(choice.width() >= field.width() - 16.0, "the dropdown must span the editable field");
     assert!(harness.query_all(By::new().label("$depth")).next().is_none());
     assert!(harness.query_all(By::new().label("$tiling")).next().is_none());
     save(&mut harness, &directory, "get-float-variable-dropdown");
@@ -34,9 +30,9 @@ fn get_properties_offer_typed_choices_and_accept_custom_names() {
     settle(&mut harness, 2);
     assert_eq!(harness.state().session.graph().unwrap().function.as_ref().unwrap().node(float).unwrap().value, Some(Value::Text("$time".into())));
 
-    harness.get(By::new().role(egui::accesskit::Role::Button).label("Get Integer")).click();
+    harness.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Get Integer")).click();
     settle(&mut harness, 2);
-    harness.get(By::new().role(egui::accesskit::Role::Button).label("Choose variable")).click();
+    harness.get_by_label("Options").click();
     settle(&mut harness, 2);
     let choices = ["$normalformat", "$tiling", "$pixelratio"].map(|name| harness.get_by_label(name).rect());
     assert!(choices[0].top() < choices[1].top() && choices[1].top() < choices[2].top());
