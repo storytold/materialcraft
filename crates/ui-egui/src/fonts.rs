@@ -179,7 +179,7 @@ impl UiFonts {
                 defs.families.entry(FontFamily::Monospace).or_default().push(name);
             }
         }
-        ctx.set_fonts(defs);
+        crate::theme::load_fonts(ctx, defs);
     }
 
     /// Whether an Arabic fallback font has been found and loaded.

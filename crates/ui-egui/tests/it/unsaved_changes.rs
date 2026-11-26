@@ -11,7 +11,7 @@ fn unsaved_dialog_snapshot_and_cancel() {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.session.modified = true;
     unsaved::guard(&mut app, Guarded::Menu { id: "ui.closeAll".into() });
-    let mut h = Harness::builder().with_size(vec2(1600.0, 960.0)).wgpu().build_ui_state(
+    let mut h = Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 960.0)).wgpu().build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
             app.step(&ui.ctx().clone());
             app.draw(ui);

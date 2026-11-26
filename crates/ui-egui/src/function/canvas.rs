@@ -39,6 +39,8 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
     super::input::handle(app, editor, ui, &frame.response, &frame.ports, &frame.geometry, on_annotation);
     let camera = GraphCamera { origin: frame.response.rect.min, pan: editor.pan, zoom: editor.zoom };
     super::search::show(app, editor, ui, &camera);
+    let over_canvas = crate::graph::canvas_focus::under_pointer(ui, &frame.response, frame.response.hovered(), super::search::area());
+    crate::graph::canvas_focus::settle(app, ui, over_canvas && editor.search.is_none());
     frame.geometry.publish(&mut app.graph, frame.response.rect);
     if editor.drag.is_none() {
         let camera = GraphCamera { origin: frame.response.rect.min, pan: editor.pan, zoom: editor.zoom };

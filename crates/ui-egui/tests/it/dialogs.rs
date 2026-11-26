@@ -10,7 +10,8 @@ fn harness(id: &'static str, render: bool) -> Harness<'static, State> {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.ui.windows.home = id == "home";
     app.ui.windows.export = id == "export";
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0);
+    let builder =
+        Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0);
     let builder = if render { builder.wgpu() } else { builder };
     let mut h = builder.build_ui_state(
         move |ui, (app, rect): &mut State| {

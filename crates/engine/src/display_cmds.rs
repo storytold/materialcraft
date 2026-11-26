@@ -74,7 +74,7 @@ fn export_geometry(session: &mut Session, parameters: &J) -> Result<J> {
         .ok_or_else(|| bad(COMMAND, "`path` is required"))?;
     DisplaySnapshot::valid_geometry(COMMAND, &mesh)?;
 
-    let text = materialcraft_formats::mesh::obj_text(&mesh);
+    let text = materialcraft_formats::mesh::obj_text(&mesh)?;
     materialcraft_formats::write_atomic(&path, text.as_bytes())?;
     Ok(json!({"path": path.display().to_string(), "triangles": mesh.triangle_count()}))
 }

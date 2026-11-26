@@ -11,49 +11,12 @@ fn is_shared_font_asset(relative: &str) -> bool {
 
 /// Validate alias paths before joining a filesystem root. No package may escape the library.
 pub fn relative_path(uri: &str) -> Result<&str, String> {
-    let path = uri.strip_prefix("sbs://").ok_or("not an SBS library alias")?;
-    if path.is_empty()
-        || path.len() > 4096
-        || path.contains(['\\', ':', '?', '#', '%', '\0'])
-        || path.split('/').any(|part| part.is_empty() || matches!(part, "." | ".."))
-    {
-        return Err("invalid SBS library path".into());
-    }
-
-    Ok(path)
+    craft_sbs::uri::relative_path(uri)
 }
 
 /// Resolve a package-relative resource or dependency without leaving the library root.
 pub fn resolve(owner: &str, reference: &str) -> Result<String, String> {
-    let owner = relative_path(owner)?;
-    if reference.starts_with("sbs://") {
-        relative_path(reference)?;
-        return Ok(reference.into());
-    }
-
-    let reference = reference.trim().replace('\\', "/");
-    if reference.is_empty() || reference.len() > 4096 || reference.starts_with('/') || reference.contains([':', '?', '#', '%', '\0']) {
-        return Err("invalid relative SBS library path".into());
-    }
-
-    let mut parts: Vec<_> = owner.split('/').collect();
-    parts.pop();
-    for part in reference.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                if parts.pop().is_none() {
-                    return Err("SBS reference escapes its library directory".into());
-                }
-            }
-            part => parts.push(part),
-        }
-    }
-
-    let uri = format!("sbs://{}", parts.join("/"));
-    relative_path(&uri)?;
-
-    Ok(uri)
+    craft_sbs::uri::resolve(owner, reference)
 }
 
 /// The native asset root may be configured for installations with a separate data directory.

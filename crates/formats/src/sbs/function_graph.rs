@@ -141,18 +141,9 @@ pub(super) fn write(graph: &FunctionGraph, writer: &mut SbsWriter) -> Result<Str
         output.push_str("</connections>");
         if node.missing.is_some() && !node.missing_data.is_empty() {
             // Only a bounded data element may be emitted; command input must not inject package XML
-            let options = roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: 100_000 };
-            if node.missing_data.len() > (1 << 20) {
-                return Err("invalid preserved function data".into());
-            }
-
-            let document = roxmltree::Document::parse_with_options(&node.missing_data, options).map_err(|_| "invalid preserved function data")?;
-            let root = document.root_element();
-            if !root.has_tag_name("funcDatas") {
-                return Err("invalid preserved function data".into());
-            }
-
-            output.push_str(node.missing_data.get(root.range()).ok_or("invalid preserved function data")?);
+            let preserved =
+                craft_sbs::xml::validate_preserved_element(&node.missing_data, "funcDatas", 1 << 20, 100_000).ok_or("invalid preserved function data")?;
+            output.push_str(preserved);
         } else if let Some(instance) = &node.instance {
             output.push_str(&super::function_instance::write(instance, writer));
         } else if let Some(value) = &node.value {

@@ -95,4 +95,23 @@ out="$(APPIMAGE="$odd" "$APPDIR/AppRun" x)" || fail "launch with an odd path exi
 [[ "$out" = "stub: x" ]] || fail "odd path: $out"
 [[ ! -e "$XDG_DATA_HOME" ]] || fail "integrated an AppImage path that needs escaping"
 
+# 10. The Nightly AppImage is this script with its desktop id rewritten: it starts the flavor's
+#     profile and integrates under the nightly id, so both entries can coexist on the host.
+NIGHTLY="$TMP/MaterialCraftNightly.AppDir"
+cp -R "$APPDIR" "$NIGHTLY"
+sed "s/^DESK_ID=$APP_ID$/DESK_ID=$APP_ID.nightly-v1/" "$NIGHTLY/AppRun" >"$NIGHTLY/AppRun.tmp"
+mv "$NIGHTLY/usr/share/applications/$APP_ID.desktop" "$NIGHTLY/usr/share/applications/$APP_ID.nightly-v1.desktop"
+mv "$NIGHTLY/AppRun.tmp" "$NIGHTLY/AppRun"
+chmod 755 "$NIGHTLY/AppRun"
+rm -rf "$XDG_DATA_HOME"
+: >"$TMP/nightly.AppImage"
+out="$(APPIMAGE="$TMP/nightly.AppImage" "$NIGHTLY/AppRun" open graph.mcraft)" || fail "nightly launch exited non-zero"
+expected="stub: --launch-profile nightly-v1 --profile-root $XDG_DATA_HOME/materialcraft-nightly -- open graph.mcraft"
+[[ "$out" = "$expected" ]] || fail "nightly launch: $out"
+[[ -f "$XDG_DATA_HOME/applications/$APP_ID.nightly-v1.desktop" ]] || fail "nightly desktop entry not installed"
+[[ -f "$XDG_DATA_HOME/applications/$APP_ID.desktop" ]] && fail "nightly integration wrote the stable entry"
+# The stable entry is untouched by the nightly run and vice versa.
+"$APPDIR/AppRun" >/dev/null || fail "stable launch after nightly exited non-zero"
+[[ -f "$XDG_DATA_HOME/applications/$APP_ID.desktop" ]] || fail "stable desktop entry not installed"
+
 echo "AppRun desktop integration ok"

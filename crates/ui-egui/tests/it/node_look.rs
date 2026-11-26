@@ -9,13 +9,18 @@ use serde_json::json;
 
 fn harness(app: MaterialCraftApp) -> Harness<'static, MaterialCraftApp> {
     // Short steps keep two clicks within the double-click delay
-    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).with_step_dt(0.05).build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    let mut harness = Harness::builder()
+        .with_context_setup(materialcraft_ui_egui::framework::install_headless)
+        .with_size(vec2(1600.0, 960.0))
+        .with_pixels_per_point(1.0)
+        .with_step_dt(0.05)
+        .build_ui_state(
+            |ui, app: &mut MaterialCraftApp| {
+                app.step(&ui.ctx().clone());
+                app.draw(ui);
+            },
+            app,
+        );
     harness.run_steps(6);
     harness
 }

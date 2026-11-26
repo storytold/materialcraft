@@ -57,6 +57,7 @@ mod lib_tests {
         app.ui.explorer.hovered = true;
         app.ui.dock.close(crate::docking::Panel::Explorer);
         let context = egui::Context::default();
+        crate::framework::install_headless(&context);
 
         context.run_ui(egui::RawInput::default(), |ui| app.draw(ui)).textures_delta.clear();
 
@@ -79,14 +80,14 @@ mod close_order_tests {
 
     fn close_frame(app: &mut MaterialCraftApp) -> bool {
         let ctx = egui::Context::default();
+        crate::framework::install_headless(&ctx);
         let mut input = egui::RawInput::default();
         input.viewports.entry(egui::ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
         let mut canceled = false;
         ctx.run_ui(input, |ui| {
-            app.step_then(ui.ctx(), |ctx| {
-                canceled = ctx.viewport(|viewport| viewport.commands.contains(&egui::ViewportCommand::CancelClose));
-                false
-            });
+            app.step(ui.ctx());
+            app.close_path(ui.ctx());
+            canceled = ui.ctx().viewport(|viewport| viewport.commands.contains(&egui::ViewportCommand::CancelClose));
         })
         .textures_delta
         .clear();
@@ -103,7 +104,8 @@ mod close_order_tests {
         let mut clean = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
         clean.fonts_ready = true;
         clean.session.modified = false;
-        assert!(!close_frame(&mut clean), "nothing to hold: the hook sees a close to take over");
+        // Only the app's decision: a close that goes ahead ends in the platform's quit, which macOS answers by canceling it.
+        assert!(!crate::unsaved::close_requested(&mut clean), "nothing to hold: the hook sees a close to take over");
     }
 }
 

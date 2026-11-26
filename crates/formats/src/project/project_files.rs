@@ -143,19 +143,16 @@ impl ProjectFiles {
 
     /// Write an archive to a seekable destination without buffering the whole archive
     pub fn write_zip<W: Write + Seek>(&self, destination: W) -> Result<W> {
-        let mut writer = zip::ZipWriter::new(destination);
-        writer.add_directory("resources/", zip::write::SimpleFileOptions::default()).map_err(|error| bad(error.to_string()))?;
+        let mut writer = craft_zip::Writer::to_writer(destination);
+        writer.add_directory("resources/").map_err(|error| bad(error.to_string()))?;
         for (name, bytes) in &self.files {
             let is_text = name.ends_with(".sbs") || name.ends_with(".svg");
-            let compression_method = if is_text { zip::CompressionMethod::Deflated } else { zip::CompressionMethod::Stored };
+            let compression = if is_text { craft_zip::Compression::Deflated } else { craft_zip::Compression::Stored };
 
-            // ZIP64 prevents a separate 4 GiB entry ceiling
-            let options = zip::write::SimpleFileOptions::default().compression_method(compression_method).large_file(true);
-            writer.start_file(name, options).map_err(|error| bad(error.to_string()))?;
-            writer.write_all(bytes.as_slice()).map_err(|error| bad(error.to_string()))?;
+            writer.add(name, bytes.as_slice(), compression).map_err(|error| bad(error.to_string()))?;
         }
 
-        writer.finish().map_err(|error| bad(error.to_string()))
+        writer.finish_into().map_err(|error| bad(error.to_string()))
     }
 
     pub fn xml(&self) -> Result<&[u8]> {

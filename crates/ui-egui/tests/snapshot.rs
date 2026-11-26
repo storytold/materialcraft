@@ -54,13 +54,18 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 use serde_json::json;
 
 fn harness(app: MaterialCraftApp, w: f32, h: f32) -> Harness<'static, MaterialCraftApp> {
-    Harness::builder().with_size(vec2(w, h)).with_pixels_per_point(1.0).wgpu().build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    )
+    Harness::builder()
+        .with_context_setup(materialcraft_ui_egui::framework::install_headless)
+        .with_size(vec2(w, h))
+        .with_pixels_per_point(1.0)
+        .wgpu()
+        .build_ui_state(
+            |ui, app: &mut MaterialCraftApp| {
+                app.step(&ui.ctx().clone());
+                app.draw(ui);
+            },
+            app,
+        )
 }
 
 /// Run frames until background work (cooks, previews) settles

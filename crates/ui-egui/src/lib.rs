@@ -4,10 +4,12 @@
 mod annotation;
 pub mod control;
 pub mod cook;
+pub mod data_root;
 pub mod docking;
 pub mod explorer;
 pub mod export;
 pub mod fonts;
+pub mod framework;
 pub mod function;
 pub mod graph;
 mod graph_drag_payload;
@@ -22,10 +24,12 @@ mod menu_item;
 pub mod menus;
 mod new_graph_dialog;
 mod node_shortcuts;
+pub mod os_window;
 mod preview_resolution;
 #[path = "property/mod.rs"]
 pub mod properties;
 mod shell;
+mod shortcut_dispatch;
 pub mod state;
 pub mod theme;
 pub mod thumbs;

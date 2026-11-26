@@ -2,6 +2,7 @@
 //! Keep snapshot.rs standalone; language_switching.rs needs process isolation for global locale state.
 //! resize.rs isolates its bounded render wait from unrelated tests sharing the global Rayon pool.
 
+mod canvas_focus;
 mod clipboard_shortcuts;
 mod dialogs;
 mod export_window;

@@ -1,34 +1,20 @@
-//! The menu bar as the title bar, where the desktop leaves the window frame to the app (GNOME on Wayland)
+//! The window's own frame where the desktop leaves it to the app (GNOME on Wayland): which frame the runtime has, and
+//! the resize zones along the window's edges. The menu bar is the title bar there (`menus::menu_bar`).
 
-use craft_window::Button;
+use craft_ui::runtime::windows::WindowHost;
+use craft_window::policy::Frame;
 use egui::viewport::ResizeDirection;
-use egui::{Context, CursorIcon, Id, LayerId, Order, PointerButton, Rect, Sense, Ui, ViewportCommand, pos2, vec2};
-use egui_phosphor::regular as icon;
+use egui::{CursorIcon, Id, LayerId, Order, PointerButton, Rect, Sense, Ui, ViewportCommand, pos2, vec2};
 
-use crate::i18n::tr;
-
-fn label(button: Button) -> &'static str {
-    match button {
-        Button::Minimize => "Minimize",
-        Button::Maximize => "Maximize",
-        Button::Close => "Close",
-    }
+/// Whether the app's menu bar is the window's title bar: the frame the runtime has for the window is the app's.
+pub(crate) fn app_bar_is_title_bar(ctx: &egui::Context) -> bool {
+    !matches!(WindowHost::of(ctx).frame(), Frame::Native)
 }
 
-fn glyph(button: Button) -> &'static str {
-    match button {
-        Button::Minimize => icon::MINUS,
-        Button::Maximize => icon::SQUARE,
-        Button::Close => icon::X,
-    }
-}
-
-fn command(button: Button, maximized: bool) -> ViewportCommand {
-    match button {
-        Button::Minimize => ViewportCommand::Minimized(true),
-        Button::Maximize => ViewportCommand::Maximized(!maximized),
-        Button::Close => ViewportCommand::Close,
-    }
+/// Whether the window has no frame of the system's, so the app gives it its resize edges (macOS keeps its own edges
+/// under an inset title bar).
+pub(crate) fn app_draws_frame(ctx: &egui::Context) -> bool {
+    matches!(WindowHost::of(ctx).frame(), Frame::Integrated(_))
 }
 
 const EDGE: f32 = 5.0;
@@ -66,18 +52,6 @@ pub(crate) fn resize_zones(ui: &mut Ui) {
             // The window manager takes the pointer and on some desktops its release as well
             ctx.stop_dragging();
             ctx.input_mut(|input| input.pointer = Default::default());
-        }
-    }
-}
-
-/// Draw `buttons` in the given left-to-right order
-pub(crate) fn buttons(ui: &mut Ui, ctx: &Context, buttons: &[Button]) {
-    for &button in buttons {
-        let response = crate::widgets::icon_button(ui, glyph(button), tr(label(button)), false, 18.0);
-        crate::widgets::name(&response, egui::Role::Button, label(button));
-        if response.clicked() {
-            let maximized = ctx.input(|input| input.viewport().maximized).unwrap_or(false);
-            ctx.send_viewport_cmd(command(button, maximized));
         }
     }
 }

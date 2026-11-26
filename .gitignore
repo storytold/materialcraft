@@ -9,5 +9,11 @@ target/
 /temp
 /craft-fonts
 *.mcraft.tmp
+__pycache__/
 .claude/worktrees/
 pr-review-guidelines.md
+
+# Checked out inside the workspace by the shared nightly workflows (craft-common-actions).
+/.nightly-tools
+/.nightly-input
+/craft-i18n

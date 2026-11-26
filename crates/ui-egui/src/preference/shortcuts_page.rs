@@ -108,6 +108,11 @@ fn field(app: &mut MaterialCraftApp, ui: &mut Ui, entry: &str, label: &str) {
 fn capture(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let Some(entry) = app.ui.preferences.capturing.clone() else { return };
 
+    // A plain Escape cancels the wait; with no field of MaterialCraft's focused it is the window's cancel
+    if crate::framework::take_window_cancel(ui.ctx()) {
+        app.ui.preferences.capturing = None;
+        return;
+    }
     let platform = craft_keymap::egui::platform(ui.ctx());
     let chord = ui.input(|input| input.events.iter().find_map(|event| crate::node_shortcuts::event_chord(event, platform)));
     let Some(chord) = chord else { return };

@@ -60,7 +60,8 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
         let whole = ui.available_rect_before_wrap();
         let bar_top = whole.bottom() - BUTTON_BAR_HEIGHT;
         let list_w = PAGE_LIST_WIDTH.min(size.x * 0.35);
-        let (list, page) = if craft_ui::direction::is_rtl(ui) {
+        let rtl = ui.style().right_to_left;
+        let (list, page) = if rtl {
             let list = egui::Rect::from_min_max(egui::pos2(whole.right() - list_w, whole.top()), egui::pos2(whole.right(), bar_top));
             let page = egui::Rect::from_min_max(whole.min, egui::pos2(list.left() - 16.0, bar_top));
             (list, page)
@@ -86,7 +87,8 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &egui::Context) {
         });
 
         let bar = egui::Rect::from_min_max(egui::pos2(whole.left(), bar_top), whole.max);
-        let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(bar).layout(craft_ui::direction::trailing(ui)));
+        let trailing = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+        let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(bar).layout(trailing));
         for (label, pressed) in [("Apply", PreferenceAction::Apply), ("Cancel", PreferenceAction::Cancel), ("OK", PreferenceAction::Ok)] {
             let button = if pressed == PreferenceAction::Ok { crate::widgets::primary_button(&bar_ui, tr(label)) } else { egui::Button::new(tr(label)) };
             if bar_ui.add_sized([BUTTON_WIDTH.min(bar.width() / 3.0 - 4.0), 28.0], button).clicked() {
@@ -132,13 +134,13 @@ fn page_list(app: &mut MaterialCraftApp, ui: &mut Ui) {
         let chosen = app.ui.preferences.page == page;
         let label = RichText::new(tr(page.label()).to_uppercase()).size(14.0).color(if chosen { tokens.text_strong } else { tokens.text });
         let button = egui::Button::selectable(chosen, label).frame_when_inactive(false);
-        let row = ui
-            .allocate_ui_with_layout(
-                vec2(ui.available_width(), PAGE_ROW_HEIGHT),
-                craft_ui::direction::row(ui).with_main_justify(true).with_main_align(craft_ui::direction::start_align(ui)),
-                |ui| ui.add(button),
-            )
-            .inner;
+        let rtl = ui.style().right_to_left;
+        let row_layout = if rtl {
+            egui::Layout::right_to_left(egui::Align::Center).with_main_justify(true).with_main_align(egui::Align::Max)
+        } else {
+            egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true).with_main_align(egui::Align::Min)
+        };
+        let row = ui.allocate_ui_with_layout(vec2(ui.available_width(), PAGE_ROW_HEIGHT), row_layout, |ui| ui.add(button)).inner;
         crate::widgets::name(&row, egui::Role::Tab, page.label());
         if row.clicked() {
             app.ui.preferences.page = page;
