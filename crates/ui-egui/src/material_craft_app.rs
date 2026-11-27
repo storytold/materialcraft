@@ -632,40 +632,18 @@ impl MaterialCraftApp {
     /// Draw the whole window into `ui`, once per pass: the title bar with the menus, the toolbar, the dock, the status
     /// bar and the app's windows, under the drop veil. Files dropped in this pass are opened in this pass.
     pub fn draw(&mut self, ui: &mut egui::Ui) {
-        eprintln!("DIAG draw: start");
         crate::annotation::activate(self, crate::annotation::target(self));
-        eprintln!("DIAG draw: activated");
         let t0 = now_ms();
         let show_toolbar = self.ui.prefs.show_toolbar;
         let veil = craft_ui::popover::DropVeil::new(i18n::tr("Drop files to open")).show_with_files(ui, |ui, _| {
-            eprintln!("DIAG draw: body start {:?}", ui.max_rect());
             craft_ui::shell::AppShell::new(craft_ui::runtime::env::WindowKey::main())
-                .title_bar(|ui, _, app: &mut MaterialCraftApp| {
-                    eprintln!("DIAG draw: title {:?}", ui.max_rect());
-                    title_bar(app, ui);
-                    eprintln!("DIAG draw: title done");
-                })
-                .options_bar(show_toolbar, |ui, cx, app: &mut MaterialCraftApp| {
-                    eprintln!("DIAG draw: toolbar {:?}", ui.max_rect());
-                    toolbar::main_toolbar(app, ui, cx);
-                    eprintln!("DIAG draw: toolbar done");
-                })
-                .status(true, |ui, cx, app: &mut MaterialCraftApp| {
-                    eprintln!("DIAG draw: status {:?}", ui.max_rect());
-                    toolbar::status_bar(app, ui, cx);
-                    eprintln!("DIAG draw: status done");
-                })
-                .body(|ui, _, app: &mut MaterialCraftApp| {
-                    eprintln!("DIAG draw: dock {:?}", ui.max_rect());
-                    docking::show(app, ui);
-                    eprintln!("DIAG draw: dock done");
-                })
+                .title_bar(|ui, _, app: &mut MaterialCraftApp| title_bar(app, ui))
+                .options_bar(show_toolbar, |ui, cx, app: &mut MaterialCraftApp| toolbar::main_toolbar(app, ui, cx))
+                .status(true, |ui, cx, app: &mut MaterialCraftApp| toolbar::status_bar(app, ui, cx))
+                .body(|ui, _, app: &mut MaterialCraftApp| docking::show(app, ui))
                 .show(ui, &mut *self);
-            eprintln!("DIAG draw: shell shown");
             windows::show(self, ui);
-            eprintln!("DIAG draw: windows shown");
         });
-        eprintln!("DIAG draw: veil done");
         if let Some(files) = veil.output.dropped
             && !crate::shell::modality::Modality::capture(self, ui.ctx()).is_blocked()
         {
@@ -673,7 +651,6 @@ impl MaterialCraftApp {
         }
         control::ui_pass(self, ui.ctx());
         control_hooks::after_draw(self);
-        eprintln!("DIAG draw: end");
         let dt = (now_ms() - t0) as f32;
         self.ui_ms = if self.ui_ms == 0.0 { dt } else { self.ui_ms * 0.9 + dt * 0.1 };
     }

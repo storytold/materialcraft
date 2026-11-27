@@ -338,13 +338,6 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     }
 }
 
-struct DiagEnd(Panel);
-impl Drop for DiagEnd {
-    fn drop(&mut self) {
-        eprintln!("DIAG dock: {:?} done", self.0);
-    }
-}
-
 /// The panels' bodies for the dock area.
 struct Panels<'a> {
     app: &'a mut MaterialCraftApp,
@@ -353,8 +346,6 @@ struct Panels<'a> {
 impl DockPanels<Panel> for Panels<'_> {
     fn body(&mut self, panel: &Panel, ui: &mut Ui, _cx: &mut BodyCx<'_>) {
         let app = &mut *self.app;
-        eprintln!("DIAG dock: {panel:?} {:?}", ui.max_rect());
-        let _diag = DiagEnd(*panel);
         match panel {
             Panel::Graph => crate::graph::show(app, ui),
             Panel::View3d => crate::view3d::show(app, ui),

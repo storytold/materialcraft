@@ -99,9 +99,11 @@ fn a_new_app_is_idle_and_does_not_check_at_start() {
     assert_eq!(updater.status(), &Status::Idle);
 }
 
-/// One whole frame of the app; the first one only installs the fonts
+/// One whole desktop-sized frame of the app; the first one only installs the fonts. egui's default screen is 10000
+/// points square, where every library tile is in view and the headless app's inline jobs cook every library graph
+/// in one pass.
 fn frame(app: &mut MaterialCraftApp, ctx: &egui::Context) {
-    let mut raw = egui::RawInput::default();
+    let mut raw = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 960.0))), ..Default::default() };
     eframe::App::raw_input_hook(app, ctx, &mut raw);
     let mut output = ctx.run_ui(raw, |ui| {
         app.step(ui.ctx());
