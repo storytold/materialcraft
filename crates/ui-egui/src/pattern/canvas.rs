@@ -193,6 +193,7 @@ fn canvas(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui: &mut Ui) {
 
     let mut selection = given;
     for event in &response.collection.events {
+        eprintln!("DIAG pattern_dot_has_vertical_ports_and_can_be_wired_and_moved: pattern event {event:?}");
         match event {
             CollectionEvent::Selection { change, .. } => {
                 selection.apply(change.clone());

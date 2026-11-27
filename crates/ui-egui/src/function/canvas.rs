@@ -211,6 +211,16 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
     let wire_of = |id: u64| live.iter().zip(&live_ids).find(|(_, live)| **live == id).map(|(wire, _)| wire.wire.clone());
     let mut selection = given;
     for event in &response.collection.events {
+        let name = match event {
+            CollectionEvent::Selection { change, by, .. } => format!("selection {change:?} {by:?}"),
+            CollectionEvent::Move(_) => "move".into(),
+            CollectionEvent::Picked { key, .. } => format!("picked {key:?}"),
+            CollectionEvent::Item(key, NodeEvent::Wired { .. }) => format!("wired {key:?}"),
+            CollectionEvent::Item(key, NodeEvent::WireEnded { .. }) => format!("wire ended {key:?}"),
+            CollectionEvent::Item(key, _) => format!("item {key:?}"),
+            _ => "other".into(),
+        };
+        eprintln!("DIAG function_links_swap_and_delete_without_editing_the_parent_graph: function event {name}");
         match event {
             CollectionEvent::Selection { change, .. } => {
                 selection.apply(change.clone());
