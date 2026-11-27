@@ -41,32 +41,41 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let show_home = &mut app.ui.prefs.show_home;
 
     let mut open = app.ui.windows.home;
-    let shown = Dialog::new(tr("Home")).id_salt("home").modeless().resizable(true).opened(Bind::bound(&mut open)).show(ui, |ui, _| {
-        // Production shows the list newest first and saves neither choice.
-        let (mut view, mut sort) = (RecentView::List, RecentSort::Opened);
-        StartScreen::new(Bind::bound(&mut view), Bind::bound(&mut sort), &recent)
-            .home_layout(tr("Welcome to MaterialCraft"), &footer_links)
-            .layout(StartLayout::Greeting)
-            .new_label(tr("New graph..."))
-            .open_label(tr("Open package..."))
-            .links(&links)
-            .templates(&cards)
-            .templates_title(tr("Start from a template"))
-            .recent_title(tr("Recent packages"))
-            .max_recent(recent.len())
-            .thumbnails(&templates, &source)
-            .section(StartPlace::BeforeRecent, |ui, _| {
-                Text::new(tr("Build tileable materials from noises, patterns and filters, see them live in 2D and 3D, and export the maps for any engine."))
+    // Production's fixed Home size, kept inside the window; the rail and the page scroll on their own
+    let shown = Dialog::new(tr("Home"))
+        .id_salt("home")
+        .modeless()
+        .resizable(true)
+        .overlay(|overlay| overlay.body_scroll(false).size(egui::vec2(1000.0, 620.0)))
+        .opened(Bind::bound(&mut open))
+        .show(ui, |ui, _| {
+            // Production shows the list newest first and saves neither choice.
+            let (mut view, mut sort) = (RecentView::List, RecentSort::Opened);
+            StartScreen::new(Bind::bound(&mut view), Bind::bound(&mut sort), &recent)
+                .home_layout(tr("Welcome to MaterialCraft"), &footer_links)
+                .layout(StartLayout::Greeting)
+                .new_label(tr("New graph..."))
+                .open_label(tr("Open package..."))
+                .links(&links)
+                .templates(&cards)
+                .templates_title(tr("Start from a template"))
+                .recent_title(tr("Recent packages"))
+                .max_recent(recent.len())
+                .thumbnails(&templates, &source)
+                .section(StartPlace::BeforeRecent, |ui, _| {
+                    Text::new(tr(
+                        "Build tileable materials from noises, patterns and filters, see them live in 2D and 3D, and export the maps for any engine.",
+                    ))
                     .shade(Shade::Muted)
                     .show(ui);
-                Text::new(version.clone()).role(TypeRole::Caption).shade(Shade::Muted).show(ui);
-            })
-            .section(StartPlace::AfterSections, |ui, _| {
-                let _ = Checkbox::new(Bind::bound(&mut *show_home)).label(tr("Show at startup")).show(ui);
-            })
-            .show(ui)
-            .actions
-    });
+                    Text::new(version.clone()).role(TypeRole::Caption).shade(Shade::Muted).show(ui);
+                })
+                .section(StartPlace::AfterSections, |ui, _| {
+                    let _ = Checkbox::new(Bind::bound(&mut *show_home)).label(tr("Show at startup")).show(ui);
+                })
+                .show(ui)
+                .actions
+        });
     app.ui.windows.home = open;
 
     // The body may run twice in a pass; the last run's actions are the pass's.
