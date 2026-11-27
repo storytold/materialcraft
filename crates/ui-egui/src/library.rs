@@ -419,7 +419,12 @@ fn preview(app: &mut MaterialCraftApp, ui: &Ui, ctx: &egui::Context, entry: &Lib
     let store = app.thumbs.library_thumbs(ctx);
     let source = app.thumbs.library_source(&app.session.library, app.session.library_generation());
     let request = ThumbRequest::for_cell(rect.width().max(rect.height()), ctx.pixels_per_point());
-    let picture = |key: LibraryThumb| store.state(ctx, &source, &key, &request, Priority::VISIBLE).shown();
+    let picture = |key: LibraryThumb| {
+        let t = std::time::Instant::now();
+        let shown = store.state(ctx, &source, &key, &request, Priority::VISIBLE).shown();
+        eprintln!("DIAG library: {} {:?} shown={}", entry.id, t.elapsed(), shown.is_some());
+        shown
+    };
     let (texture, color) = match &entry.item {
         LibraryItem::Node { def } if entry.missing.is_none() && def != "dot" && ui.is_rect_visible(rect) => {
             (picture(LibraryThumb::Node(def.clone())), header_color(ctx, def))

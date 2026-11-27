@@ -87,6 +87,11 @@ mod title_bar_tests {
     /// The accessible labels of the window after two frames of the in-crate frame loop over an app whose runtime was
     /// installed with `frame`.
     fn labels(frame: Decision) -> Vec<String> {
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(20));
+            eprintln!("DIAG the_title_bar_shows_window_buttons_only_when_the_app_draws_the_frame: watchdog exit");
+            std::process::exit(3);
+        });
         let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
         let ctx = egui::Context::default();
         MaterialCraftApp::install_runtime(&ctx, Some(frame.clone())).unwrap();
@@ -96,9 +101,12 @@ mod title_bar_tests {
         for _ in 0..2 {
             let mut raw = egui::RawInput::default();
             eframe::App::raw_input_hook(&mut app, &ctx, &mut raw);
+            eprintln!("DIAG the_title_bar_shows_window_buttons_only_when_the_app_draws_the_frame: run_ui");
             let mut output = ctx.run_ui(raw, |ui| app.draw(ui));
             output.textures_delta.clear();
+            eprintln!("DIAG the_title_bar_shows_window_buttons_only_when_the_app_draws_the_frame: step");
             app.step(&ctx);
+            eprintln!("DIAG the_title_bar_shows_window_buttons_only_when_the_app_draws_the_frame: stepped");
             labels = output
                 .platform_output
                 .accesskit_update
