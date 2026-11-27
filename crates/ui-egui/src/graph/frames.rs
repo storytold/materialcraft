@@ -16,6 +16,8 @@ impl Frames {
     /// `session` after a few frames, so the canvas is laid out
     pub(super) fn new(session: materialcraft_engine::Session) -> Frames {
         let ctx = egui::Context::default();
+        // The passes' access trees are read by `rect_of`; a context makes none unless asked
+        ctx.enable_accesskit();
         let app = MaterialCraftApp::headless(session, crate::UiState::default());
         let mut f = Frames { ctx, app, time: 0.0, canvas_text: Vec::new(), access: None };
         MaterialCraftApp::install_runtime(&f.ctx, None).expect("runtime");
