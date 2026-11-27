@@ -71,3 +71,24 @@ fn display_toggle_updates_the_session_and_rerenders_the_normal_map() {
     settle(&mut h, rendered);
     assert!(before.2 == h.state().view3d.shown.as_ref().unwrap().2, "the first picture is back");
 }
+
+#[test]
+#[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
+fn normal_convention_snapshot() {
+    let mut harness = Harness::builder().with_size(vec2(1400.0, 860.0)).wgpu().build_ui_state(
+        |ui, app: &mut MaterialCraftApp| {
+            app.step(&ui.ctx().clone());
+            app.draw(ui);
+        },
+        app(),
+    );
+    settle(&mut harness, 0);
+    let rendered = harness.state().view3d.renders;
+    open_material_properties(&mut harness);
+    toggle(&mut harness);
+    settle(&mut harness, rendered);
+    assert!(!harness.state().session.view3d.normal_y_flip);
+    let dir = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").expect("MC_SNAPSHOT_DIR"));
+    std::fs::create_dir_all(&dir).unwrap();
+    harness.render().unwrap().save(dir.join("normal-convention.png")).unwrap();
+}
