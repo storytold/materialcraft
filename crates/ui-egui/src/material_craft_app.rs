@@ -259,7 +259,7 @@ impl MaterialCraftApp {
             at_exit: None,
         };
         let mut menu = std::mem::take(&mut app.menu);
-        commands::menu_bar(&app, &mut menu);
+        commands::menu_bar(&app, crate::shell::modality::Modality::Free, &mut menu);
         app.menu = menu;
         app.apply_prefs();
 
@@ -602,7 +602,7 @@ impl MaterialCraftApp {
             self.native_menu = Some(native);
         }
         let mut menu = std::mem::take(&mut self.menu);
-        commands::menu_bar(self, &mut menu);
+        commands::menu_bar(self, crate::shell::modality::Modality::capture(self, ctx), &mut menu);
         self.menu = menu;
 
         self.reconcile_editors();

@@ -386,14 +386,14 @@ fn add_at_pointer(app: &mut MaterialCraftApp, ctx: &egui::Context, entry: &str) 
 
 /// The menu bar the shell draws, from the menu tables: every row is a command row, whose shortcut, enabled and checked
 /// state come from the command board. `bar` is edited only when the model differs.
-pub(crate) fn menu_bar(app: &MaterialCraftApp, bar: &mut Tracked<MenuBar>) {
+pub(crate) fn menu_bar(app: &MaterialCraftApp, modality: Modality, bar: &mut Tracked<MenuBar>) {
     let rows: Vec<craft_menu::Row> = CATALOG.iter().map(crate::menu_item::Row::to_craft).collect();
     let tops: Vec<&str> = TOP.iter().map(|top| tr(top)).collect();
     let mut wanted = craft_menu::from_items(&tops, &rows);
     #[cfg(not(target_arch = "wasm32"))]
-    recent(app, &mut wanted);
+    recent(app, modality, &mut wanted);
     #[cfg(target_arch = "wasm32")]
-    let _ = app;
+    let _ = (app, modality);
 
     if **bar != wanted {
         bar.edit(|held| *held = wanted);
@@ -402,7 +402,7 @@ pub(crate) fn menu_bar(app: &MaterialCraftApp, bar: &mut Tracked<MenuBar>) {
 
 /// The Recent packages submenu after File > Open: a row per recent path, then Clear recent packages.
 #[cfg(not(target_arch = "wasm32"))]
-fn recent(app: &MaterialCraftApp, bar: &mut MenuBar) {
+fn recent(app: &MaterialCraftApp, modality: Modality, bar: &mut MenuBar) {
     let Some(file) = bar.menus.iter_mut().find(|menu| menu.title == tr("File")) else { return };
     let Some(open) = file.children.iter().position(|node| matches!(node, Node::Item(item) if item.command.id == "file.open")) else { return };
 
@@ -410,7 +410,7 @@ fn recent(app: &MaterialCraftApp, bar: &mut MenuBar) {
         app.ui.recent.iter().map(|path| Node::Item(Item::new(CommandRef::with_params("ui.openRecent", json!({ "path": path })), path.clone()))).collect();
     rows.push(Node::Separator);
     rows.push(Node::Item(Item::new("ui.clearRecent", tr("Clear recent packages")).english("Clear recent packages")));
-    let submenu = Node::submenu(tr("Recent packages"), rows).english("Recent packages").enabled(!app.ui.recent.is_empty());
+    let submenu = Node::submenu(tr("Recent packages"), rows).english("Recent packages").enabled(!app.ui.recent.is_empty() && modality.allows("ui.openRecent"));
     file.children.insert(open + 1, submenu);
 }
 

@@ -31,8 +31,9 @@ fn prompt(app: &mut MaterialCraftApp) {
     assert!(app.unsaved.is_some(), "an edited package asks before quitting");
 }
 
-/// A native file dialog asked for and waiting.
+/// A native file dialog asked for and waiting: the host's file service holds the pick unanswered.
 fn file_dialog(app: &mut MaterialCraftApp) {
+    app.host = Arc::new(app.host.with_files(Arc::new(craft_host::ScriptedFiles::held())));
     crate::native_dialogs::ask(app, crate::windows::package_dialog(true, false), crate::native_dialogs::Then::OpenPackage);
 }
 
@@ -117,23 +118,31 @@ fn ctrl_in_a_shortcut_text_is_command_on_macos() {
 /// Shortcut dispatch through the runtime: the app's own gating of each chord.
 #[test]
 fn a_shortcut_needs_exactly_its_modifiers() {
-    // Ctrl+N runs New graph, and a held Ctrl+N fires again
+    // Ctrl+N runs New graph
     let mut harness = harness_of(sample_app());
     press(&mut harness, Modifiers::COMMAND, Key::N);
     assert!(harness.state().ui.windows.new_graph, "Ctrl+N is bound to New graph");
-    harness.state_mut().ui.windows.new_graph = false;
-    harness.event(Event::Key { key: Key::N, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
-    harness.step();
-    harness.state_mut().ui.windows.new_graph = false;
-    harness.event(Event::Key { key: Key::N, physical_key: None, pressed: true, repeat: true, modifiers: Modifiers::COMMAND });
+
+    // A held Ctrl+Z fires again: its repeat undoes a second step (New graph opens a dialog, which takes the repeat)
+    let mut harness = harness_of(sample_app());
+    let before = nodes(&harness);
+    for at in [0, 200] {
+        harness.state_mut().run("graph.node.add", json!({"def": "uniform", "at": [at, 0]}));
+    }
     harness.run_steps(2);
-    assert!(harness.state().ui.windows.new_graph, "a held key runs the shortcut again");
+    hold(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(nodes(&harness), before, "a held key runs the shortcut again");
 
     // A node key adds one node at the pointer while the material graph canvas has the keys
     let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
     let entry = {
         let library = &app.session.library;
-        library.entries(&library.packages).into_iter().find(crate::node_shortcuts::bindable).expect("a node entry").id
+        library
+            .entries(&library.packages)
+            .into_iter()
+            .find(|entry| crate::node_shortcuts::bindable(entry) && matches!(entry.item, materialcraft_engine::LibraryItem::Node { .. }))
+            .expect("a node entry")
+            .id
     };
     app.overrides = Arc::new(crate::node_shortcuts::migrate(&BTreeMap::from([(entry, "B".to_owned())]), Platform::current()));
     let mut harness = harness_of(app);
@@ -181,9 +190,9 @@ fn a_shortcut_needs_exactly_its_modifiers() {
 
     // Ctrl+E on a linked graph instance does nothing by key; the menu row still opens its graph
     let mut app = sample_app();
-    let document = app.session.document_id;
+    let (document, graph) = (app.session.document_id, app.session.graph().unwrap().sbs_path());
     app.run("file.new", json!({"template": "empty", "name": "Second"})).unwrap();
-    let instance = app.run("graph.instance.add", json!({"document": document, "graph": 0})).unwrap()["id"].as_u64().unwrap();
+    let instance = app.run("graph.instance.add", json!({"document": document, "graph": graph})).unwrap()["id"].as_u64().unwrap();
     app.run("graph.select", json!({"ids": [instance]})).unwrap();
     let mut harness = harness_of(app);
     let active = harness.state().session.graph;
@@ -215,11 +224,14 @@ fn a_shortcut_needs_exactly_its_modifiers() {
 fn delete_waits_behind_the_unsaved_prompt() {
     // The unsaved prompt: Delete, wire Delete and Export wait
     let mut app = sample_app();
+    // The prompt's edit selects the node it adds, so the selections are made after it; the first frame's fit to the
+    // graph drops a wire selection, so the wire is selected once the window is up
+    prompt(&mut app);
     app.run("edit.selectAll", json!({}));
     let wire = app.session.graph().unwrap().connections.first().map(|wire| (wire.to, wire.to_port.clone())).unwrap();
-    app.graph.selected_wires = craft_behavior::Selection::single(crate::graph::wire_id(&wire));
-    prompt(&mut app);
     let mut harness = harness_of(app);
+    harness.state_mut().graph.selected_wires = craft_behavior::Selection::single(crate::graph::wire_id(&wire));
+    harness.run_steps(2);
     let (count, wires) = (nodes(&harness), harness.state().session.graph().unwrap().connections.len());
     press(&mut harness, Modifiers::NONE, Key::Delete);
     assert_eq!(nodes(&harness), count, "Delete does not edit the package behind the prompt");
@@ -232,8 +244,11 @@ fn delete_waits_behind_the_unsaved_prompt() {
 
     harness.state_mut().unsaved = None;
     harness.run_steps(2);
+    // A selected wire takes Delete before the nodes do
     press(&mut harness, Modifiers::NONE, Key::Delete);
-    assert!(nodes(&harness) < count, "Delete works once the prompt is answered");
+    assert!(harness.state().session.graph().unwrap().connections.len() < wires, "Delete works once the prompt is answered");
+    press(&mut harness, Modifiers::NONE, Key::Delete);
+    assert!(nodes(&harness) < count, "and then deletes the selected nodes");
     invoke(harness.state_mut(), &ctx, "ui.export");
     assert!(harness.state().ui.windows.export);
 
@@ -333,7 +348,8 @@ fn a_web_copy_press_runs_edit_copy() {
         Event::Key { key: Key::C, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND },
         Event::Copy,
     ]);
-    harness.step();
+    // The runtime hands the frame's fires to the app at the next frame's start
+    harness.run_steps(2);
     let offers = harness.output().platform_output.commands.iter().filter(|command| matches!(command, egui::OutputCommand::CopyText(_))).count();
     assert!(harness.state().session.clipboard.is_some(), "the press runs edit.copy");
     assert_eq!(offers, 1, "the press and its Copy event copy once");

@@ -108,6 +108,8 @@ mod tests {
         assert!(all.iter().all(|command| off(&dialog, command)), "About is open: every button is disabled");
 
         let file_dialog = harness(|app| {
+            // The host's file service holds the pick unanswered, as a native picker does while it is open
+            app.host = std::sync::Arc::new(app.host.with_files(std::sync::Arc::new(craft_host::ScriptedFiles::held())));
             crate::native_dialogs::ask(app, crate::windows::package_dialog(true, false), crate::native_dialogs::Then::OpenPackage);
         });
         assert!(!off(&file_dialog, "file.open"), "a pending pick leaves Open enabled: a second request does nothing");
