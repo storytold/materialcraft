@@ -53,13 +53,14 @@ fn click(harness: &mut Harness<'static, MaterialCraftApp>, role: Role, label: &s
     harness.run_steps(4);
 }
 
-/// Types `text` over the number field named `label` and commits it with Enter.
+/// Types `text` over the number field named `label` and commits it by moving the focus on with Tab (Enter would also
+/// press the window's default button).
 fn type_number(harness: &mut Harness<'static, MaterialCraftApp>, label: &str, text: &str) {
     harness.get(By::new().role(Role::SpinButton).label(label)).click();
     harness.step();
     harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
     harness.event(Event::Text(text.into()));
-    harness.key_press(Key::Enter);
+    harness.key_press(Key::Tab);
     harness.run_steps(4);
 }
 
@@ -138,7 +139,9 @@ fn a_shortcut_is_captured_refused_when_taken_and_adds_its_node_over_the_graph() 
     click(&mut harness, Role::Button, "Shortcut for Blur");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
     harness.run_steps(3);
-    assert!(harness.state().toasts.iter().any(|toast| toast.error), "a chord an app command holds is refused with an error toast");
+    // The app hands its toasts to the notice center each frame, which shows the refusal
+    assert!(harness.query_all_by_label_contains("is already the shortcut of").next().is_some(), "a chord an app command holds is refused with an error notice");
+    assert!(node_overrides(&harness).is_empty(), "the refused chord is not taken");
 
     click(&mut harness, Role::Button, "Shortcut for Blur");
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);

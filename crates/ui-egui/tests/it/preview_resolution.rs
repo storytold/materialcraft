@@ -50,7 +50,8 @@ fn node_resolution_explains_the_preview_cap() {
     let rect = h.state().graph.rects.iter().find(|(node, _)| *node == id).unwrap().1;
     let footer = footer(&h);
     assert!(footer.contains(&img.width().to_string()) && footer.contains(&img.height().to_string()));
-    assert!(footer.contains(&bit_count.to_string()));
+    // The footer marks the preview; the tooltip carries the format
+    assert!(footer.contains("Preview"), "{footer}");
     h.event(Event::PointerMoved(rect.center()));
     h.run_steps(90);
     let tree = format!("{:?}", h.kittest_state().root());
@@ -68,11 +69,13 @@ fn full_size_mode_retains_the_resolution_and_format() {
     let (mut h, id) = harness(0);
     let img = h.state().session.cooked.image(id, 0).unwrap();
     assert_eq!((img.width(), img.height()), (1024, 1024));
+    let capped = format!("{}x{} Preview", img.width(), img.height());
     let footer = footer(&h);
     assert!(footer.contains(&img.width().to_string()) && footer.contains(&img.height().to_string()), "{footer}");
     assert!(footer.contains(h.state().session.graph().unwrap().format.bits()), "{footer}");
     let rect = h.state().graph.rects.iter().find(|(node, _)| *node == id).unwrap().1;
     h.event(Event::PointerMoved(rect.center()));
     h.run_steps(90);
-    assert!(!format!("{:?}", h.kittest_state().root()).contains("Preview"));
+    // Neither the card nor its tooltip calls the full-size image a preview (the status bar names the setting)
+    assert!(!footer.contains("Preview") && !format!("{:?}", h.kittest_state().root()).contains(&capped));
 }

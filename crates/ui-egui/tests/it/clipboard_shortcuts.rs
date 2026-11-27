@@ -48,12 +48,21 @@ fn copied_within_frames(harness: &mut Harness<'static, MaterialCraftApp>) -> Str
     String::new()
 }
 
-/// The menu row whose name starts with `label`; the name may go on with the row's shortcut text
+/// The menu row whose name starts with `label`; the name may go on with the row's shortcut text. Only menu rows count:
+/// a view's toolbar button may start with the same word ("Copy image to the clipboard").
 fn row<'h>(harness: &'h Harness<'static, MaterialCraftApp>, label: &'h str) -> Node<'h> {
     harness
         .query_all_by_label_contains(label)
-        .find(|node| node.accesskit_node().label().is_some_and(|name| name.starts_with(label)))
+        .find(|node| {
+            node.accesskit_node().role() == egui::accesskit::Role::MenuItem && node.accesskit_node().label().is_some_and(|name| name.starts_with(label))
+        })
         .unwrap_or_else(|| panic!("no row named {label}"))
+}
+
+/// Steps the frame an event arrives in and the next: the runtime hands a frame's fired commands to the app before the
+/// next frame (`embed::before_input`), and the app runs them there.
+fn deliver(harness: &mut Harness<'static, MaterialCraftApp>) {
+    harness.run_steps(2);
 }
 
 fn node_count(harness: &Harness<'static, MaterialCraftApp>) -> usize {
@@ -68,21 +77,21 @@ fn wire_count(harness: &Harness<'static, MaterialCraftApp>) -> usize {
 fn desktop_clipboard_events_copy_paste_and_cut_nodes_with_their_wires() {
     let mut harness = harness();
     harness.event(Event::Copy);
-    harness.step();
+    deliver(&mut harness);
     assert!(harness.state().session.clipboard.is_some(), "the desktop's Copy event copies the nodes");
     let payload = copied_text(&harness);
     assert_eq!(serde_json::from_str::<serde_json::Value>(&payload).unwrap()["nodes"].as_array().unwrap().len(), 2);
 
     harness.event(Event::Paste(payload));
-    harness.step();
+    deliver(&mut harness);
     assert_eq!((node_count(&harness), wire_count(&harness)), (4, 2));
 
     harness.event(Event::Cut);
-    harness.step();
+    deliver(&mut harness);
     assert_eq!(node_count(&harness), 2);
 
     harness.event(Event::Paste(copied_text(&harness)));
-    harness.step();
+    deliver(&mut harness);
     assert_eq!((node_count(&harness), wire_count(&harness)), (4, 2));
 
     harness.state_mut().run("edit.undo", json!({})).unwrap();
