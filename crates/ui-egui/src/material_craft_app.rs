@@ -644,14 +644,6 @@ impl MaterialCraftApp {
                 .show(ui, &mut *self);
             windows::show(self, ui);
         });
-        if !ui.input(|i| i.raw.dropped_files.is_empty()) {
-            eprintln!(
-                "DIAG a_file_dropped_behind_a_prompt_does_not_reach_the_package: raw drop, veil dropped {}, modality {:?}, sizing {}",
-                veil.output.dropped.is_some(),
-                crate::shell::modality::Modality::capture(self, ui.ctx()),
-                ui.is_sizing_pass()
-            );
-        }
         if let Some(files) = veil.output.dropped
             && !crate::shell::modality::Modality::capture(self, ui.ctx()).is_blocked()
         {

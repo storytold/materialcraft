@@ -19,8 +19,6 @@ fn harness() -> Harness<'static, MaterialCraftApp> {
         app
     });
     harness.run_steps(8);
-    let copy = materialcraft_ui_egui::menus::enabled(harness.state(), "edit.copy");
-    eprintln!("DIAG desktop_clipboard_events_copy_paste_and_cut_nodes_with_their_wires: selection {:?}, edit.copy {copy:?}", harness.state().session.selection);
     harness
 }
 
