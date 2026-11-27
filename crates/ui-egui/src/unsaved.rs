@@ -75,6 +75,8 @@ pub fn guard(app: &mut MaterialCraftApp, action: Guarded) {
         return;
     }
 
+    // A graph property typed but not yet committed counts as an edit to ask about.
+    crate::properties::GraphPropertyDraft::commit(app);
     let (scope, documents) = match &action {
         Guarded::Package { document, reload } => {
             let scope = if *reload { CloseScope::Revert } else { CloseScope::Close };

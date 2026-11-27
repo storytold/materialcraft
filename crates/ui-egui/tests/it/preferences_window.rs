@@ -106,20 +106,20 @@ fn draft_limits_preserve_recents_and_undo_until_applied() {
 fn draft_preview_size_reaches_the_session_only_on_apply_or_ok() {
     let mut harness = window_harness(app());
     let initial = harness.state().session.preview_size;
-    assert_ne!(initial, Some(512), "the trial picks a size the session does not have");
+    assert_ne!(initial, Some(1024), "the trial picks a size the session does not have");
     open(&mut harness);
-    choose(&mut harness, "Preview size while editing", "512 px");
+    choose(&mut harness, "Preview size while editing", "1024 px");
     assert_eq!(harness.state().session.preview_size, initial, "the pick reached the session before Apply");
     click(&mut harness, Role::Button, "Cancel");
     assert_eq!(harness.state().session.preview_size, initial);
 
     open(&mut harness);
-    choose(&mut harness, "Preview size while editing", "512 px");
+    choose(&mut harness, "Preview size while editing", "1024 px");
     click(&mut harness, Role::Button, "Apply");
-    assert_eq!(harness.state().session.preview_size, Some(512));
+    assert_eq!(harness.state().session.preview_size, Some(1024));
 
     choose(&mut harness, "Preview size while editing", "Full size");
-    assert_eq!(harness.state().session.preview_size, Some(512), "a second pick reached the session before OK");
+    assert_eq!(harness.state().session.preview_size, Some(1024), "a second pick reached the session before OK");
     click(&mut harness, Role::Button, "OK");
     assert_eq!(harness.state().session.preview_size, None);
 }

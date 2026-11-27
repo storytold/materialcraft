@@ -171,11 +171,9 @@ fn an_offered_release_opens_the_prompt_over_the_window() {
     let ctx = egui::Context::default();
     MaterialCraftApp::install_runtime(&ctx, None).expect("runtime");
     let host = craft_ui::shell::WindowDialogs::of(&ctx, &craft_ui::runtime::env::WindowKey::main());
+    // The prompt waits in the window's startup queue, so the whole window draws.
     for _ in 0..3 {
-        let mut raw = egui::RawInput::default();
-        eframe::App::raw_input_hook(&mut app, &ctx, &mut raw);
-        ctx.run_ui(raw, |ui| show(&mut app, ui)).textures_delta.clear();
-        eframe::App::logic(&mut app, &ctx, &mut eframe::Frame::_new_kittest());
+        frame(&mut app, &ctx);
     }
     host.with(|host| assert!(host.get::<craft_update::stack_dialogs::UpdatePromptDialog>().is_some()));
     assert!(prompt_open(&app));

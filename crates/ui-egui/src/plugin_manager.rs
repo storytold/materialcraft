@@ -22,11 +22,11 @@ pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
     let dialog = craft_ui::dialog::Dialog::new(tr("Plugin Manager")).opened(Bind::bound(&mut open));
     dialog.show(ui, |body, _| {
         TextField::search(tr("Filter"), Bind::bound(&mut app.ui.plugin_filter)).show(body);
-        Table::<usize>::new(tr("Plugins"), columns.clone()).empty(tr("No plugins are installed. MaterialCraft does not load plugins yet.")).show_items(
-            body,
-            &craft_behavior::keyed(&[] as &[usize], |value| *value),
-            &mut |_, _| ListRow::new(""),
-        );
+        // The dialog body scrolls, so the list takes its content height there rather than a scroll of its own.
+        Table::<usize>::new(tr("Plugins"), columns.clone())
+            .natural_height(true)
+            .empty(tr("No plugins are installed. MaterialCraft does not load plugins yet."))
+            .show_items(body, &craft_behavior::keyed(&[] as &[usize], |value| *value), &mut |_, _| ListRow::new(""));
         Row::new().show(body, |row, _| {
             for label in buttons {
                 Button::new(tr(label)).tooltip(TooltipSpec::new(tr(label)).disabled_text(reason)).enabled(false).show(row);

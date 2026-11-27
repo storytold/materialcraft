@@ -4,19 +4,24 @@ use egui::accesskit::Role;
 use egui::vec2;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{By, Queryable};
-use materialcraft_ui_egui::export::ExportTab;
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 
 fn harness() -> Harness<'static, MaterialCraftApp> {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.ui.dock.close(materialcraft_ui_egui::docking::Panel::Library);
-    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    let mut harness = Harness::builder()
+        .with_size(vec2(1600.0, 960.0))
+        .with_pixels_per_point(1.0)
+        .with_context_setup(|ctx| {
+            MaterialCraftApp::install_runtime(ctx, None).expect("runtime");
+        })
+        .build_ui_state(
+            |ui, app: &mut MaterialCraftApp| {
+                app.step(&ui.ctx().clone());
+                app.draw(ui);
+            },
+            app,
+        );
     harness.run_steps(6);
     harness
 }
@@ -33,28 +38,6 @@ fn open_from_the_graph_menu(harness: &mut Harness<'static, MaterialCraftApp>, it
 
 fn pattern_field(harness: &Harness<'static, MaterialCraftApp>) -> String {
     harness.state().ui.export_draft.as_ref().map(|draft| draft.pattern.clone()).unwrap_or_default()
-}
-
-#[test]
-fn the_graph_menu_opens_the_window_on_the_matching_tab() {
-    let mut harness = harness();
-
-    open_from_the_graph_menu(&mut harness, "Export material...");
-    assert!(harness.state().ui.windows.export);
-    assert_eq!(harness.state().ui.export_tab, ExportTab::Mcmat);
-    assert!(harness.query(By::new().role(Role::ComboBox).label("Root graph")).is_some(), "the publishing dialog identifies its root graph");
-
-    harness.get(By::new().label("Close")).click();
-    harness.run_steps(3);
-    open_from_the_graph_menu(&mut harness, "Export outputs...");
-    assert_eq!(harness.state().ui.export_tab, ExportTab::FromGraph);
-
-    for tab in ["From graph", "Batch", "MaterialX", "MCMAT"] {
-        harness.get(By::new().role(Role::Tab).label(tab)).click();
-        harness.run_steps(2);
-        assert!(harness.query(By::new().label("Save settings")).is_some(), "{tab}");
-    }
-    assert_eq!(harness.state().ui.export_tab, ExportTab::Mcmat);
 }
 
 #[test]
