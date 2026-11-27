@@ -49,6 +49,10 @@ pub(crate) fn open(app: &mut MaterialCraftApp, tab: ExportTab) {
 
 /// Draw the window on a copy of the saved settings: Save settings and Export keep it, Close drops it
 pub(crate) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
+    // The egui window is a top-level area outside `ui`: a measuring run of the body around it draws nothing
+    if ui.is_sizing_pass() {
+        return;
+    }
     let ctx = ui.ctx().clone();
     let mut open = true;
     let mut action = None;
