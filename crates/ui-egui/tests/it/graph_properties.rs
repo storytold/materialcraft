@@ -1,7 +1,7 @@
 use egui::{Event, Key, Modifiers, vec2};
 use egui_kittest::{
     Harness,
-    kittest::{By, Queryable},
+    kittest::{By, NodeT as _, Queryable},
 };
 use materialcraft_engine::{
     Session,
@@ -69,7 +69,13 @@ fn field(label: &str) -> By<'_> {
 
 fn type_field(harness: &mut Harness<'static, MaterialCraftApp>, label: &str, text: &str) {
     harness.get(field(label)).click();
+    eprintln!("DIAG close_with_focused_graph_text: {label} clicked, focus before step {:?}", harness.ctx.memory(|m| m.focused()).is_some());
     harness.step();
+    eprintln!(
+        "DIAG close_with_focused_graph_text: {label} after step focus {:?} field focused {}",
+        harness.ctx.memory(|m| m.focused()).is_some(),
+        harness.get(field(label)).accesskit_node().is_focused()
+    );
     harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
     harness.step();
     harness.event(Event::Text(text.into()));
@@ -167,7 +173,19 @@ fn close_with_focused_graph_text(native_close: bool) {
     let app = MaterialCraftApp::headless(Session::new(package), UiState::default());
     let mut harness = app_harness(app, false);
     select(&mut harness, "Helper");
+    let rect = harness.get(field("Label")).rect();
+    eprintln!(
+        "DIAG close_with_focused_graph_text native {native_close}: home {} label rect {rect:?} layer {:?} labels {}",
+        harness.state().ui.windows.home,
+        harness.ctx.layer_id_at(rect.center()),
+        harness.query_all(field("Label")).count()
+    );
     type_field(&mut harness, "Label", "Pending label");
+    eprintln!(
+        "DIAG close_with_focused_graph_text native {native_close}: typed field {:?} focus {:?}",
+        harness.query(field("Label")).map(|node| node.value()),
+        harness.ctx.memory(|m| m.focused())
+    );
     assert!(!harness.state().session.modified);
 
     if native_close {
@@ -176,6 +194,12 @@ fn close_with_focused_graph_text(native_close: bool) {
         harness.key_press_modifiers(Modifiers::COMMAND, Key::Q);
     }
     harness.run_steps(3);
+    eprintln!(
+        "DIAG close_with_focused_graph_text native {native_close}: modified {} label {:?} field {:?}",
+        harness.state().session.modified,
+        harness.state().session.graph().unwrap().attributes.label,
+        harness.query(field("Label")).map(|node| node.value())
+    );
 
     assert!(materialcraft_ui_egui::unsaved::held(harness.state()).is_some());
     assert_eq!(harness.state().session.graph().unwrap().attributes.label, "Pending label");
@@ -204,8 +228,15 @@ fn undo_limit_is_editable_in_preferences_and_through_commands() {
     harness.state_mut().ui.windows.preferences = true;
     harness.run_steps(5);
 
-    type_field(&mut harness, "Undo history (steps)", "500");
-    harness.key_press(Key::Enter);
+    // The row is a slider and its number field, which is a spin button
+    harness.get(By::new().role(egui::Role::SpinButton).label("Undo history (steps)")).click();
+    harness.step();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.step();
+    harness.event(Event::Text("500".into()));
+    harness.run_steps(3);
+    // Tab commits the field; Enter would also press the window's default button
+    harness.key_press(Key::Tab);
     harness.run_steps(4);
 
     assert_eq!(harness.state().ui.prefs.history.undo_limit, initial_limit);

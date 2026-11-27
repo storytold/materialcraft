@@ -45,8 +45,16 @@ fn scale_drags_are_stable_and_apply_on_release() {
         let track = h.get(By::new().role(Role::Slider).label("Interface scale")).rect();
         let target = pos2(track.left() + track.width() * fraction, track.center().y);
         point(&mut h, track.center(), None);
+        eprintln!("DIAG scale_drags_are_stable_and_apply_on_release: track {track:?} hover shown {} dragged {:?}", shown(&h), h.ctx.dragged_id());
         point(&mut h, track.center(), Some(true));
+        eprintln!("DIAG scale_drags_are_stable_and_apply_on_release: press shown {} dragged {:?}", shown(&h), h.ctx.dragged_id());
         point(&mut h, target, None);
+        eprintln!(
+            "DIAG scale_drags_are_stable_and_apply_on_release: moved shown {} dragged {:?} draft {:?}",
+            shown(&h),
+            h.ctx.dragged_id(),
+            h.state().ui.windows.preferences
+        );
 
         let chosen = shown(&h);
         assert!((chosen - f64::from(initial)).abs() > 0.1, "the drag did not change the draft");

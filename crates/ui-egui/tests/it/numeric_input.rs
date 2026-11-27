@@ -102,6 +102,13 @@ fn clicking_the_canvas_and_switching_nodes_keep_the_right_values() {
         h.step();
     }
     h.run_steps(4);
+    eprintln!(
+        "DIAG clicking_the_canvas_and_switching_nodes_keep_the_right_values: view {:?} at {pos:?} selection {:?} offset {:?} rects {:?}",
+        h.state().graph.view,
+        h.state().session.selection,
+        pair(&h, id, "offset"),
+        h.state().graph.rects
+    );
     assert!(h.state().session.selection.is_empty());
     assert_eq!(pair(&h, id, "offset"), [0.4, 0.0]);
     h.state_mut().run("graph.select", json!({"ids": [id.0]})).unwrap();
