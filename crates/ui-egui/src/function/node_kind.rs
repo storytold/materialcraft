@@ -10,7 +10,7 @@ use egui::{CornerRadius, Rect, Vec2, pos2, vec2};
 use materialcraft_engine::core::{FunctionNode, Value};
 use materialcraft_engine::nodes::function as functions;
 
-use super::node_face::{self, MIN_EDIT_ZOOM, PADDING, SYMBOL_HEIGHT};
+use super::node_face::{self, MIN_EDIT_ZOOM, PADDING, Rows, SYMBOL_HEIGHT};
 use super::port_label::port_label;
 use crate::graph::node_colors::NodeColors;
 use crate::graph::{FOOTER_HEIGHT, HEADER_HEIGHT, NODE_W};
@@ -28,6 +28,8 @@ pub(crate) struct FunctionKind<'a> {
     output: bool,
     /// The canvas zoom in points per graph unit; the body paint has no env to read it from.
     scale: f32,
+    /// The value fields' height and gap, which size the card.
+    rows: Rows,
 }
 
 /// The edit event of a Function node's inline value control.
@@ -39,20 +41,21 @@ pub(crate) struct FunctionValueEdit {
 }
 
 impl<'a> FunctionKind<'a> {
-    /// The kind of `node`; `output` when it is its graph's output node, `scale` the canvas zoom of this pass.
-    pub(crate) fn new(node: &'a FunctionNode, output: bool, scale: f32) -> Self {
-        FunctionKind { node, inputs: functions::input_identifiers(node).collect(), output, scale }
+    /// The kind of `node`; `output` when it is its graph's output node, `scale` the canvas zoom of this pass, `rows`
+    /// its value fields' metrics.
+    pub(super) fn new(node: &'a FunctionNode, output: bool, scale: f32, rows: Rows) -> Self {
+        FunctionKind { node, inputs: functions::input_identifiers(node).collect(), output, scale, rows }
     }
 
     /// The card of `node` at `pos`, in graph units: the body fits the value rows or the symbol and the inputs, a Dot is
     /// a small circle centred on `pos`. The same at every zoom, so the canvas frames it before the pass.
-    pub(crate) fn rect(node: &FunctionNode, pos: [f32; 2]) -> Rect {
+    pub(super) fn rect(node: &FunctionNode, pos: [f32; 2], rows: Rows) -> Rect {
         let pos = pos2(pos[0], pos[1]);
         if is_dot(node) {
             return Rect::from_center_size(pos, Vec2::splat(DOT_SIDE));
         }
         let ports = functions::input_identifiers(node).count().max(1) as f32 * PORT_GAP + 8.0;
-        Rect::from_min_size(pos, vec2(NODE_W, HEADER_HEIGHT + node_face::height(node).max(ports) + FOOTER_HEIGHT))
+        Rect::from_min_size(pos, vec2(NODE_W, HEADER_HEIGHT + node_face::height(node, rows).max(ports) + FOOTER_HEIGHT))
     }
 
     fn dot(&self) -> bool {
@@ -124,9 +127,14 @@ impl NodeKind<FunctionValueEdit> for FunctionKind<'_> {
         if port == self.output_port() { PortDirection::Output } else { PortDirection::Input }
     }
 
+    /// A press on a connected input leaves its wire alone, as the function canvas always did.
+    fn port_detaches(&self, _port: usize) -> bool {
+        false
+    }
+
     fn measure_controls(&self, cx: &MeasureCx<'_, Node<'_, FunctionValueEdit>>) -> Vec2 {
         match self.fields_at(cx.env.view_scale()) {
-            Some(_) => vec2(0.0, node_face::height(self.node)),
+            Some(_) => vec2(0.0, node_face::height(self.node, self.rows)),
             None if self.dot() => Vec2::ZERO,
             None => vec2(0.0, SYMBOL_HEIGHT),
         }

@@ -3,6 +3,7 @@
 
 use super::function_editor::{FunctionWire, wires};
 use super::library::FunctionLibraryDrag;
+use super::node_face::Rows;
 use super::node_kind::{FunctionKind, FunctionValueEdit};
 use super::{FunctionEditor, FunctionTarget};
 use crate::MaterialCraftApp;
@@ -68,6 +69,7 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
     let Some(graph) = editor.current(app).cloned() else { return };
     let snap = app.ui.prefs.snap_to_grid;
     let pixels_per_point = ui.ctx().pixels_per_point();
+    let rows = Rows::of(ui);
 
     // `NodeId(i)` is `ids[i]`: one vector names the nodes for the rects, the kinds, the selection and the menu.
     let ids: Vec<u32> = graph.nodes.iter().map(|node| node.id).collect();
@@ -107,7 +109,7 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
             {
                 pos = materialcraft_engine::graph_grid::translate(pos, by.into(), snap);
             }
-            let rect = FunctionKind::rect(node, pos);
+            let rect = FunctionKind::rect(node, pos, rows);
             match &carried {
                 Some((nodes, by)) if nodes.contains(&node.id) => rect.translate(*by),
                 _ => rect,
@@ -173,7 +175,8 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
                     let space = canvas_space(&body.env)?;
                     let zoom = space.view.layer_transform();
                     let scale = zoom.map_or(1.0, |zoom| zoom.scale);
-                    let kinds: Vec<FunctionKind<'_>> = graph.nodes.iter().map(|node| FunctionKind::new(node, graph.output == Some(node.id), scale)).collect();
+                    let kinds: Vec<FunctionKind<'_>> =
+                        graph.nodes.iter().map(|node| FunctionKind::new(node, graph.output == Some(node.id), scale, rows)).collect();
                     let kinds: Vec<&dyn NodeKind<FunctionValueEdit>> = kinds.iter().map(|kind| kind as &dyn NodeKind<FunctionValueEdit>).collect();
                     let mut nodes = NodeGraph::new(&rects, &kinds, &graph_wires)
                         .label(crate::i18n::tr("Function nodes"))
@@ -281,7 +284,7 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
         }
     }
 
-    let (screen_rects, ports, wires) = publish_geometry(&graph.nodes, &ids, &rects, &live, &view);
+    let (screen_rects, ports, wires) = publish_geometry(&graph.nodes, &ids, &rects, &live, &view, rows);
     let annotation_rects = annotations::screen_rects(&response.annotation_rects);
     app.graph.publish(response.collection.response.rect, screen_rects, ports, wires, annotation_rects);
     search::show(app, ui, SearchEditor::Function(editor));
@@ -356,8 +359,9 @@ fn publish_geometry(
     rects: &[Rect],
     live: &[FunctionWire],
     view: &CanvasView,
+    rows: Rows,
 ) -> (Vec<(GraphNodeId, Rect)>, Vec<PortHit>, Vec<(WireRef, [Pos2; 4])>) {
-    let kinds: Vec<FunctionKind<'_>> = nodes.iter().map(|node| FunctionKind::new(node, false, 1.0)).collect();
+    let kinds: Vec<FunctionKind<'_>> = nodes.iter().map(|node| FunctionKind::new(node, false, 1.0, rows)).collect();
     let port_at = |at: usize, port: usize| rects.get(at).zip(kinds.get(at)).map(|(rect, kind)| rect.min + kind.port_offset(port, rect.size()));
     let screen_rects =
         ids.iter().zip(rects).map(|(id, rect)| (graph_id(*id), Rect::from_min_max(to_screen(view, rect.min), to_screen(view, rect.max)))).collect();
