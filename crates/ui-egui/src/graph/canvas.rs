@@ -227,20 +227,6 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let canvas_rect = shown.output.response.rect;
     app.ui.graph_camera = GraphCamera::from_view(&shown.output.view.unwrap_or(given));
     if let Some((response, view)) = shown.inner.flatten() {
-        if ui.input(|i| i.pointer.any_released()) {
-            let kinds: Vec<String> = response.collection.events.iter().map(|event| format!("{event:?}").chars().take(60).collect()).collect();
-            eprintln!("DIAG clicking_a_node_shows_it_in_the_2d_view: release events {kinds:?} pass {}", ui.ctx().cumulative_pass_nr());
-        }
-        if ui.input(|i| i.pointer.any_pressed()) {
-            let at = ui.input(|i| i.pointer.latest_pos());
-            let layer = at.and_then(|at| ui.ctx().layer_id_at(at)).map(|layer| layer == egui::LayerId::background());
-            eprintln!(
-                "DIAG clicked_wires_swap_with_x_and_delete_together: press at {at:?} on the root layer {layer:?}, wires {:?} -> {:?}, events {}",
-                app.graph.selected_wires.items,
-                wire_selection.items,
-                response.collection.events.len()
-            );
-        }
         app.graph.pending_views.clear();
         app.graph.selected_wires = wire_selection;
         publish(app, &list, &view, &response.annotation_rects);

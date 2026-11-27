@@ -5,7 +5,7 @@
 
 use craft_behavior::kurbo::Point;
 use craft_behavior::{EditEvent, Selection, SelectionChange, SelectionModel as _};
-use craft_ui::contract::{CollectionEvent, DropAt, DropPayload};
+use craft_ui::contract::{CollectionEvent, DropAt, DropPayload, LeadSource};
 use craft_ui::graph::{NodeEvent, NodeGraphResponse, NodeId as GraphNodeId, PortRef, WireEvent};
 use egui::{Pos2, Ui, Vec2, pos2};
 use materialcraft_engine::core::NodeId;
@@ -32,7 +32,25 @@ pub(crate) fn apply(app: &mut MaterialCraftApp, ui: &mut Ui, response: &NodeGrap
     let node = |id: &GraphNodeId| nodes.get(id.0 as usize).copied();
     for event in &response.collection.events {
         match event {
-            CollectionEvent::Selection { change, .. } => select(app, nodes, change.clone()),
+            CollectionEvent::Selection { change, by, .. } => {
+                select(app, nodes, change.clone());
+                // A click picks one node: plainly (`Set`) or with Ctrl (`Toggle`).
+                let clicked = match change {
+                    SelectionChange::Set(keys) if keys.len() == 1 => keys.first(),
+                    SelectionChange::Toggle(key) => Some(key),
+                    _ => None,
+                };
+                if *by == LeadSource::Pointer
+                    && let Some(id) = clicked.and_then(node)
+                {
+                    clicked_node(app, id);
+                }
+            }
+            CollectionEvent::Picked { key, .. } => {
+                if let Some(id) = node(key) {
+                    clicked_node(app, id);
+                }
+            }
             CollectionEvent::Move(edit) => moved(app, edit),
             CollectionEvent::Activate(id) => {
                 if let Some(id) = node(id) {
@@ -93,6 +111,14 @@ fn moved(app: &mut MaterialCraftApp, edit: &EditEvent<Vec2>) {
     }
 }
 
+/// A click on a node's body shows it in the 2D view; a click on the node already shown, or one that deselected it,
+/// keeps the current preview.
+fn clicked_node(app: &mut MaterialCraftApp, id: NodeId) {
+    if app.session.selection.contains(&id) && app.session.view2d.node != Some(id) {
+        app.run("view.2d", json!({"node": id.0}));
+    }
+}
+
 /// A double click on a node previews its first output; an embedded graph opens only through its own edit action.
 fn activate(app: &mut MaterialCraftApp, id: NodeId) {
     if app.session.graph().ok().and_then(|graph| graph.node(id).ok()).is_some_and(|node| node.def != "graph_instance") {
@@ -125,13 +151,6 @@ fn item(app: &mut MaterialCraftApp, nodes: &[NodeId], id: NodeId, event: &NodeEv
             }
             None => loose_end(app, nodes, *from, *at, refused.is_some()),
         },
-        NodeEvent::Clicked { port: None, .. } => {
-            eprintln!("DIAG clicking_a_node_shows_it_in_the_2d_view: clicked {id:?} selection {:?} shown {:?}", app.session.selection, app.session.view2d.node);
-            // A click on the node already shown, or one that deselected it, keeps the current preview.
-            if app.session.selection.contains(&id) && app.session.view2d.node != Some(id) {
-                app.run("view.2d", json!({"node": id.0}));
-            }
-        }
         NodeEvent::Clicked { port: Some(index), .. } => {
             let Some((port, true)) = port(app, id, *index) else { return };
             let index = app.session.output_ports(id).iter().position(|output| *output == port).unwrap_or(0);
