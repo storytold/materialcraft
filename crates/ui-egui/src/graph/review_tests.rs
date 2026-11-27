@@ -170,11 +170,11 @@ fn two_parent_size_picks_stay_two_undo_steps() {
     let before = frames.app.session.history().len();
     let width = frames.rect_of(egui::accesskit::Role::ComboBox, "Parent width");
     frames.click(width.center(), egui::Modifiers::NONE);
-    let option = frames.rect_of(egui::accesskit::Role::MenuItem, "512");
+    let option = frames.rect_of(egui::accesskit::Role::ListBoxOption, "512");
     frames.click(option.center(), egui::Modifiers::NONE);
     let width = frames.rect_of(egui::accesskit::Role::ComboBox, "Parent width");
     frames.click(width.center(), egui::Modifiers::NONE);
-    let option = frames.rect_of(egui::accesskit::Role::MenuItem, "256");
+    let option = frames.rect_of(egui::accesskit::Role::ListBoxOption, "256");
     frames.click(option.center(), egui::Modifiers::NONE);
     assert_eq!(frames.app.session.history().len(), before + 2);
     frames.app.session.undo().unwrap();

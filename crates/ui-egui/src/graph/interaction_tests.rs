@@ -329,6 +329,11 @@ fn pattern_dot_has_vertical_ports_and_can_be_wired_and_moved() {
     let destination = frames.app.graph.ports.iter().find(|port| port.node.0 == u64::from(quadrant) && !port.output).unwrap().pos;
     drag(&mut frames, output, destination);
     let from = frames.center(NodeId(u64::from(dot)));
+    eprintln!(
+        "DIAG pattern_dot_has_vertical_ports_and_can_be_wired_and_moved: dot rect {:?} from {from:?} ports {:?}",
+        frames.app.graph.rects.iter().find(|(id, _)| id.0 == u64::from(dot)),
+        frames.app.graph.ports.iter().filter(|port| port.node.0 == u64::from(dot)).map(|port| port.pos).collect::<Vec<_>>()
+    );
     drag(&mut frames, from, from + vec2(32.0, 16.0));
     let Value::PatternGraph(graph) = &frames.app.session.graph().unwrap().node(owner).unwrap().params["pattern"] else { panic!("missing pattern") };
     assert_eq!(graph.nodes[0].children, vec![Some(quadrant)]);
@@ -520,6 +525,18 @@ fn every_canvas_keeps_properties_after_deselection() {
             frames.click(center, Modifiers::NONE);
             let modifiers = if deselect == center { Modifiers::CTRL | Modifiers::COMMAND } else { Modifiers::NONE };
             frames.click(deselect, modifiers);
+            if let Some(tree) = &frames.access {
+                for key in tree.keys() {
+                    if tree.bounds_of(key).is_some_and(|bounds| bounds.contains(deselect)) {
+                        eprintln!(
+                            "DIAG every_canvas_keeps_properties_after_deselection: {kind} {deselect:?} under {:?} {:?} {:?}",
+                            tree.role_of(key),
+                            tree.name_of(key),
+                            tree.bounds_of(key)
+                        );
+                    }
+                }
+            }
             frames.run(Vec::new(), Modifiers::NONE);
 
             let empty = match kind {
@@ -527,6 +544,15 @@ fn every_canvas_keeps_properties_after_deselection() {
                 "pattern" => frames.app.pattern_editor.as_ref().unwrap().selection.is_empty(),
                 _ => frames.app.session.selection.is_empty(),
             };
+            if !empty && kind == "graph" {
+                eprintln!("DIAG every_canvas_keeps_properties_after_deselection: layer at blank {:?}", frames.ctx.layer_id_at(deselect));
+                for probe in [vec2(0.0, -30.0), vec2(40.0, 0.0), vec2(200.0, -100.0)] {
+                    frames.click(center, Modifiers::NONE);
+                    frames.click(deselect + probe, Modifiers::NONE);
+                    frames.run(Vec::new(), Modifiers::NONE);
+                    eprintln!("DIAG every_canvas_keeps_properties_after_deselection: probe {probe:?} cleared {}", frames.app.session.selection.is_empty());
+                }
+            }
             assert!(empty, "{kind} remained selected");
             assert_eq!(crate::properties::title(&frames.app), title, "{kind}");
             assert_eq!(frames.app.session.pkg, original);
@@ -662,6 +688,19 @@ fn function_links_swap_and_delete_without_editing_the_parent_graph() {
         }
         let header = frames.app.graph.rects.iter().find(|(id, _)| *id == NodeId(u64::from(a))).unwrap().1.min + vec2(12.0, 12.0);
         frames.click(header, egui::Modifiers::SHIFT);
+        if let Some(tree) = &frames.access {
+            for key in tree.keys() {
+                if tree.bounds_of(key).is_some_and(|bounds| bounds.contains(header)) {
+                    eprintln!(
+                        "DIAG function_links_swap_and_delete_without_editing_the_parent_graph: {definition} {header:?} under {:?} {:?} {:?} wires {:?}",
+                        tree.role_of(key),
+                        tree.name_of(key),
+                        tree.bounds_of(key),
+                        frames.app.function_editor.as_ref().map(|editor| editor.selected_wires.items.len())
+                    );
+                }
+            }
+        }
         assert_eq!(frames.app.function_editor.as_ref().unwrap().selection, vec![a]);
         let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };
         frames.run(vec![key(egui::Key::X)], egui::Modifiers::NONE);
@@ -772,7 +811,18 @@ fn review_library_drop_respects_grid_preference() {
         let position = frames.app.graph.view.center() + vec2(113.0, 77.0);
         frames.run(vec![Event::PointerMoved(position)], Modifiers::NONE);
         frames.run(vec![Event::PointerButton { pos: position, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], Modifiers::NONE);
-        egui::DragAndDrop::set_payload(&frames.ctx, super::LibraryDrag("node:blur".into()));
+        // A Library tile's press starts the framework drag its drop target takes
+        let env = craft_ui::runtime::env::Env::of_root(&frames.ctx);
+        let payload = std::sync::Arc::new(super::LibraryDrag("node:blur".into()));
+        craft_ui::runtime::drag::start(
+            &frames.ctx,
+            egui::Id::new("library tile"),
+            &env.view(),
+            payload,
+            Vec::new(),
+            craft_ui::runtime::drag::DragPreview::None,
+        );
+        frames.run(vec![Event::PointerMoved(position)], Modifiers::NONE);
         let graph_position = frames.app.ui.graph_camera.view(frames.app.graph.view).to_doc(position);
         let expected =
             materialcraft_engine::graph_grid::snap_position([graph_position.x as f32 - super::NODE_W * 0.5, graph_position.y as f32 - 20.0], snapping);
