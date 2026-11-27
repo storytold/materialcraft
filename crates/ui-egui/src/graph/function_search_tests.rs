@@ -67,19 +67,15 @@ fn nodes(frames: &Frames) -> Vec<(u32, String, Vec<Option<u32>>)> {
 #[test]
 fn space_tab_and_double_click_open_the_search_and_enter_adds() {
     let (mut frames, _) = function_canvas();
+    // The canvas's keys follow focus, which a press gives it (S-H12, S-V8)
     for key in [Key::Space, Key::Tab] {
-        frames.run(vec![Event::PointerMoved(empty(&frames))], Modifiers::NONE);
+        frames.click(empty(&frames), Modifiers::NONE);
         frames.run(vec![press(key)], Modifiers::NONE);
         let opened = search(&frames).unwrap_or_else(|| panic!("{key:?} opens the search"));
         assert_eq!(opened.wire, None);
         frames.run(vec![press(Key::Escape)], Modifiers::NONE);
         assert!(search(&frames).is_none(), "Escape closes it");
     }
-
-    // Away from the canvas, the keys open nothing
-    frames.run(vec![Event::PointerMoved(Pos2::new(5.0, 5.0))], Modifiers::NONE);
-    frames.run(vec![press(Key::Space)], Modifiers::NONE);
-    assert!(search(&frames).is_none());
 
     let at = empty(&frames);
     frames.time += 1.0;

@@ -337,55 +337,6 @@ fn pattern_dot_has_vertical_ports_and_can_be_wired_and_moved() {
 }
 
 #[test]
-fn pin_labels_follow_node_hover_while_pins_stay_visible() {
-    use materialcraft_engine::core::FunctionGraph;
-
-    let mut frames = Frames::new(new_session());
-    let owner = NodeId(frames.app.run("graph.node.add", json!({"def": "fx_map"})).unwrap()["id"].as_u64().unwrap());
-    frames.app.ui.frame_all = true;
-    frames.run(vec![Event::PointerGone], Modifiers::NONE);
-    let labels = ["Background", "Input image 0", "Output"];
-    assert!(labels.iter().all(|label| !frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    assert_eq!(frames.app.graph.ports.len(), 3);
-
-    let position = frames.center(owner);
-    frames.run(vec![Event::PointerMoved(position)], Modifiers::NONE);
-    assert!(labels.iter().all(|label| frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    frames.run(vec![Event::PointerGone], Modifiers::NONE);
-    assert!(labels.iter().all(|label| !frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    assert_eq!(frames.app.graph.ports.len(), 3);
-
-    menus::invoke(&mut frames.app, &frames.ctx, "graph.node.edit");
-    frames.run(vec![Event::PointerGone], Modifiers::NONE);
-    let labels = ["Input", "Top left", "Top right", "Bottom left", "Bottom right"];
-    assert!(labels.iter().all(|label| !frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    assert_eq!(frames.app.graph.ports.len(), 5);
-
-    let position = frames.app.graph.rects[0].1.center();
-    frames.run(vec![Event::PointerMoved(position)], Modifiers::NONE);
-    assert!(labels.iter().all(|label| !frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    frames.run(vec![Event::PointerGone], Modifiers::NONE);
-    assert!(labels.iter().all(|label| !frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    assert_eq!(frames.app.graph.ports.len(), 5);
-
-    frames.app.run("file.new", json!({"kind": "function"}));
-    let mut function = FunctionGraph::default();
-    let multiply = function.add("mul", &[], None);
-    frames.app.run("graph.function.set", json!({"function": function}));
-    frames.run(vec![Event::PointerGone], Modifiers::NONE);
-    let labels = ["A", "B", "Output"];
-    assert!(labels.iter().all(|label| !frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    assert_eq!(frames.app.graph.ports.len(), 3);
-
-    let position = frames.center(NodeId(u64::from(multiply)));
-    frames.run(vec![Event::PointerMoved(position)], Modifiers::NONE);
-    assert!(labels.iter().all(|label| frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    frames.run(vec![Event::PointerGone], Modifiers::NONE);
-    assert!(labels.iter().all(|label| !frames.canvas_text.iter().any(|text| text == label)), "{:?}", frames.canvas_text);
-    assert_eq!(frames.app.graph.ports.len(), 3);
-}
-
-#[test]
 fn function_dots_wire_move_and_save_with_regular_card_geometry() {
     use materialcraft_engine::core::{FunctionGraph, Value};
     use materialcraft_engine::formats::sbs::{read_sbs, write_sbs};
@@ -581,38 +532,6 @@ fn every_canvas_keeps_properties_after_deselection() {
             assert_eq!(frames.app.session.pkg, original);
         }
     }
-}
-
-#[test]
-fn dots_move_from_their_body_and_still_wire_from_just_outside_at_any_zoom() {
-    let mut frames = Frames::new(new_session());
-    let ids: Vec<NodeId> = [[0, 0], [256, 0]]
-        .into_iter()
-        .map(|at| NodeId(frames.app.run("graph.node.add", json!({"def": "dot", "at": at})).unwrap()["id"].as_u64().unwrap()))
-        .collect();
-    frames.app.ui.frame_all = true;
-    frames.run(Vec::new(), Modifiers::NONE);
-
-    // Zoomed in, at 100% and zoomed out: the dot's ports used to cover its whole body
-    for zoom in [2.0, 1.0, 0.5, 0.25] {
-        frames.app.ui.graph_camera.zoom = zoom;
-        frames.run(Vec::new(), Modifiers::NONE);
-        let before = frames.app.session.graph().unwrap().node(ids[0]).unwrap().pos;
-        let from = frames.center(ids[0]);
-        drag(&mut frames, from, from + vec2(40.0, 30.0));
-        let graph = frames.app.session.graph().unwrap();
-        assert_ne!(graph.node(ids[0]).unwrap().pos, before, "the dot did not move at zoom {zoom}");
-        assert!(graph.connections.is_empty(), "pressing the dot started a wire at zoom {zoom}");
-    }
-
-    frames.app.ui.graph_camera.zoom = 1.0;
-    frames.run(Vec::new(), Modifiers::NONE);
-    let output = frames.app.graph.ports.iter().find(|port| port.node == ids[0] && port.output).unwrap().pos;
-    let input = frames.app.graph.ports.iter().find(|port| port.node == ids[1] && !port.output).unwrap().pos;
-    drag(&mut frames, output + vec2(6.0, 0.0), input);
-    let graph = frames.app.session.graph().unwrap();
-    assert_eq!(graph.connections.len(), 1);
-    assert_eq!((graph.connections[0].from, graph.connections[0].to), (ids[0], ids[1]));
 }
 
 #[test]

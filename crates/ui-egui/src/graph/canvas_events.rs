@@ -126,6 +126,7 @@ fn item(app: &mut MaterialCraftApp, nodes: &[NodeId], id: NodeId, event: &NodeEv
             None => loose_end(app, nodes, *from, *at, refused.is_some()),
         },
         NodeEvent::Clicked { port: None, .. } => {
+            eprintln!("DIAG clicking_a_node_shows_it_in_the_2d_view: clicked {id:?} selection {:?} shown {:?}", app.session.selection, app.session.view2d.node);
             // A click on the node already shown, or one that deselected it, keeps the current preview.
             if app.session.selection.contains(&id) && app.session.view2d.node != Some(id) {
                 app.run("view.2d", json!({"node": id.0}));

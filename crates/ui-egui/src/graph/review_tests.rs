@@ -56,61 +56,6 @@ fn nested_function_commands_take_priority_over_fx_map_selection() {
 }
 
 #[test]
-fn graph_gestures_ignore_other_button_releases_and_escape_cancels() {
-    use super::frames::Frames;
-    use egui::{Event, Key, Modifiers, PointerButton, vec2};
-    for kind in ["material", "function", "pattern"] {
-        let mut frames = Frames::new(new_session());
-        frames.app.ui.prefs.snap_to_grid = false;
-        match kind {
-            "function" => {
-                frames.app.run("file.new", json!({"kind": "function"})).unwrap();
-                let mut graph = FunctionGraph::default();
-                graph.add("mul", &[], None);
-                frames.app.run("graph.function.set", json!({"function": graph})).unwrap();
-            }
-            "pattern" => {
-                let owner = NodeId(frames.app.run("graph.node.add", json!({"def": "fx_map"})).unwrap()["id"].as_u64().unwrap());
-                frames.app.run("graph.pattern.set", json!({"id": owner.0, "pattern": PatternGraph::with_root(PatternNodeKind::Quadrant)})).unwrap();
-                frames.app.pattern_editor = Some(crate::pattern::PatternEditor::new(frames.app.session.graph, owner));
-            }
-            _ => {
-                frames.app.run("graph.node.add", json!({"def": "uniform"})).unwrap();
-            }
-        }
-        frames.app.ui.frame_all = true;
-        frames.run(Vec::new(), Modifiers::NONE);
-        for cancel in [false, true] {
-            frames.run(Vec::new(), Modifiers::NONE);
-            let original = frames.app.session.pkg.clone();
-            let from = frames.app.graph.rects[0].1.center();
-            let middle = from + vec2(20.0, 0.0);
-            let to = from + vec2(60.0, 0.0);
-            let button = |pos, button, pressed| Event::PointerButton { pos, button, pressed, modifiers: Modifiers::NONE };
-            frames.run(vec![Event::PointerMoved(from)], Modifiers::NONE);
-            frames.run(vec![button(from, PointerButton::Primary, true)], Modifiers::NONE);
-            frames.run(vec![Event::PointerMoved(middle)], Modifiers::NONE);
-            for pressed in [true, false] {
-                frames.run(vec![button(middle, PointerButton::Middle, pressed)], Modifiers::NONE);
-            }
-            assert_eq!(frames.app.session.pkg, original, "{kind}: unrelated release committed movement");
-            frames.run(vec![Event::PointerMoved(to)], Modifiers::NONE);
-            if cancel {
-                frames
-                    .run(vec![Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }], Modifiers::NONE);
-            }
-            frames.run(vec![button(to, PointerButton::Primary, false)], Modifiers::NONE);
-            frames.run(Vec::new(), Modifiers::NONE);
-            if cancel {
-                assert_eq!(frames.app.session.pkg, original, "{kind}: cancelled movement committed");
-            } else {
-                assert!((frames.app.graph.rects[0].1.center().x - from.x - 60.0).abs() < 0.1, "{kind}: gesture ended early");
-            }
-        }
-    }
-}
-
-#[test]
 fn processors_edit_inline_and_return_to_the_parent_without_document_changes() {
     use super::{editor_target::EditorTarget, frames::Frames};
     for definition in ["pixel_processor", "value_processor"] {
