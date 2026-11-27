@@ -2,7 +2,7 @@
 use egui::{Event, vec2};
 use egui_kittest::{
     Harness,
-    kittest::{By, Queryable},
+    kittest::{By, NodeT, Queryable},
 };
 use materialcraft_engine::core::NodeId;
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
@@ -32,6 +32,12 @@ fn harness(preview: u32) -> (Harness<'static, MaterialCraftApp>, NodeId) {
     (h, id)
 }
 
+/// The node card's footer caption, which the node publishes as its accessible description.
+fn footer(h: &Harness<'static, MaterialCraftApp>) -> String {
+    let node = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform color"));
+    node.accesskit_node().description().map(|text| text.to_string()).unwrap_or_default()
+}
+
 #[test]
 fn node_resolution_explains_the_preview_cap() {
     let (mut h, id) = harness(512);
@@ -42,8 +48,7 @@ fn node_resolution_explains_the_preview_cap() {
     let bit_count = h.state().session.graph().unwrap().format.bits();
     let limit = h.state().session.preview_size.expect("the preference caps previews");
     let rect = h.state().graph.rects.iter().find(|(node, _)| *node == id).unwrap().1;
-    let node_label = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform color"));
-    let footer = format!("{node_label:?}");
+    let footer = footer(&h);
     assert!(footer.contains(&img.width().to_string()) && footer.contains(&img.height().to_string()));
     assert!(footer.contains(&bit_count.to_string()));
     h.event(Event::PointerMoved(rect.center()));
@@ -63,8 +68,7 @@ fn full_size_mode_retains_the_resolution_and_format() {
     let (mut h, id) = harness(0);
     let img = h.state().session.cooked.image(id, 0).unwrap();
     assert_eq!((img.width(), img.height()), (1024, 1024));
-    let node = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform color"));
-    let footer = format!("{node:?}");
+    let footer = footer(&h);
     assert!(footer.contains(&img.width().to_string()) && footer.contains(&img.height().to_string()), "{footer}");
     assert!(footer.contains(h.state().session.graph().unwrap().format.bits()), "{footer}");
     let rect = h.state().graph.rects.iter().find(|(node, _)| *node == id).unwrap().1;

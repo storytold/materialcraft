@@ -24,7 +24,10 @@ fn catalog_hits_share_entries_and_replaced_packages_release_them() {
         let previous = Arc::downgrade(&catalog);
         drop(catalog);
 
-        app.session.pkg.dependencies.insert(path.into(), Arc::new(materialcraft_engine::core::Package::new(name)));
+        // Through the engine's replace path, as a reload does: it is what tells the cache the sources changed
+        let mut package = app.session.pkg.clone();
+        package.dependencies.insert(path.into(), Arc::new(materialcraft_engine::core::Package::new(name)));
+        materialcraft_engine::file_cmds::replace_package(&mut app.session, package, None);
         let replacement = entries(&mut app);
 
         assert!(previous.upgrade().is_none());
