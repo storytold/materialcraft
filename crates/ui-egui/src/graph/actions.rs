@@ -79,15 +79,11 @@ pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &
                 EditorTarget::Function => app.function_editor.as_ref().map_or_else(Vec::new, |editor| editor.selected_wire_refs(app)),
                 EditorTarget::Pattern => app.pattern_editor.as_ref().map_or_else(Vec::new, |editor| editor.selected_wire_refs(app)),
             };
+            // Selected links take Delete; otherwise the engine's command deletes the selected nodes
             if !refs.is_empty() {
                 return super::wire_actions::delete_selected_wires(app);
             }
-            if target != EditorTarget::Material {
-                return false;
-            }
-            if app.session.selection.is_empty() {
-                return false;
-            }
+            return false;
         }
         "graph.align" => {
             let Some(mode) = params.get("mode").and_then(Value::as_str) else { return false };
