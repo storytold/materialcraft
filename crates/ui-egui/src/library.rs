@@ -307,7 +307,8 @@ pub(crate) fn visible<'a>(app: &MaterialCraftApp, entries: &'a [LibraryEntry], t
     visible
 }
 
-/// Draw matching entries and dispatch compatible additions or favorite changes.
+/// Draw matching entries and dispatch compatible additions or favorite changes. A row out of the scroll view only
+/// takes its room, so a pass builds the tiles in view and not the whole library.
 fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], target: &LibraryTarget) {
     let tokens = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
@@ -327,7 +328,12 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
     let columns = if as_list { 1 } else { ((ui.available_width() + 4.0) / (tile.x + 4.0)).floor().max(1.0) as usize };
     let mut add = None;
     let mut favorite = None;
+    let row = vec2(ui.available_width(), if as_list { 26.0 } else { tile.y });
     for chunk in list.chunks(columns) {
+        if !ui.is_rect_visible(Rect::from_min_size(ui.cursor().min, row)) {
+            ui.allocate_space(row);
+            continue;
+        }
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
             for entry in chunk {
