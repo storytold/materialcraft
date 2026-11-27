@@ -135,5 +135,7 @@ impl OpenDocument {
         session.cooked = Default::default();
         session.clear_decoded();
         session.dirty = true;
+        // The library entries resolve against the active package's dependencies
+        session.library_installed();
     }
 }

@@ -77,27 +77,20 @@ fn category_icon(category: &str) -> &'static str {
 
 /// The library's entries for the open session, rebuilt when its packages change
 pub(crate) fn entries(app: &mut MaterialCraftApp) -> Arc<Vec<LibraryEntry>> {
-    let library = ("", Arc::as_ptr(&app.session.library) as usize);
-    let packages = app.session.pkg.dependencies.iter().filter(|(path, _)| path.starts_with("sbs://"));
-    let key = std::iter::once(library).chain(packages.map(|(path, package)| (path.as_str(), Arc::as_ptr(package) as usize)));
-
-    let cache = &app.library_entries;
-    if cache.key.iter().map(|(path, address)| (path.as_str(), *address)).eq(key.clone()) {
-        return cache.list.clone();
+    let generation = app.session.library_generation();
+    if let Some(list) = app.library_entries.list.as_ref().filter(|_| app.library_entries.generation == generation) {
+        return list.clone();
     }
-
-    let key: Vec<_> = key.map(|(path, address)| (path.to_owned(), address)).collect();
     let list = app.session.library_entries();
-    app.library_entries = EntriesCache { key, list: list.clone() };
+    app.library_entries = EntriesCache { generation, list: Some(list.clone()) };
     list
 }
 
-/// The library's entries for the open session, held on the app: the key is the library pointer plus the
-/// `sbs://` dependency paths and pointers.
+/// The library's entries for the open session, held on the app for the session's `library_generation()`.
 #[derive(Default)]
 pub(crate) struct EntriesCache {
-    key: Vec<(String, usize)>,
-    list: Arc<Vec<LibraryEntry>>,
+    generation: u64,
+    list: Option<Arc<Vec<LibraryEntry>>>,
 }
 
 /// Draw the shared library tree and search results for the active editor.
