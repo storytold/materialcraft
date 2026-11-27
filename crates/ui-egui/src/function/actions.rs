@@ -32,6 +32,8 @@ pub(super) fn editor_enabled(app: &MaterialCraftApp, editor: &FunctionEditor, co
     match command {
         "edit.undo" | "edit.redo" | "edit.finish" | "graph.cook" | "ui.graph.snapToGrid" => None,
         "ui.graph.previousPin" | "ui.graph.nextPin" | "graph.comment.add" | "graph.frame.add" | "graph.pin.add" => None,
+        // The canvas keys (Space, Tab, F) run here as in the material graph
+        "ui.graph.nodeSearch" | "ui.graph.frame" => None,
         command if command.starts_with("graph.") || command.starts_with("ui.graph.") || command.starts_with("edit.") => Some(false),
         _ => None,
     }

@@ -23,7 +23,10 @@ pub(crate) fn enabled(app: &MaterialCraftApp, command: &str) -> Option<bool> {
         | "graph.comment.add"
         | "graph.pin.add"
         | "ui.graph.nextPin"
-        | "ui.graph.previousPin" => None,
+        | "ui.graph.previousPin"
+        // The canvas keys (Space, Tab, F) run here as in the material graph
+        | "ui.graph.nodeSearch"
+        | "ui.graph.frame" => None,
         command
             if command.starts_with("graph.")
                 || command.starts_with("ui.graph.")
