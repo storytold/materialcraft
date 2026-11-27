@@ -644,6 +644,15 @@ impl MaterialCraftApp {
                 .show(ui, &mut *self);
             windows::show(self, ui);
         });
+        if ui.ctx().input(|input| !input.raw.dropped_files.is_empty()) {
+            eprintln!(
+                "DIAG a_file_dropped_behind_a_prompt_does_not_reach_the_package: veil dropped {} blocked {} unsaved {} active {}",
+                veil.output.dropped.is_some(),
+                crate::shell::modality::Modality::capture(self, ui.ctx()).is_blocked(),
+                self.unsaved.is_some(),
+                craft_ui::runtime::drag::active::<craft_ui::contract::OsFiles>(ui.ctx()).is_some()
+            );
+        }
         if let Some(files) = veil.output.dropped
             && !crate::shell::modality::Modality::capture(self, ui.ctx()).is_blocked()
         {

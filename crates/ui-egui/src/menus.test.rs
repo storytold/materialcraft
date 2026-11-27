@@ -277,19 +277,29 @@ fn explorer_menus_name_only_actions_that_exist() {
     }
 }
 
+/// Whether the menu bar holds File ▸ Recent packages as a submenu that opens.
+fn recent_enabled(harness: &Harness<'static, MaterialCraftApp>) -> bool {
+    harness
+        .state()
+        .menu
+        .menus
+        .iter()
+        .flat_map(|menu| &menu.children)
+        .any(|node| matches!(node, craft_menu::Node::Submenu { english: Some(english), enabled: true, .. } if english == "Recent packages"))
+}
+
 #[test]
 fn menu_bar_items_gray_out_behind_a_prompt() {
     let mut app = sample_app();
     app.ui.recent.push("recent.sbs".into());
     let mut harness = harness_of(app);
-    open_file_menu(&mut harness);
-    assert!(!row(&harness, "Close all").accesskit_node().is_disabled());
-    assert!(!row(&harness, "Recent packages").accesskit_node().is_disabled());
+    assert!(board_enabled(&harness, "ui.closeAll"));
+    assert!(recent_enabled(&harness));
 
     prompt(harness.state_mut());
     harness.run_steps(3);
-    assert!(row(&harness, "Close all").accesskit_node().is_disabled());
-    assert!(row(&harness, "Recent packages").accesskit_node().is_disabled());
+    assert!(!board_enabled(&harness, "ui.closeAll"), "Close all is off behind the prompt");
+    assert!(!recent_enabled(&harness), "Recent packages is off behind the prompt");
 }
 
 #[test]

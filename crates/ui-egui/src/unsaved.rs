@@ -39,6 +39,8 @@ pub fn close_requested(app: &mut MaterialCraftApp) -> CloseDecision {
     if app.quit_confirmed {
         return CloseDecision::Close;
     }
+    // Focused text is still a draft when the window is asked to close
+    crate::properties::GraphPropertyDraft::commit(app);
     if app.unsaved.is_none() && !needs_confirmation(&app.session) {
         return CloseDecision::Close;
     }

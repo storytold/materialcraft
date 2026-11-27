@@ -1,5 +1,7 @@
 use super::{curve_editor, gradient_editor};
 use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
+use craft_ui::contract::{Bind, Show as _};
+use craft_ui::form::SliderField;
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
 use materialcraft_engine::core::{NodeId, Value};
@@ -19,21 +21,24 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
     let _ = inline; // P3(panels-w8): pn.A45
     let tokens = Tokens::get(ui.ctx());
     match current {
-        Value::Float(mut value) => {
-            if parameter.angle {
-                let mut degrees = value * 360.0;
-                let response = crate::widgets::slider(ui, tr(parameter.label), &mut degrees, -360.0..=360.0, 1);
-                if response.changed() {
-                    value = degrees / 360.0;
-                    set(app, node, parameter.id, json!(value));
-                }
-            } else {
-                let (minimum, maximum) = (parameter.min.min(value), parameter.max.max(value));
-                let response = crate::widgets::slider(ui, tr(parameter.label), &mut value, minimum..=maximum, if maximum - minimum > 20.0 { 1 } else { 3 });
-                if response.changed() {
-                    set(app, node, parameter.id, json!(value));
-                }
-            }
+        Value::Float(value) => {
+            // An angle shows degrees and is stored in turns.
+            let per_unit = if parameter.angle { 360.0 } else { 1.0 };
+            let range = if parameter.angle { -360.0..=360.0 } else { f64::from(parameter.min.min(value))..=f64::from(parameter.max.max(value)) };
+            let decimals = if range.end() - range.start() > 20.0 { 1 } else { 3 };
+            let events = SliderField::new(tr(parameter.label), Bind::given(f64::from(value) * per_unit), range)
+                .step(10f64.powi(-decimals))
+                .typed_decimals(decimals as usize)
+                .show(ui)
+                .edit
+                .events;
+            // One drag is one undo step: the events close the step on commit.
+            let _ = crate::edit_commit::send(
+                app,
+                &events,
+                "graph.node.param",
+                |shown| json!({"id": node.0, "param": parameter.id, "value": (shown / per_unit) as f32}),
+            );
         }
         Value::Int(integer) => {
             let mut value = integer as f32;
