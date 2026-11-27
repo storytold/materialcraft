@@ -6,9 +6,9 @@ pub(crate) type PortKey = (materialcraft_engine::core::NodeId, String);
 /// The wire direction associated with a node search.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum SearchWire {
-    /// The new node's output feeds this input.
+    /// A wire pulled from this output: it feeds the new node.
     From(PortKey),
-    /// This output feeds the new node.
+    /// A wire pulled from this input: the new node's output feeds it.
     To(PortKey),
 }
 

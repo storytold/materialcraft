@@ -233,7 +233,7 @@ pub(super) fn canvas(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui
                     // A refused port ends the wire without opening search, matching production's loose-release path.
                     if let Some(at) = loose
                         && app.ui.prefs.wire_drop_opens_node_search
-                        && !response.collection.response.rect.contains(*at)
+                        && response.collection.response.rect.contains(to_screen(&view, *at))
                         && let (Some(&id), Some(node)) = (ids.get(from.node.0 as usize), graph.nodes.get(from.node.0 as usize))
                     {
                         let wire = if from.port == FunctionKind::output_port_of(node) {

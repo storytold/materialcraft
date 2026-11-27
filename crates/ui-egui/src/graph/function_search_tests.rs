@@ -1,15 +1,14 @@
 //! The node search of material and Function canvases: keys, double-click and wires dropped on empty canvas
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
-use materialcraft_engine::core::{FunctionGraph, Value};
+use materialcraft_engine::core::{FunctionGraph, NodeId, Value};
 use materialcraft_engine::new_session;
 use serde_json::json;
 
 use super::frames::Frames;
 use crate::graph::{
-    editor_target::EditorTarget,
     node_search::{SearchPick, SearchWire},
-    search::{candidates, open},
+    search::candidates,
 };
 
 fn press(key: Key) -> Event {
@@ -48,6 +47,16 @@ fn port(frames: &Frames, node: u32, port: &str) -> Pos2 {
         .find(|hit| hit.node.0 == u64::from(node) && hit.port == port)
         .map(|hit| hit.pos)
         .unwrap_or_else(|| panic!("no port {node}:{port}"))
+}
+
+fn drag(frames: &mut Frames, from: Pos2, to: Pos2) {
+    frames.run(vec![Event::PointerMoved(from)], Modifiers::NONE);
+    frames.run(vec![Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], Modifiers::NONE);
+    for step in 1..=8 {
+        frames.run(vec![Event::PointerMoved(from.lerp(to, step as f32 / 8.0))], Modifiers::NONE);
+    }
+    frames.run(vec![Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], Modifiers::NONE);
+    frames.run(Vec::new(), Modifiers::NONE);
 }
 
 /// Type `text` into the open search and pick the first result with Enter
@@ -99,13 +108,8 @@ fn wires_dropped_on_empty_canvas_search_and_connect_the_new_node() {
 
     // From an output: the new node takes the wire on its first input
     let from = port(&frames, constant, "output");
-    open(
-        &mut frames.app,
-        EditorTarget::Function,
-        from + vec2(260.0, -60.0),
-        Some(SearchWire::From((materialcraft_engine::core::NodeId(u64::from(constant)), "output".into()))),
-    );
-    assert!(search(&frames).unwrap().wire.is_some());
+    drag(&mut frames, from, from + vec2(260.0, -60.0));
+    assert_eq!(search(&frames).unwrap().wire, Some(SearchWire::From((NodeId(u64::from(constant)), "output".into()))));
     choose(&mut frames, "add");
     let (add, _, inputs) = nodes(&frames).into_iter().find(|(_, op, _)| op == "add").unwrap();
     assert_eq!(inputs, [Some(constant), None]);
@@ -115,8 +119,8 @@ fn wires_dropped_on_empty_canvas_search_and_connect_the_new_node() {
     let input = port(&frames, add, "1");
     let drop = input + vec2(-40.0, 110.0);
     assert!(frames.app.graph.view.contains(input) && frames.app.graph.view.contains(drop));
-    open(&mut frames.app, EditorTarget::Function, drop, Some(SearchWire::To((materialcraft_engine::core::NodeId(u64::from(add)), "1".into()))));
-    assert!(search(&frames).unwrap().wire.is_some());
+    drag(&mut frames, input, drop);
+    assert_eq!(search(&frames).unwrap().wire, Some(SearchWire::To((NodeId(u64::from(add)), "1".into()))));
     choose(&mut frames, "Float");
     let nodes = nodes(&frames);
     let (_, _, inputs) = nodes.iter().find(|(id, _, _)| *id == add).unwrap();

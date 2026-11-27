@@ -169,13 +169,10 @@ fn loose_end(app: &mut MaterialCraftApp, nodes: &[NodeId], from: PortRef, at: Po
     if !app.ui.prefs.wire_drop_opens_node_search || !app.graph.view.contains(screen) {
         return;
     }
-    // PLAN: the sheet (note 7e) names `From` for a drag from an output and `To` for a reverse wire; `SearchWire`'s own
-    // docs (graph-w11, `node_search.rs:7-10`) say `From` holds the input the new node feeds and `To` the output that
-    // feeds it, so the ends follow those docs and the behaviour stays the sheet's.
     let wire = if output {
-        SearchWire::To(end)
-    } else if !refused {
         SearchWire::From(end)
+    } else if !refused {
+        SearchWire::To(end)
     } else {
         return;
     };
