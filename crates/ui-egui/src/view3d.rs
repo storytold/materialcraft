@@ -77,10 +77,8 @@ fn panel_context(app: &MaterialCraftApp) -> u64 {
 }
 
 /// The frame's rect inside the area.
-#[allow(dead_code)] // P3(views-w6): vw.A14
 pub(crate) fn picture_rect(app: &MaterialCraftApp, area: Rect) -> Rect {
-    let _ = (app, area);
-    todo!("vw.A14")
+    frame::shown_rect(app, area)
 }
 
 #[allow(unused_imports)] // P3(views-w6): vw.A11
