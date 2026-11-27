@@ -214,7 +214,8 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
     // While a save runs, the question is not open
     let GuardStep::Ask(document) = pending.step else { return };
     let (scope, remaining) = (pending.guard.scope(), pending.guard.remaining());
-    if !activate(app, document) {
+    // Activating closes the open sub-editors and the wire selection, so the active package is left as it is
+    if document != app.session.document_id && !activate(app, document) {
         app.unsaved = None;
         app.pending_load = None;
         return;

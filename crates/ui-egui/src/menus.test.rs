@@ -228,7 +228,12 @@ fn delete_waits_behind_the_unsaved_prompt() {
     let wire = app.session.graph().unwrap().connections.first().map(|wire| (wire.to, wire.to_port.clone())).unwrap();
     let mut harness = harness_of(app);
     harness.state_mut().graph.selected_wires = craft_behavior::Selection::single(crate::graph::wire_id(&wire));
-    harness.run_steps(2);
+    let live: Vec<u64> = harness.state().graph.wires.iter().map(|(wire, _)| crate::graph::wire_id(wire)).collect();
+    eprintln!("DIAG delete_waits_behind_the_unsaved_prompt: set {} live {live:?}", crate::graph::wire_id(&wire));
+    for _ in 0..2 {
+        harness.step();
+        eprintln!("DIAG delete_waits_behind_the_unsaved_prompt: after step {:?}", harness.state().graph.selected_wires.items);
+    }
     let (count, wires) = (nodes(&harness), harness.state().session.graph().unwrap().connections.len());
     press(&mut harness, Modifiers::NONE, Key::Delete);
     assert_eq!(nodes(&harness), count, "Delete does not edit the package behind the prompt");
@@ -242,9 +247,31 @@ fn delete_waits_behind_the_unsaved_prompt() {
     harness.state_mut().unsaved = None;
     harness.run_steps(2);
     // A selected wire takes Delete before the nodes do
+    eprintln!(
+        "DIAG delete_waits_behind_the_unsaved_prompt: wires {:?} refs {} delete on {} modality {:?} focus {:?}",
+        harness.state().graph.selected_wires.items,
+        harness.state().graph.selected_wire_refs().len(),
+        board_enabled(&harness, "edit.delete"),
+        crate::shell::modality::Modality::capture(harness.state(), &harness.ctx),
+        harness.ctx.memory(|memory| memory.focused())
+    );
     press(&mut harness, Modifiers::NONE, Key::Delete);
     assert!(harness.state().session.graph().unwrap().connections.len() < wires, "Delete works once the prompt is answered");
+    eprintln!(
+        "DIAG delete_waits_behind_the_unsaved_prompt: nodes selected {} wires {:?} delete on {}",
+        harness.state().session.selection.len(),
+        harness.state().graph.selected_wires.items,
+        board_enabled(&harness, "edit.delete")
+    );
     press(&mut harness, Modifiers::NONE, Key::Delete);
+    eprintln!(
+        "DIAG delete_waits_behind_the_unsaved_prompt: after second press nodes {} selected {} annotation {:?} status {:?} toasts {}",
+        nodes(&harness),
+        harness.state().session.selection.len(),
+        harness.state().session.annotation_selection,
+        harness.state().status,
+        harness.state().toasts.len()
+    );
     assert!(nodes(&harness) < count, "and then deletes the selected nodes");
     invoke(harness.state_mut(), &ctx, "ui.export");
     assert!(harness.state().ui.windows.export);
