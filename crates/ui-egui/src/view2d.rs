@@ -55,10 +55,9 @@ fn shown_name(app: &MaterialCraftApp, node: materialcraft_engine::core::NodeId) 
 }
 
 /// The shown image's rect, computed from the `ImageCamera` view in `area`; `None` with no image.
-#[allow(dead_code)] // P3(views-w4): vw.A13
 pub(crate) fn image_rect(app: &MaterialCraftApp, area: Rect) -> Option<Rect> {
-    let _ = (app, area);
-    todo!("vw.A13")
+    let (_, image) = app.session.view2d_image()?;
+    Some(viewport::tile(app, app.ui.image_camera, area, image))
 }
 
 /// Runs the 2D view's command `id` (`view2d.fit`, `view2d.tiled`, `view2d.channel.*`); true when the id was its own.

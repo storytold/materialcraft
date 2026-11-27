@@ -135,7 +135,7 @@ fn tool_strip(ui: &mut Ui, strip: Rect) {
 /// Update the camera from this frame's input and return where the image sits on screen
 fn place(app: &mut MaterialCraftApp, ui: &Ui, response: &Response, rect: Rect, shown: &Shown) -> Rect {
     let (maintain_zoom, sampling) = (app.session.view2d.maintain_zoom, app.session.view2d.information);
-    let size = vec2(shown.image.width() as f32 * physical_stretch(app, &shown.image), shown.image.height() as f32);
+    let size = drawn_size(app, &shown.image);
     let mut camera = app.ui.image_camera.sanitized();
 
     // Without the zoom lock a new image size keeps the image as large on screen as the last one
@@ -149,11 +149,7 @@ fn place(app: &mut MaterialCraftApp, ui: &Ui, response: &Response, rect: Rect, s
         camera = ImageCamera { zoom: camera.zoom * longest_side(previous) / longest_side(current), ..camera }.sanitized();
     }
 
-    if camera.fit {
-        let fit = (rect.width() / size.x).min(rect.height() / size.y);
-        camera.zoom = if fit.is_finite() && fit > 0.0 { fit } else { ImageCamera::ZOOM.0 };
-        camera.offset = [0.0, 0.0];
-    }
+    camera = fitted(camera, rect, size);
 
     if response.hovered() {
         let scroll = if app.ui.prefs.invert_zoom { -1.0 } else { 1.0 } * ui.input(|input| input.smooth_scroll_delta.y);
@@ -173,7 +169,28 @@ fn place(app: &mut MaterialCraftApp, ui: &Ui, response: &Response, rect: Rect, s
     }
 
     app.ui.image_camera = camera;
+    tile(app, camera, rect, &shown.image)
+}
+
+/// Where `camera` puts `image` in the image area `rect`
+pub(super) fn tile(app: &MaterialCraftApp, camera: ImageCamera, rect: Rect, image: &Image) -> Rect {
+    let size = drawn_size(app, image);
+    let camera = fitted(camera.sanitized(), rect, size);
     Rect::from_center_size(rect.center() + vec2(camera.offset[0], camera.offset[1]), size * camera.zoom)
+}
+
+/// The image's size at zoom 1, with the physical size's proportions
+fn drawn_size(app: &MaterialCraftApp, image: &Image) -> egui::Vec2 {
+    vec2(image.width() as f32 * physical_stretch(app, image), image.height() as f32)
+}
+
+/// `camera` with the fitted zoom and centre while it follows the fit
+fn fitted(camera: ImageCamera, rect: Rect, size: egui::Vec2) -> ImageCamera {
+    if !camera.fit {
+        return camera;
+    }
+    let fit = (rect.width() / size.x).min(rect.height() / size.y);
+    ImageCamera { zoom: if fit.is_finite() && fit > 0.0 { fit } else { ImageCamera::ZOOM.0 }, offset: [0.0, 0.0], fit: true }
 }
 
 /// How much wider the image is drawn so it has the proportions of the graph's physical size
