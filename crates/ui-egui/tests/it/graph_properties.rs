@@ -233,3 +233,20 @@ fn undo_limit_is_editable_in_preferences_and_through_commands() {
     assert_eq!(harness.state().ui.prefs.history.undo_limit, 25);
     assert_eq!(harness.state().session.history_prefs.undo_limit, 25);
 }
+
+#[test]
+#[ignore = "requires an offscreen GPU"]
+fn graph_properties_screenshot() {
+    let mut harness = harness(true);
+    select(&mut harness, "Helper");
+    let directory = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    harness.render().unwrap().save(directory.join("function-graph-properties.png")).unwrap();
+
+    select(&mut harness, "Material");
+    harness.render().unwrap().save(directory.join("material-graph-properties.png")).unwrap();
+
+    harness.state_mut().ui.windows.preferences = true;
+    harness.run_steps(5);
+    harness.render().unwrap().save(directory.join("history-preferences.png")).unwrap();
+}

@@ -162,3 +162,31 @@ fn integer_input_and_slider_track_both_update_the_node() {
     h.run_steps(4);
     assert_eq!(h.state().session.graph().unwrap().node(id).unwrap().base.seed, 500);
 }
+
+#[test]
+fn a_negative_decimal_can_be_typed_across_frames() {
+    let (mut h, id) = harness(false);
+    focus_x(&mut h, 0);
+    for part in ["-", ".", "5"] {
+        type_text(&mut h, part);
+    }
+    h.key_press(Key::Enter);
+    h.step();
+    h.run_steps(4);
+    assert_eq!(pair(&h, id, "offset"), [-0.5, 0.0]);
+}
+
+#[test]
+#[ignore = "requires an offscreen GPU"]
+fn exact_offset_screenshot() {
+    let (mut h, id) = harness(true);
+    focus_x(&mut h, 0);
+    type_text(&mut h, "0.4");
+    h.key_press(Key::Enter);
+    h.step();
+    h.run_steps(8);
+    assert_eq!(pair(&h, id, "offset"), [0.4, 0.0]);
+    let dir = std::path::PathBuf::from(std::env::var_os("MC_SNAPSHOT_DIR").expect("set MC_SNAPSHOT_DIR"));
+    std::fs::create_dir_all(&dir).unwrap();
+    h.render().unwrap().save(dir.join("offset-x-4.png")).unwrap();
+}

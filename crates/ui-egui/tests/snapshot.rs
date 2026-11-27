@@ -1696,3 +1696,27 @@ fn library_cache_preferences() {
         save(&mut h, &dir, "library-cache-preferences");
     }
 }
+
+#[test]
+#[ignore]
+fn perf() {
+    use materialcraft_ui_egui::docking::Panel;
+    let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    let mut h = harness(app, 1600.0, 960.0);
+    settle(&mut h, 60);
+    let measure = |h: &mut Harness<'static, MaterialCraftApp>| {
+        let t = std::time::Instant::now();
+        for _ in 0..30 {
+            h.step();
+        }
+        t.elapsed().as_secs_f64() * 1000.0 / 30.0
+    };
+    println!("all panels: {:.2} ms/frame", measure(&mut h));
+    for p in [Panel::Library, Panel::View3d, Panel::View2d, Panel::Properties, Panel::Explorer] {
+        h.state_mut().ui.dock.close(p);
+        settle(&mut h, 3);
+        println!("without {p:?}: {:.2} ms/frame", measure(&mut h));
+        h.state_mut().ui.dock.focus(p);
+        settle(&mut h, 3);
+    }
+}

@@ -194,3 +194,51 @@ fn a_nightly_build_has_no_updater_and_points_at_the_launcher() {
     // A frame without an updater must not panic or touch the pins file.
     tick(&mut app, &ctx);
 }
+
+#[test]
+fn a_requested_check_shows_its_progress() {
+    let mut app = app();
+    // The check stays running until this sender goes away at the end of the test
+    let (release, wait) = channel::<()>();
+    let wait = std::sync::Mutex::new(wait);
+    let source: craft_update::updater::CheckSource = Arc::new(move || {
+        if let Ok(wait) = wait.lock() {
+            let _ = wait.recv();
+        }
+        Ok(None)
+    });
+    app.updates_rt.updater = Some(Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()).with_source(source));
+    check(&mut app);
+    tick(&mut app, &egui::Context::default());
+
+    let mut harness = egui_kittest::Harness::builder().build_ui_state(|ui, app: &mut MaterialCraftApp| crate::windows::show(app, ui.ctx()), app);
+    harness.run_steps(3);
+    let _ = harness.get_by_label("Checking for updates…");
+    drop(release);
+}
+
+#[test]
+fn the_prompt_and_the_modal_results_hold_the_keyboard() {
+    assert!(holds_keyboard(&Status::Idle, true));
+    assert!(holds_keyboard(&Status::Checking, false));
+    assert!(holds_keyboard(&Status::UpToDate, false));
+    assert!(holds_keyboard(&Status::Failed("no network".into()), false));
+    assert!(!holds_keyboard(&Status::Idle, false));
+    assert!(!holds_keyboard(&Status::Updated("0.2.0".into()), false));
+}
+
+#[test]
+fn shortcuts_wait_while_the_prompt_is_open() {
+    let mut idle = app();
+
+    press_export(&mut idle);
+
+    assert!(idle.ui.windows.export, "the shortcut works without the prompt");
+
+    let mut prompted = app();
+    offer(prompted.updates_rt.updater.as_mut().unwrap());
+
+    press_export(&mut prompted);
+
+    assert!(!prompted.ui.windows.export);
+}
