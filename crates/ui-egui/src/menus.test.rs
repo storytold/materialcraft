@@ -210,12 +210,9 @@ fn a_shortcut_needs_exactly_its_modifiers() {
     });
     assert!(idle, "the opening cook ends");
     assert!(!board_enabled(&harness, "ui.cook.cancel"), "with no cook, Escape is left to the focused component");
-    harness.state_mut().run("graph.node.add", json!({"def": "uniform", "at": [0, 0]}));
-    let busy = (0..30).any(|_| {
-        harness.step();
-        harness.state().cooker.busy()
-    });
-    assert!(busy, "an edit starts a cook");
+    // A small cook ends within the frame that starts it, so the cook is held running, as a capture holds it
+    harness.state_mut().cooker.hold = true;
+    harness.run_steps(2);
     assert!(board_enabled(&harness, "ui.cook.cancel"), "Escape cancels the running cook");
 }
 

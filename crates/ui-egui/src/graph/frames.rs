@@ -19,22 +19,30 @@ impl Frames {
         let app = MaterialCraftApp::headless(session, crate::UiState::default());
         let mut f = Frames { ctx, app, time: 0.0, canvas_text: Vec::new(), access: None };
         MaterialCraftApp::install_runtime(&f.ctx, None).expect("runtime");
+        f.logic();
         for _ in 0..3 {
             f.run(Vec::new(), egui::Modifiers::NONE);
         }
         f
     }
 
-    /// Draw a desktop-sized frame with synthetic input
+    /// eframe's per-frame start, which reads none of the frame's input: the input hook hands the app what the last
+    /// frame fired, and `logic` runs it before the frame draws.
+    fn logic(&mut self) {
+        eframe::App::raw_input_hook(&mut self.app, &self.ctx, &mut egui::RawInput::default());
+        self.app.step(&self.ctx);
+    }
+
+    /// Draw a desktop-sized frame with synthetic input, then start the next frame as eframe does, so the commands
+    /// the input fired have run when this returns
     pub(super) fn run(&mut self, events: Vec<egui::Event>, modifiers: egui::Modifiers) {
         self.time += 0.05;
         let events = std::iter::once(egui::Event::ModifiersChanged(modifiers)).chain(events).collect();
         let screen_rect = Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 960.0)));
-        let mut input = egui::RawInput { events, screen_rect, time: Some(self.time), ..Default::default() };
-        eframe::App::raw_input_hook(&mut self.app, &self.ctx, &mut input);
+        let input = egui::RawInput { events, screen_rect, time: Some(self.time), ..Default::default() };
         let app = &mut self.app;
         let mut output = self.ctx.run_ui(input, |ui| app.draw(ui));
-        self.app.step(&self.ctx);
+        self.logic();
         self.access = Some(tree_of(&mut output));
         let canvas_shapes: Vec<_> = output
             .shapes
