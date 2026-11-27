@@ -48,7 +48,7 @@ pub(crate) fn enabled(app: &MaterialCraftApp, command: &str, refs: &[WireRef], t
     }
 }
 
-pub(crate) fn invoke_selected(app: &mut MaterialCraftApp, command: &str) -> bool {
+fn invoke_selected(app: &mut MaterialCraftApp, command: &str) -> bool {
     match EditorTarget::resolve(app) {
         EditorTarget::Function => {
             let Some(mut editor) = app.function_editor.take() else { return false };

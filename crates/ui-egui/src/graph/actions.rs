@@ -71,7 +71,8 @@ pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &
     use super::editor_target::EditorTarget;
     let target = EditorTarget::resolve(app);
     match command {
-        "graph.wire.swap" | "graph.wire.delete" => return super::wire_actions::invoke_selected(app, command),
+        "graph.wire.swap" => return super::wire_actions::swap_selected_wires(app),
+        "graph.wire.delete" => return super::wire_actions::delete_selected_wires(app),
         "edit.delete" | "edit.deleteRelink" => {
             let refs = match target {
                 EditorTarget::Material => app.graph.selected_wire_refs(),
@@ -79,7 +80,7 @@ pub(crate) fn invoke(app: &mut MaterialCraftApp, ctx: &egui::Context, command: &
                 EditorTarget::Pattern => app.pattern_editor.as_ref().map_or_else(Vec::new, |editor| editor.selected_wire_refs(app)),
             };
             if !refs.is_empty() {
-                return super::wire_actions::invoke_selected(app, "graph.wire.delete");
+                return super::wire_actions::delete_selected_wires(app);
             }
             if target != EditorTarget::Material {
                 return false;
