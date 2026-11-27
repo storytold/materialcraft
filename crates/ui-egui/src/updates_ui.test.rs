@@ -2,6 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 
+use egui_kittest::kittest::Queryable as _;
+
 use super::*;
 use crate::menus;
 use crate::state::UiState;
@@ -177,6 +179,75 @@ fn an_offered_release_opens_the_prompt_over_the_window() {
     }
     host.with(|host| assert!(host.get::<craft_update::stack_dialogs::UpdatePromptDialog>().is_some()));
     assert!(prompt_open(&app));
+}
+
+/// The whole window around `app`, with the runtime installed, as the eframe driver runs it.
+fn window(app: MaterialCraftApp) -> egui_kittest::Harness<'static, MaterialCraftApp> {
+    let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(1600.0, 960.0)).build_eframe(|cc| {
+        MaterialCraftApp::install_runtime(&cc.egui_ctx, None).expect("runtime");
+        app
+    });
+    harness.run_steps(4);
+    harness
+}
+
+/// An app whose requested check runs until the returned sender goes away.
+fn app_with_a_running_check() -> (MaterialCraftApp, std::sync::mpsc::Sender<()>) {
+    let mut app = app();
+    let (release, wait) = channel::<()>();
+    let wait = std::sync::Mutex::new(wait);
+    let source: CheckSource = Arc::new(move || {
+        if let Ok(wait) = wait.lock() {
+            let _ = wait.recv();
+        }
+        Ok(None)
+    });
+    app.updates_rt.updater = Some(Updater::new(&crate::UPDATE_APP, "0.1.0").with_pins_path(no_pins()).with_source(source));
+    check(&mut app);
+    (app, release)
+}
+
+#[test]
+fn a_requested_check_shows_its_progress() {
+    let (app, release) = app_with_a_running_check();
+    let harness = window(app);
+    assert_eq!(harness.state().updates_rt.updater.as_ref().unwrap().status(), &Status::Checking);
+    assert!(harness.query_by_label_contains("Checking for updates").is_some(), "the result dialog says the check runs");
+    drop(release);
+}
+
+#[test]
+fn the_prompt_and_the_modal_results_hold_the_keyboard() {
+    use crate::shell::modality::{Blocker, Modality};
+
+    let idle = window(app());
+    assert_eq!(Modality::capture(idle.state(), &idle.ctx), Modality::Free, "an idle updater holds nothing");
+
+    let mut prompted = app();
+    offer(prompted.updates_rt.updater.as_mut().unwrap());
+    let prompted = window(prompted);
+    assert_eq!(Modality::capture(prompted.state(), &prompted.ctx), Modality::Blocked(Blocker::Update));
+
+    let (app, release) = app_with_a_running_check();
+    let checking = window(app);
+    let host = craft_ui::shell::WindowDialogs::of(&checking.ctx, &craft_ui::runtime::env::WindowKey::main());
+    host.with(|host| assert!(host.get::<UpdateCheckDialog>().is_some(), "the result dialog is open"));
+    assert_eq!(Modality::capture(checking.state(), &checking.ctx), Modality::Blocked(Blocker::Dialog), "the result dialog is modal");
+    drop(release);
+}
+
+#[test]
+fn shortcuts_wait_while_the_prompt_is_open() {
+    for prompt in [false, true] {
+        let mut app = app();
+        if prompt {
+            offer(app.updates_rt.updater.as_mut().unwrap());
+        }
+        let mut harness = window(app);
+        harness.key_press_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::E);
+        harness.run_steps(2);
+        assert_eq!(harness.state().ui.windows.export, !prompt, "Ctrl+Shift+E opens Export only without the prompt (prompt: {prompt})");
+    }
 }
 
 #[test]
