@@ -10,6 +10,7 @@
 //! once the guard finishes
 
 use craft_quit::{CloseGuard, CloseScope, GuardStep};
+use craft_ui::contract::Bind;
 use craft_ui::dialog::{UnsavedAnswer, UnsavedChangesDialog};
 use craft_ui::shell::embed::CloseDecision;
 use serde_json::{Value, json};
@@ -223,7 +224,9 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut egui::Ui) {
     if scope != CloseScope::Revert {
         dialog = dialog.message(format!("{} \"{name}\"?", tr("Save changes to"))).note(tr("Your changes will be lost if you don't save them."));
     }
-    if let Some(answer) = dialog.show(ui).answer {
+    // `app.unsaved`'s Ask step is the open state
+    let mut open = true;
+    if let Some(answer) = dialog.opened(Bind::bound(&mut open)).show(ui).answer {
         answer_prompt(app, answer);
     }
 }
