@@ -175,7 +175,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let selection = canvas_events::given_selection(&app.session.selection, &list.ids);
     let mut wire_selection = app.graph.selected_wires.clone();
     let queued = app.graph.pending_views.clone();
-    let given = app.ui.graph_camera.view(app.graph.view);
+    let given = app.ui.graph_camera.view(app.graph.camera_rect);
     let target = ViewTarget::unbounded(list.extent).fit_ceiling(FIT_CAP * f64::from(pixels_per_point));
     // Fit Layers (F) shows the selected nodes, else the whole graph.
     let picked =
@@ -226,6 +226,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
 
     let canvas_rect = shown.output.response.rect;
     app.ui.graph_camera = GraphCamera::from_view(&shown.output.view.unwrap_or(given));
+    app.graph.camera_rect = shown.output.view.map_or(given.rect, |view| view.rect);
     if let Some((response, view)) = shown.inner.flatten() {
         app.graph.pending_views.clear();
         app.graph.selected_wires = wire_selection;

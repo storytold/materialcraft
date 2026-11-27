@@ -20,6 +20,9 @@ pub struct GraphView {
     pub(crate) pin_description_focus: Option<u64>,
     /// The canvas rectangle last frame
     pub view: Rect,
+    /// The material canvas's rectangle when it last showed: the rect its saved camera is anchored in. `view` holds a
+    /// Function or FX-Map editor's rect while one is open, and the canvas keeps the centre when its rect changes.
+    pub(super) camera_rect: Rect,
     /// Graph point of the last right-click (context menu actions add things there)
     pub(super) menu_at: Pos2,
     /// The graph the camera last framed: no framework signal says the session's graph changed, so the app keeps
@@ -114,6 +117,7 @@ impl Default for GraphView {
             annotation_target: Default::default(),
             pin_description_focus: None,
             view: Rect::NOTHING,
+            camera_rect: Rect::NOTHING,
             menu_at: Pos2::ZERO,
             framed_graph: None,
             selected_wires: Selection::default(),
