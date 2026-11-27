@@ -31,8 +31,9 @@ craft-window = { workspace = true, features = ["ui"] }
 craft-settings = { workspace = true }
 # The control port's requests reach the app through the library channel.
 craft-automation = { workspace = true }
-# The control server answers for the main window's host.
-craft-ui = { workspace = true }
+# The control server answers for the main window's host. The system fonts draw the scripts the built-in faces
+# lack (Arabic), so the language list can offer them.
+craft-ui = { workspace = true, features = ["system_fonts"] }
 
 # The Windows update helper is a copy of this program started with `--finish-update`.
 [target.'cfg(windows)'.dependencies]

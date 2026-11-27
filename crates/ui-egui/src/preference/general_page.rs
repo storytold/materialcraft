@@ -53,7 +53,7 @@ fn brightness(appearance: &AppChoice) -> usize {
 }
 
 pub(super) fn page<'a>(prefs: &'a Prefs, texts: &'a Texts) -> PageSpec<'a> {
-    let languages = crate::i18n::LANGUAGES.iter().map(|language| Entry::new(language.code, language.name)).collect();
+    let languages = crate::i18n::offered().iter().map(|language| Entry::new(language.code, language.name)).collect();
     let brightness_value = BRIGHTNESS_IDS.get(brightness(&prefs.appearance)).copied().unwrap_or(BRIGHTNESS_IDS[0]);
     let brightness_options = BRIGHTNESS_IDS.iter().zip(crate::appearance::brightness_labels()).map(|(id, label)| Entry::new(*id, tr(label))).collect();
     let preview_value = crate::preview_resolution::SIZES

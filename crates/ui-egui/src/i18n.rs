@@ -44,9 +44,19 @@ pub(crate) fn lang() -> Lang {
     *CURRENT.read().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Switch the UI language (a code the catalogs don't offer falls back to English).
+/// The [`LANGUAGES`] the interface fonts, the system's included, can draw; the fallback is always offered.
+pub fn offered() -> &'static [&'static Language] {
+    static OFFERED: LazyLock<Vec<&'static Language>> = LazyLock::new(|| {
+        let stack = crate::appearance::ui_font_stack();
+        LANGUAGES.iter().enumerate().filter(|(at, language)| *at == 0 || stack.covers_language(language.code, true)).map(|(_, language)| language).collect()
+    });
+    &OFFERED
+}
+
+/// Switch the UI language (a code the catalogs or the fonts don't offer falls back to English).
 pub fn set_language(code: &str) {
-    let lang = I18N.from_code(code).unwrap_or(Lang::EN);
+    let shown = offered().iter().any(|language| language.code.eq_ignore_ascii_case(code));
+    let lang = I18N.from_code(code).filter(|_| shown).unwrap_or(Lang::EN);
     *CURRENT.write().unwrap_or_else(PoisonError::into_inner) = lang;
 }
 
