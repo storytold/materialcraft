@@ -42,7 +42,7 @@ fn node_resolution_explains_the_preview_cap() {
     let bit_count = h.state().session.graph().unwrap().format.bits();
     let limit = h.state().session.preview_size.expect("the preference caps previews");
     let rect = h.state().graph.rects.iter().find(|(node, _)| *node == id).unwrap().1;
-    let node_label = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform"));
+    let node_label = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform color"));
     let footer = format!("{node_label:?}");
     assert!(footer.contains(&img.width().to_string()) && footer.contains(&img.height().to_string()));
     assert!(footer.contains(&bit_count.to_string()));
@@ -63,7 +63,7 @@ fn full_size_mode_retains_the_resolution_and_format() {
     let (mut h, id) = harness(0);
     let img = h.state().session.cooked.image(id, 0).unwrap();
     assert_eq!((img.width(), img.height()), (1024, 1024));
-    let node = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform"));
+    let node = h.get(By::new().role(egui::accesskit::Role::GraphicsObject).label("Uniform color"));
     let footer = format!("{node:?}");
     assert!(footer.contains(&img.width().to_string()) && footer.contains(&img.height().to_string()), "{footer}");
     assert!(footer.contains(h.state().session.graph().unwrap().format.bits()), "{footer}");
