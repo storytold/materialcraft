@@ -386,7 +386,7 @@ fn items(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntry], targ
                     app.ui.library_selected = Some(entry.id.clone());
                 }
                 if takes && response.drag_started() {
-                    drag(&ctx, entry);
+                    drag(ui, response.id, entry);
                 }
                 if takes && response.double_clicked() {
                     add = Some((*entry).clone());
@@ -484,16 +484,16 @@ fn category_color(category: &str) -> Color32 {
     }
 }
 
-/// Create the payload accepted by the destination canvas.
-fn drag(ctx: &egui::Context, entry: &LibraryEntry) {
-    match &entry.item {
-        LibraryItem::Operation { operation } => egui::DragAndDrop::set_payload(ctx, FunctionLibraryDrag::Operation(operation.clone())),
-        LibraryItem::FunctionInstance { package, graph } => {
-            egui::DragAndDrop::set_payload(ctx, FunctionLibraryDrag::Instance { package: package.clone(), graph: graph.clone() })
-        }
-        LibraryItem::Pattern { .. } => {}
-        _ => egui::DragAndDrop::set_payload(ctx, LibraryDrag(entry.id.clone())),
-    }
+/// Start the framework drag of `entry` from tile `source`, with the payload its destination canvas takes.
+fn drag(ui: &Ui, source: egui::Id, entry: &LibraryEntry) {
+    let payload: Arc<dyn std::any::Any + Send + Sync> = match &entry.item {
+        LibraryItem::Operation { operation } => Arc::new(FunctionLibraryDrag::Operation(operation.clone())),
+        LibraryItem::FunctionInstance { package, graph } => Arc::new(FunctionLibraryDrag::Instance { package: package.clone(), graph: graph.clone() }),
+        LibraryItem::Pattern { .. } => return,
+        _ => Arc::new(LibraryDrag(entry.id.clone())),
+    };
+    let env = craft_ui::runtime::env::Env::of(ui);
+    craft_ui::runtime::drag::start(ui.ctx(), source, &env.view(), payload, Vec::new(), craft_ui::runtime::drag::DragPreview::None);
 }
 
 /// Add `entry` to the open graph: native nodes next to the selection, the rest in the view
