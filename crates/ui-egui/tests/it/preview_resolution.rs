@@ -1,6 +1,9 @@
 //! Node cards distinguish editing previews from configured graph resolution.
 use egui::{Event, epaint::Shape, vec2};
-use egui_kittest::Harness;
+use egui_kittest::{
+    Harness,
+    kittest::{By, NodeT, Queryable},
+};
 use materialcraft_engine::core::NodeId;
 use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 use serde_json::json;
@@ -48,17 +51,27 @@ fn painted(h: &Harness<'static, MaterialCraftApp>) -> Vec<String> {
 #[test]
 fn node_resolution_explains_the_preview_cap() {
     let (mut h, id) = harness(512, false);
+    h.state_mut().run("graph.node.base", json!({"id": id.0, "sizeMode": "absolute", "size": [11, 10]})).unwrap();
+    h.state_mut().session.cook();
+    h.run_steps(10);
     let img = h.state().session.cooked.image(id, 0).unwrap();
 
-    assert_eq!((img.width(), img.height()), (512, 512));
+    assert_eq!((img.width(), img.height()), (512, 256));
     assert_eq!(h.state().session.graph().unwrap().size, [10, 10]);
-    assert!(painted(&h).iter().any(|t| t == "512x512 Preview"), "missing preview label: {:?}", painted(&h));
+    assert!(painted(&h).iter().any(|t| t == "512x256 Preview"), "missing preview label: {:?}", painted(&h));
+    assert!(h.get_all(By::new().role(egui::Role::Button)).any(|node| {
+        node.accesskit_node()
+            .description()
+            .is_some_and(|description| description.contains("Output size: 2048 x 1024") && description.contains("Preview size: 512 x 256"))
+    }));
 
     let rect = h.state().graph.rects.iter().find(|(n, _)| *n == id).unwrap().1;
     h.event(Event::PointerMoved(rect.center()));
     h.run_steps(90);
     let text = painted(&h).join("\n");
 
+    assert!(text.contains("Output size: 2048 x 1024"), "{text}");
+    assert!(text.contains("Preview size: 512 x 256"), "{text}");
     assert!(text.contains("Parent size: 1024 x 1024"), "{text}");
     assert!(text.contains("Preview limit: 512 px"), "{text}");
     assert!(text.contains("Edit > Preferences"), "{text}");
@@ -67,7 +80,7 @@ fn node_resolution_explains_the_preview_cap() {
     let full = h.state().session.cook_full(0);
     let img = full.image(id, 0).unwrap();
 
-    assert_eq!((img.width(), img.height()), (1024, 1024));
+    assert_eq!((img.width(), img.height()), (2048, 1024));
 }
 
 #[test]

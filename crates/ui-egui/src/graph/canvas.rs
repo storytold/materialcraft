@@ -245,20 +245,27 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
 
             // Footer: size and format
             let footer = Rect::from_min_max(pos2(screen_rect.left(), body.bottom()), screen_rect.max);
-            if let Some(image) = result.and_then(|r| r.outputs.first().and_then(materialcraft_engine::eval::NodeOutput::as_image)) {
-                let bits = result.map_or(graph.format.bits(), |result| result.base.format.bits());
+            if let Some(result) = result
+                && let Some(image) = result.outputs.first().and_then(materialcraft_engine::eval::NodeOutput::as_image)
+            {
+                let bits = result.base.format.bits();
 
                 let format = format!("{}{bits}", if image.is_gray() { "L" } else { "C" });
                 let label_text = if let Some(limit) = app.session.preview_size {
                     let [width, height] = graph.size_px();
-                    response.clone().on_hover_text(format!(
-                        "{} x {} ({bits}bpc)\n{}: {width} x {height}\n{}: {limit} px\n{}",
+                    let [output_width, output_height] = result.base.size;
+                    let details = format!(
+                        "{}: {output_width} x {output_height}\n{}: {} x {} ({bits}bpc)\n{}: {width} x {height}\n{}: {limit} px\n{}",
+                        tr("Output size"),
+                        tr("Preview size"),
                         image.width(),
                         image.height(),
                         tr("Parent size"),
                         tr("Preview limit"),
                         tr("Change Preview size while editing in Edit > Preferences. Exports use each node's configured output size.")
-                    ));
+                    );
+                    ui.ctx().accesskit_node_builder(response.id, |node| node.set_description(details.as_str()));
+                    response.clone().on_hover_text(details);
                     format!("{}x{} {}", image.width(), image.height(), tr("Preview"))
                 } else {
                     format!("{}x{} - {format}", image.width(), image.height())
