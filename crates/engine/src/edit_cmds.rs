@@ -83,7 +83,7 @@ fn clip_of(s: &Session, ids: &[NodeId]) -> Result<Clip> {
         nodes: g.nodes.iter().filter(|n| ids.contains(&n.id)).cloned().collect(),
         connections: g.connections.iter().filter(|c| ids.contains(&c.from) && ids.contains(&c.to)).cloned().collect(),
         inputs: g.connections.iter().filter(|c| !ids.contains(&c.from) && ids.contains(&c.to)).cloned().collect(),
-        source_graph: Some(g.name.clone()),
+        source_graph: Some(g.sbs_path()),
     })
 }
 
@@ -144,7 +144,7 @@ fn paste(s: &mut Session, p: &J) -> Result<J> {
         return Err(bad("edit.paste", "too many nodes"));
     }
     let at = point(p, "at");
-    let keep_inputs = !crate::commands::boolp(p, "withoutLinks").unwrap_or(false) && clip.source_graph.as_deref() == Some(s.graph()?.name.as_str());
+    let keep_inputs = !crate::commands::boolp(p, "withoutLinks").unwrap_or(false) && clip.source_graph.as_ref() == Some(&s.graph()?.sbs_path());
     let snap = crate::commands::boolp(p, "snapToGrid").unwrap_or(false);
 
     s.edit("Paste", |s| {
@@ -226,4 +226,40 @@ fn delete_relink(s: &mut Session, p: &J) -> Result<J> {
         s.selection.retain(|i| !ids.contains(i));
         Ok(json!({"deleted": ids.len()}))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Session, execute};
+    use materialcraft_core::{Graph, NodeId, Package};
+    use serde_json::json;
+
+    #[test]
+    fn paste_keeps_incoming_links_only_in_the_source_graph() {
+        let mut graph = Graph::new("Material");
+        graph.folder = "Source".into();
+        let source = graph.add_node("uniform", [0.0; 2]);
+        let first = graph.add_node("dot", [0.0; 2]);
+        let second = graph.add_node("dot", [0.0; 2]);
+        graph.connect(source, "output", first, "input").unwrap();
+        graph.connect(first, "output", second, "input").unwrap();
+        let mut other_folder = graph.clone();
+        other_folder.folder = "Other".into();
+        let mut package = Package::new("Original");
+        package.graphs = vec![graph, other_folder];
+        let mut session = Session::new(package);
+        session.selection = vec![first, second];
+        execute(&mut session, "edit.copy", &json!({})).unwrap();
+
+        let paste = |session: &mut Session| {
+            let result = execute(session, "edit.paste", &json!({})).unwrap();
+            let pasted = |i: usize| NodeId(result["ids"][i].as_u64().unwrap());
+            let graph = session.graph().unwrap();
+            assert_eq!(graph.input_of(pasted(1), "input").map(|c| c.from), Some(pasted(0)), "internal link is retained");
+            graph.input_of(pasted(0), "input").map(|c| c.from)
+        };
+        assert_eq!(paste(&mut session), Some(source), "same graph keeps the incoming wire");
+        execute(&mut session, "graph.open", &json!({"graph": 1})).unwrap();
+        assert_eq!(paste(&mut session), None, "same graph name in a different folder");
+    }
 }
