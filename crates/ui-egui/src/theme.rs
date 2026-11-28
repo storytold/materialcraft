@@ -34,6 +34,14 @@ impl Brightness {
             Brightness::Light => n_("Light"),
         }
     }
+
+    /// Context-qualified translation key so `"Light"` (theme) stays distinct from `"Light"` (3D lamp).
+    pub fn i18n_key(self) -> &'static str {
+        match self {
+            Brightness::Light => "brightness.light",
+            _ => self.label(),
+        }
+    }
 }
 
 /// Settings › Interface › Accent color: the one colour for what is on, chosen or focused. Cyan,

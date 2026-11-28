@@ -37,9 +37,9 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
     });
 
     heading(ui, "Appearance");
-    crate::widgets::combo(ui, tr("Brightness"), tr(prefs.brightness.label()), |ui| {
+    crate::widgets::combo(ui, tr("Brightness"), crate::i18n::tr_ctx(prefs.brightness.i18n_key(), prefs.brightness.label()), |ui| {
         for brightness in Brightness::ALL {
-            ui.selectable_value(&mut prefs.brightness, brightness, tr(brightness.label()));
+            ui.selectable_value(&mut prefs.brightness, brightness, crate::i18n::tr_ctx(brightness.i18n_key(), brightness.label()));
         }
     });
     crate::widgets::combo(ui, tr("Accent color"), tr(prefs.accent.label()), |ui| {
