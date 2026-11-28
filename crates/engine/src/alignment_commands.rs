@@ -18,15 +18,17 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
 
 fn align(session: &mut Session, parameters: &Json) -> Result<Json> {
     let mode = strp(parameters, "mode").unwrap_or("left");
-    let ids: Vec<u64> = parameters
-        .get("ids")
-        .and_then(Json::as_array)
-        .map(|ids| ids.iter().filter_map(Json::as_u64).collect())
-        .unwrap_or_else(|| session.selection.iter().map(|id| id.0).collect());
     let target = SelectionTarget::resolve(session, parameters)?;
-    if target.is_some() && parameters.get("ids").and_then(Json::as_array).is_none() {
-        return Err(bad("graph.align", "ids are required for a Function Graph or FX-Map"));
-    }
+    let ids = match parameters.get("ids") {
+        None | Some(Json::Null) if target.is_some() => {
+            return Err(bad("graph.align", "ids are required for a Function Graph or FX-Map"));
+        }
+        None | Some(Json::Null) => session.selection.iter().map(|id| id.0).collect(),
+        Some(ids) => {
+            let invalid = || bad("graph.align", "`ids` must be an array of nonnegative integer node ids");
+            ids.as_array().ok_or_else(invalid)?.iter().map(|id| id.as_u64().ok_or_else(invalid)).collect::<Result<Vec<_>>>()?
+        }
+    };
     match target {
         Some(SelectionTarget::Function(target)) => {
             let mut graph = target.current(session)?.clone();

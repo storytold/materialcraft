@@ -91,3 +91,25 @@ fn malformed_embedded_targets_never_fall_back_to_parent_selection() {
         assert_eq!(session.pkg, original);
     }
 }
+
+#[test]
+fn alignment_rejects_malformed_ids_before_moving_any_nodes() {
+    let mut session = new_session();
+    let nodes = [[0, 0], [200, 100]].map(|at| execute(&mut session, "graph.node.add", &json!({"def": "uniform", "at": at})).unwrap()["id"].as_u64().unwrap());
+    execute(&mut session, "edit.selectAll", &json!({})).unwrap();
+    let original = session.pkg.clone();
+
+    for ids in [json!("typo"), json!([nodes[0], nodes[1], "typo"]), json!([nodes[0], nodes[1], -1])] {
+        let error = execute(&mut session, "graph.align", &json!({"ids": ids})).unwrap_err();
+        assert!(error.to_string().contains("nonnegative integer node ids"), "{error}");
+        assert_eq!(session.pkg, original);
+    }
+
+    for parameters in [json!({}), json!({"ids": null}), json!({"ids": nodes})] {
+        execute(&mut session, "edit.selectAll", &json!({})).unwrap();
+        execute(&mut session, "graph.align", &parameters).unwrap();
+        assert_eq!(positions(&session, "material", 0), [[0.0, 0.0], [0.0, 100.0]]);
+        session.undo().unwrap();
+        assert_eq!(session.pkg, original);
+    }
+}
