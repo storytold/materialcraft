@@ -2,7 +2,7 @@ use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
 use materialcraft_engine::{
-    core::{BaseParameter, FunctionGraph, Node, ParameterInheritance, ValueType},
+    core::{BaseParameter, FunctionGraph, Node, ParameterInheritance, Value, ValueType},
     nodes::ParameterDescriptor,
 };
 use serde_json::json;
@@ -34,9 +34,21 @@ pub(super) fn show(
     let can_capture = function.is_none() || evaluated.is_some();
     let tokens = Tokens::get(ui.ctx());
     ui.push_id((node.id, base.is_some(), &descriptor.id), |ui| {
-        ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), ui.spacing().interact_size.y), egui::Layout::left_to_right(egui::Align::Min), |ui| {
-            let actions_width = 32.0 + if driven { 26.0 } else { 0.0 } + if base.is_some() { 26.0 } else { 0.0 };
-            let content_width = (ui.available_width() - actions_width).max(40.0);
+        let actions_width = 32.0 + if driven { 26.0 } else { 0.0 } + if base.is_some() { 26.0 } else { 0.0 };
+        let content_width = (ui.available_width() - actions_width).max(40.0);
+        // The curve and gradient editors are taller than one control row. Reserve their height so
+        // the rows that follow do not overlap the lower part of their pointer area.
+        let literal_height = if base.is_some() || driven {
+            0.0
+        } else {
+            match &descriptor.default {
+                Value::Curve(_) => content_width.min(240.0) * 0.75 + ui.spacing().interact_size.y + ui.spacing().item_spacing.y,
+                Value::Gradient(_) => 30.0 + ui.spacing().interact_size.y + ui.spacing().item_spacing.y,
+                _ => 0.0,
+            }
+        };
+        let row_height = ui.spacing().interact_size.y.max(literal_height);
+        ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), row_height), egui::Layout::left_to_right(egui::Align::Min), |ui| {
             ui.vertical(|ui| {
                 ui.set_width(content_width);
                 if base.is_some() || driven {
@@ -155,4 +167,35 @@ fn inheritance(app: &mut MaterialCraftApp, ui: &mut Ui, node: &Node, parameter: 
     });
     crate::widgets::name(&menu.response, egui::Role::Button, &format!("{} inheritance: {label}", parameter.label()));
     menu.response.on_hover_text(tr(label));
+}
+
+#[cfg(test)]
+mod tests {
+    use egui_kittest::{
+        Harness,
+        kittest::{By, Queryable},
+    };
+    use serde_json::json;
+
+    /// A curve editor is taller than a control row; the row that follows must start below it, or
+    /// its pointer area covers the lower part of the curve and the point there cannot be dragged.
+    #[test]
+    fn a_tall_literal_editor_reserves_its_height() {
+        let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
+        let id = materialcraft_engine::core::NodeId(app.run("graph.node.add", json!({"def": "curve"})).unwrap()["id"].as_u64().unwrap());
+        app.run("graph.select", json!({"ids": [id.0]})).unwrap();
+        let mut harness = Harness::builder().with_size(egui::vec2(420.0, 900.0)).build_ui_state(
+            move |ui, app: &mut crate::MaterialCraftApp| {
+                let node = app.session.graph().unwrap().node(id).unwrap().clone();
+                super::super::node::show(app, ui, &node);
+                let _ = ui.button("after the curve row");
+            },
+            app,
+        );
+        harness.run_steps(3);
+
+        let canvas = harness.get(By::new().role(egui::Role::Canvas).label("Curve editor")).rect();
+        let after = harness.get(By::new().role(egui::Role::Button).label("after the curve row")).rect();
+        assert!(after.top() >= canvas.bottom(), "the next row overlaps the curve editor: canvas {canvas:?}, next row {after:?}");
+    }
 }
