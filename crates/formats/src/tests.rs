@@ -29,6 +29,14 @@ fn names_are_safe() {
 }
 
 #[test]
+fn output_names_only_expand_placeholders_from_the_pattern() {
+    assert_eq!(output_name("$(graph)_$(usage)", "Bricks $(usage)", "out", "baseColor"), "Bricks __usage__baseColor");
+    assert_eq!(output_name("$(identifier)_$(usage)", "Bricks", "Clay $(usage)", "roughness"), "Clay __usage__roughness");
+    assert_eq!(output_name("$(graph)(usage)", "Bricks$", "out", "roughness"), "Bricks__usage_");
+    assert_eq!(output_name("$(other$(graph))", "Bricks", "out", "baseColor"), "__otherBricks_");
+}
+
+#[test]
 fn oversized_images_are_refused_before_decoding() {
     let mut png = Cursor::new(Vec::new());
     ::image::GrayImage::new(8193, 1).write_to(&mut png, ::image::ImageFormat::Png).unwrap();

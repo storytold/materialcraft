@@ -10,8 +10,21 @@ pub fn safe_file_name(name: &str) -> String {
 
 /// The file stem of an exported output: `pattern` with `$(graph)`, `$(identifier)` and `$(usage)` replaced, sanitized for file systems
 pub fn output_name(pattern: &str, graph: &str, identifier: &str, usage: &str) -> String {
-    let s = pattern.replace("$(graph)", graph).replace("$(identifier)", identifier).replace("$(usage)", usage);
-    safe_file_name(&s)
+    let tokens = [("graph)", graph), ("identifier)", identifier), ("usage)", usage)];
+    let mut stem = String::with_capacity(pattern.len());
+    let mut rest = pattern;
+    while let Some((literal, tail)) = rest.split_once("$(") {
+        stem.push_str(literal);
+        if let Some((remaining, value)) = tokens.iter().find_map(|&(token, value)| tail.strip_prefix(token).map(|remaining| (remaining, value))) {
+            stem.push_str(value);
+            rest = remaining;
+        } else {
+            stem.push_str("$(");
+            rest = tail;
+        }
+    }
+    stem.push_str(rest);
+    safe_file_name(&stem)
 }
 
 /// Write `bytes` to `path` through a temporary file and a rename, so a failed write never leaves a truncated file behind
