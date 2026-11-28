@@ -18,8 +18,8 @@ pub struct RenderOptions {
     pub full: bool,
     /// 3D: UV repeats override (the session's view is not changed)
     pub tiling: Option<f32>,
-    /// 3D: beauty render: the height output displaces a subdivided mesh, with ray-traced ambient occlusion, a shadowed key light and 3×3 supersampling. Slower; for stills
+    /// Slower 3D beauty render with a finer mesh, ray-traced ambient occlusion, a shadowed key light, and 3×3 supersampling.
     pub hq: bool,
-    /// 3D, with `hq`: displacement depth in scene radii (default 0.04)
+    /// 3D relief depth in scene radii in either quality mode. Defaults to the current 3D view's height scale.
     pub displacement: Option<f32>,
 }

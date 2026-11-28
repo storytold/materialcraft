@@ -39,10 +39,11 @@ USAGE:
       --displacement-scale <units> scales signed MaterialX displacement (default 1).
   materialcraft-cli render <input> <out.png> [--size <W>x<H>] [--view 3d|2d] [--scene <id>] [--node <id>]
                    [--yaw <deg>] [--pitch <deg>] [--graph <index>] [--set <input>=<value>]... [--full]
-                   [--tiling <n>] [--hq [--displacement <radii>]]
+                   [--tiling <n>] [--hq] [--displacement <radii>]
       Render the material on a 3D scene (rounded_cube, cube, sphere, cylinder, plane, torus,
       material_ball), or one node's output (--view 2d), to PNG. No GPU needed. The height output
-      raises the surface; --hq is a beauty render with a finer mesh, ambient occlusion and a key light.
+      raises the surface. In 3D, --displacement sets the relief depth in scene radii.
+      --hq uses a finer mesh, ambient occlusion and a key light.
   materialcraft-cli mcp [--bridge <port>] [--token <token>] [--read-root <dir>] [--write-root <dir>]
       MCP server on stdio: headless (file access only below the roots), or bridged to
       `materialcraft --control <port>`. --automation-read-root / --automation-write-root are
