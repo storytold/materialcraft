@@ -1,9 +1,11 @@
 use crate::{Result, commands::bad};
 use materialcraft_core::Package;
 
+const MAX_NAME_BYTES: usize = 256;
+
 pub(crate) fn name(value: &str) -> Result<&str> {
     let value = value.trim();
-    if value.is_empty() || value.len() > 256 || matches!(value, "." | "..") || value.contains(['/', '\\']) || value.chars().any(char::is_control) {
+    if value.is_empty() || value.len() > MAX_NAME_BYTES || matches!(value, "." | "..") || value.contains(['/', '\\']) || value.chars().any(char::is_control) {
         return Err(bad("explorer", "names must be nonempty, at most 256 bytes, and contain no path separators or control characters"));
     }
     Ok(value)
@@ -86,10 +88,31 @@ pub(crate) fn unique(package: &Package, parent: &str, base: &str) -> String {
     // One more candidate than occupied items guarantees a free name without an unbounded search
     let attempts = occupied.len().saturating_add(package.graphs.len()).saturating_add(package.resources.len()).saturating_add(1);
     (1..=attempts)
-        .map(|index| match numbered.and_then(|(stem, number)| number.checked_add(index as u64).map(|next| (stem, next))) {
-            Some((stem, next)) => format!("{stem}_{next}"),
-            None => format!("{base}_{index}"),
+        .map(|index| {
+            let index = index as u64;
+            let (stem, number) = numbered.and_then(|(stem, number)| number.checked_add(index).map(|next| (stem, next))).unwrap_or((base, index));
+            let suffix = format!("_{number}");
+            let end = stem.floor_char_boundary(MAX_NAME_BYTES - suffix.len());
+            format!("{}{suffix}", &stem[..end])
         })
         .find(|candidate| free(candidate))
         .unwrap_or_else(|| base.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Package;
+    use crate::{Session, execute};
+    use serde_json::json;
+
+    #[test]
+    fn duplicate_folder_names_reserve_space_for_the_suffix() {
+        let mut session = Session::new(Package::new("Names"));
+        let stem = "a".repeat(253);
+        let params = json!({"name": format!(" {stem}€ ")});
+        for expected in [format!("{stem}€"), format!("{stem}_1"), format!("{stem}_2")] {
+            let result = execute(&mut session, "folder.create", &params).unwrap();
+            assert_eq!(result["folder"], expected);
+        }
+    }
 }
