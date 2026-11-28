@@ -27,49 +27,23 @@ pub(super) fn open_search_to(app: &mut MaterialCraftApp, ctx: &egui::Context, at
 
 /// Catalog entries matching `text` using fuzzy subsequence scoring
 pub(super) fn matches(text: &str) -> Vec<&'static materialcraft_engine::nodes::NodeDefinition> {
-    let text = text.trim();
+    let mut matcher = crate::fuzzy::FuzzyMatcher::new(text);
     let catalog = materialcraft_engine::nodes::catalog().iter().filter(|d| d.id != "graph_instance");
-    if text.is_empty() {
+    if matcher.is_empty() {
         return catalog.collect();
     }
-    let words: Vec<&str> = text.split_whitespace().collect();
+
     let mut scored: Vec<(i32, &'static materialcraft_engine::nodes::NodeDefinition)> = catalog
         .filter_map(|d| {
-            let whole_score = crate::fuzzy::fuzzy_score(d.label, text)
-                .max(crate::fuzzy::fuzzy_score(d.id, text))
-                .max(crate::fuzzy::fuzzy_score(d.category, text).map(|s| s.saturating_sub(20)));
-
-            let cross_score = if words.len() > 1 {
-                let mut total = 0i32;
-                let mut all_matched = true;
-                for w in &words {
-                    let w_score = crate::fuzzy::fuzzy_score(d.label, w)
-                        .max(crate::fuzzy::fuzzy_score(d.id, w))
-                        .max(crate::fuzzy::fuzzy_score(d.category, w).map(|s| s.saturating_sub(20)));
-                    match w_score {
-                        Some(s) => total = total.saturating_add(s),
-                        None => {
-                            all_matched = false;
-                            break;
-                        }
-                    }
-                }
-                if all_matched { Some(total) } else { None }
-            } else {
-                None
-            };
-
-            let score = match (whole_score, cross_score) {
-                (Some(w), Some(c)) => Some(w.max(c)),
-                (Some(w), None) => Some(w),
-                (None, Some(c)) => Some(c),
-                (None, None) => None,
-            };
-
-            score.map(|s| (s, d))
+            matcher
+                .score_fields(&[
+                    crate::fuzzy::SearchField::fuzzy(d.label),
+                    crate::fuzzy::SearchField::fuzzy(d.id),
+                    crate::fuzzy::SearchField::substring_with_offset(d.category, -20),
+                ])
+                .map(|score| (score, d))
         })
         .collect();
-
     scored.sort_by(|(score_a, a), (score_b, b)| score_b.cmp(score_a).then_with(|| a.label.cmp(b.label)));
     scored.into_iter().map(|(_, d)| d).collect()
 }
@@ -168,5 +142,33 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
         if close {
             crate::framework::focus_canvas(ui.ctx());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches;
+
+    #[test]
+    fn empty_query_preserves_catalog_order_and_hides_graph_instance() {
+        let all = matches("   ");
+        assert!(!all.is_empty());
+        assert!(!all.iter().any(|d| d.id == "graph_instance"));
+    }
+
+    #[test]
+    fn fuzzy_query_ranks_exact_and_tight_matches_first() {
+        let blur = matches("blur");
+        assert_eq!(blur.first().map(|d| d.id), Some("blur"));
+
+        let dblur = matches("dblur");
+        assert_eq!(dblur.first().map(|d| d.id), Some("directional_blur"));
+    }
+
+    #[test]
+    fn multi_word_query_matches_across_category_and_label() {
+        let found = matches("atomic blur");
+        assert!(found.iter().any(|d| d.id == "blur"));
+        assert!(found.iter().any(|d| d.id == "directional_blur"));
     }
 }

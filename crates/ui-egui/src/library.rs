@@ -285,18 +285,19 @@ fn category_tree(app: &mut MaterialCraftApp, ui: &mut Ui, entries: &[LibraryEntr
 
 /// Matching entries ordered by their displayed names in tiles and list views.
 pub(crate) fn visible<'a>(app: &MaterialCraftApp, entries: &'a [LibraryEntry], target: &LibraryTarget) -> Vec<&'a LibraryEntry> {
-    let search = app.ui.library_search.trim();
-    let is_searching = !search.is_empty();
+    let mut matcher = crate::fuzzy::FuzzyMatcher::new(&app.ui.library_search);
     let category = app.ui.library_category.as_str();
     let mut visible: Vec<&'a LibraryEntry> = entries
         .iter()
         .filter(|entry| app.ui.library_show_missing || entry.missing.is_none())
         .filter(|entry| app.ui.library_show_other || entry.canvas == LibraryCanvas::Any || entry.canvas == target.canvas)
         .filter(|entry| {
-            if is_searching {
-                crate::fuzzy::fuzzy_score(tr(&entry.label), search).is_some()
-                    || crate::fuzzy::fuzzy_score(&entry.id, search).is_some()
-                    || crate::fuzzy::fuzzy_score(&entry.category, search).is_some()
+            if !matcher.is_empty() {
+                matcher.matches_fields(&[
+                    crate::fuzzy::SearchField::fuzzy(tr(&entry.label)),
+                    crate::fuzzy::SearchField::substring(&entry.id),
+                    crate::fuzzy::SearchField::substring(&entry.category),
+                ])
             } else {
                 match category {
                     "" => true,
