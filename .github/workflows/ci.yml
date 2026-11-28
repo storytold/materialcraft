@@ -23,7 +23,7 @@ jobs:
     with:
       # Same craft-fonts commit as release.yml.
       craft-fonts-ref: c1db6d1a8ed772191241c3d185e2104be84d8691
-      os: '["ubuntu-24.04","windows-latest"]'
+      os: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && '["artcraft-k8s-main","windows-latest"]' || '["ubuntu-24.04","windows-latest"]' }}
       # xtask ci runs cargo test (including doctests), not cargo nextest.
       tools: ""
       packages: >-
