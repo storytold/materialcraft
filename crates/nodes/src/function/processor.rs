@@ -43,6 +43,29 @@ pub(crate) fn pixel_processor(context: &CookContext) -> CookResult {
     let (width, height) = craft_texture::clamp_size(context.w, context.h);
     let channels = kind.channels();
     let mut data = vec![0.0; width as usize * height as usize * channels];
+    if let Some(fast) = super::fast::FastProgram::try_compile(&program, context.vars, [width as f32, height as f32], context.tile) {
+        const PACKET: usize = super::fast::PACKET;
+        let pctx = super::fast::PacketCtx { images: context.inputs, tile: context.tile, gray, format: context.format, channels };
+        data.par_chunks_mut(width as usize * channels).enumerate().try_for_each_init(
+            || fast.new_regs(),
+            |regs, (y, row)| -> Result<(), String> {
+                let py = (y as f32 + 0.5) / height as f32;
+                let mut x = 0usize;
+                for target in row.chunks_mut(PACKET * channels) {
+                    let count = target.len() / channels;
+                    let mut px = [0.0f32; PACKET];
+                    for (k, slot) in px.iter_mut().enumerate() {
+                        let xi = if k < count { x + k } else { x + count.saturating_sub(1) };
+                        *slot = (xi as f32 + 0.5) / width as f32;
+                    }
+                    fast.eval_packet(regs, px, py, &pctx, count, target)?;
+                    x += count;
+                }
+                Ok(())
+            },
+        )?;
+        return Ok(vec![Image::from_data(width, height, kind, data, &Limits::default()).map_err(|e| e.to_string())?]);
+    }
     data.par_chunks_mut(width as usize * channels).enumerate().try_for_each_init(EvaluationState::default, |state, (y, row)| -> Result<(), String> {
         for (x, target) in row.chunks_exact_mut(channels).enumerate() {
             let evaluation = EvaluationContext {

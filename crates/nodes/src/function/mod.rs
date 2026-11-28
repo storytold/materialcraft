@@ -14,6 +14,7 @@ mod compile;
 mod evaluation_context;
 mod evaluation_state;
 mod evaluation_step;
+mod fast;
 mod function_call;
 mod function_definition;
 mod function_scope;
