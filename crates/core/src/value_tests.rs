@@ -29,6 +29,14 @@ fn coerce_from_json() {
 }
 
 #[test]
+fn coerce_json_int_vectors_accept_floats() {
+    assert_eq!(Value::Int2([0; 2]).coerce_json(&serde_json::json!([3.0, 4.0])), Some(Value::Int2([3, 4])));
+    assert_eq!(Value::Int3([0; 3]).coerce_json(&serde_json::json!([1.0, 2, 8.6])), Some(Value::Int3([1, 2, 9])));
+    assert_eq!(Value::Int4([0; 4]).coerce_json(&serde_json::json!([1.0, 2.0, 3.0, 4.0])), Some(Value::Int4([1, 2, 3, 4])));
+    assert_eq!(Value::Int2([0; 2]).coerce_json(&serde_json::json!([1e20, 1.0])), None);
+}
+
+#[test]
 fn gradient_interpolates() {
     let g = Gradient::default();
     assert_eq!(g.eval(0.5), [0.5, 0.5, 0.5, 1.0]);

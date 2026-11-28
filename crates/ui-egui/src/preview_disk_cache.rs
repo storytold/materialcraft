@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
-use image::{ImageDecoder, ImageEncoder};
+use image::ImageDecoder;
 use sha2::{Digest, Sha256};
 
 use super::preview_cache_settings::{PreviewCacheLimits, PreviewCacheSettings, PreviewCacheState};
@@ -33,6 +33,8 @@ impl PreviewDiskCache {
             Some(path) if path.is_empty() => return None,
             Some(path) => PathBuf::from(path),
             None if cfg!(test) || std::env::var_os("MATERIALCRAFT_NO_PREFS").is_some() => return None,
+            // A Nightly profile owns its previews, never the stable per-user cache.
+            None if crate::data_root::root().is_some() => crate::data_root::sub("cache")?,
             // The shared resolver honors redirected Windows profiles and absolute XDG paths
             None => craft_update::Paths::per_user("materialcraft").ok()?.cache,
         };
@@ -128,7 +130,7 @@ impl PreviewDiskCache {
         }
 
         let mut bytes = Vec::new();
-        image::codecs::png::PngEncoder::new(&mut bytes).write_image(pixels, side, side, image::ExtendedColorType::Rgba8).map_err(io::Error::other)?;
+        craft_png::write_8bit(&mut bytes, side, side, craft_png::Layout::Rgba, pixels).map_err(io::Error::other)?;
         if bytes.len() as u64 > MAX_FILE_BYTES {
             return Ok(());
         }
@@ -238,10 +240,13 @@ fn digest_name(stem: &str) -> bool {
     stem.len() == 64 && stem.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+/// craft-atomic's staging file of a cache file: `.{file}.{pid}-{n}.craft_tmp`, where `file` is the cache file's name or
+/// its first part (older craft-atomic cut it to 64 characters).
 fn staging_name(name: &str) -> bool {
-    let Some((stem, suffix)) = name.strip_prefix('.').and_then(|name| name.strip_suffix(".craft_tmp")).and_then(|name| name.split_once('.')) else {
+    let Some((file, suffix)) = name.strip_prefix('.').and_then(|name| name.strip_suffix(".craft_tmp")).and_then(|name| name.rsplit_once('.')) else {
         return false;
     };
+    let stem = file.split_once('.').map_or(file, |(stem, _)| stem);
 
     digest_name(stem) && suffix.split_once('-').is_some_and(|(pid, counter)| pid.parse::<u32>().is_ok_and(|pid| pid > 0) && counter.parse::<u64>().is_ok())
 }

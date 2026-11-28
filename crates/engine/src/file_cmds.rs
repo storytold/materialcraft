@@ -225,7 +225,8 @@ fn open_resolved(
 }
 
 pub(crate) fn read_package_bytes(bytes: &[u8], name: &str, linked: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<materialcraft_formats::sbs::SbsRead> {
-    if materialcraft_formats::project::is_archive(bytes) || is_mcraft(name) {
+    // Linked-material cooks can pass SBS XML under a .mcraft name.
+    if materialcraft_formats::project::is_archive(bytes) {
         return Ok(materialcraft_formats::project::read(bytes, name)?);
     }
 

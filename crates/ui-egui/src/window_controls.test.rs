@@ -1,13 +1,5 @@
 use super::*;
 
-#[test]
-fn each_button_sends_its_viewport_command() {
-    assert_eq!(command(Button::Minimize, false), ViewportCommand::Minimized(true));
-    assert_eq!(command(Button::Maximize, false), ViewportCommand::Maximized(true));
-    assert_eq!(command(Button::Maximize, true), ViewportCommand::Maximized(false));
-    assert_eq!(command(Button::Close, false), ViewportCommand::Close);
-}
-
 fn commands_after_press_at(pos: egui::Pos2) -> Vec<ViewportCommand> {
     let ctx = egui::Context::default();
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
@@ -43,12 +35,22 @@ fn a_press_inside_the_window_does_not_resize() {
     assert!(!commands.iter().any(|command| matches!(command, ViewportCommand::BeginResize(_))), "{commands:?}");
 }
 
+/// The frame decision of a window whose bar the app draws, with the caption buttons of `layout`.
+fn app_frame(layout: craft_window::Layout) -> craft_window::policy::Decision {
+    use craft_window::policy::{CaptionFamily, Captions, Decision};
+    let desktop = craft_window::desktop::Desktop { kind: craft_window::desktop::DesktopKind::Other, ssd: Some(false), gtk_theme: None, icon_theme: None };
+    Decision { frame: Frame::Integrated(Captions { family: CaptionFamily::Generic, layout }), overridden: Some(true), desktop }
+}
+
 #[test]
 fn the_menu_bar_shows_window_buttons_only_when_the_app_draws_the_frame() {
     let mut app = crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default());
-    let mut labels_drawn = |layout: Option<craft_window::Layout>| {
-        app.window_layout = layout;
+    let mut labels_drawn = |frame: Option<craft_window::policy::Decision>| {
         let ctx = egui::Context::default();
+        crate::framework::install_headless(&ctx);
+        if let Some(frame) = frame {
+            WindowHost::of(&ctx).set_root_frame(frame);
+        }
         ctx.enable_accesskit();
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| crate::menus::menu_bar(&mut app, ui));
         output.textures_delta.clear();
@@ -59,12 +61,12 @@ fn the_menu_bar_shows_window_buttons_only_when_the_app_draws_the_frame() {
     let desktop = labels_drawn(None);
     assert!(!desktop.iter().any(|label| label == "Close"), "{desktop:?}");
 
-    let drawn = labels_drawn(Some(craft_window::Layout::default()));
+    let drawn = labels_drawn(Some(app_frame(craft_window::Layout::default())));
     for button in ["Minimize", "Maximize", "Close"] {
         assert!(drawn.iter().any(|label| label == button), "{button} in {drawn:?}");
     }
 
-    let left = labels_drawn(Some(craft_window::Layout { left: vec![Button::Close], right: Vec::new() }));
+    let left = labels_drawn(Some(app_frame(craft_window::Layout { left: vec![craft_window::Button::Close], right: Vec::new() })));
     assert!(left.iter().any(|label| label == "Close"), "{left:?}");
     assert!(!left.iter().any(|label| label == "Minimize"), "{left:?}");
 }

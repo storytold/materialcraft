@@ -118,7 +118,7 @@ pub(super) fn handle(app: &mut MaterialCraftApp, editor: &mut PatternEditor, ui:
         }
     }
     if response.hovered()
-        && !ui.ctx().egui_wants_keyboard_input()
+        && !crate::framework::widget_has_keyboard(ui.ctx())
         && ui.input(|input| input.key_pressed(egui::Key::Space))
         && !crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked()
     {

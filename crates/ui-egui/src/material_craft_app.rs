@@ -58,19 +58,32 @@ pub struct MaterialCraftApp {
     pub(crate) material_export_job: Option<std::sync::mpsc::Receiver<Result<Value, String>>>,
     /// The held action waiting for the Save dialog the unsaved-changes prompt opened
     pub(crate) awaiting_save: Option<crate::unsaved::Guarded>,
-    /// The window buttons to draw when the app draws the window frame; `None` while the desktop draws it (desktop only)
-    #[cfg(not(target_arch = "wasm32"))]
-    pub window_layout: Option<craft_window::Layout>,
     /// Keyboard shortcuts and their dispatch
     pub(crate) keymap: craft_keymap::Keymap,
-    pub(crate) dispatcher: craft_keymap::egui::Dispatcher,
+    pub(crate) dispatcher: crate::shortcut_dispatch::Dispatcher,
+    /// The dock area's workspace and panel specs between passes
+    pub(crate) docks: docking::LiveDock,
+    /// The framework dialogs (the update dialogs), run once per pass after MaterialCraft's own UI
+    pub framework_dialogs: craft_ui::dialog::DialogHost,
+    /// Who MaterialCraft is to the framework's dialogs
+    pub(crate) framework_host: std::sync::Arc<craft_host::Host>,
     /// What Copy or Cut put on the clipboard this frame, for the system clipboard
     pub(crate) system_clipboard: Option<String>,
     /// Fallback fonts for Arabic
     pub fonts: fonts::UiFonts,
     /// The icon font is installed (it takes effect on the frame after `set_fonts`)
     fonts_ready: bool,
+    /// The frame that only installed the fonts: egui runs it again once they are loaded.
+    fonts_frame: Option<u64>,
     ui_gesture_active: bool,
+    /// The version this build names itself with: the Launcher's feed identity for a Nightly.
+    pub build_version: String,
+    /// The commit this build was made from, empty when the build could not tell.
+    pub build_commit: String,
+    /// The app binary's last step as the app leaves, run once at the end of `on_exit`. On macOS
+    /// every quit ends the process inside AppKit's terminate, after `on_exit`, so code after
+    /// `eframe::run_native` never runs there.
+    pub at_exit: Option<Box<dyn FnOnce()>>,
 }
 
 impl MaterialCraftApp {
@@ -135,16 +148,19 @@ impl MaterialCraftApp {
             #[cfg(not(target_arch = "wasm32"))]
             material_export_job: None,
             awaiting_save: None,
-            #[cfg(not(target_arch = "wasm32"))]
-            window_layout: None,
             keymap: menus::keymap(craft_keymap::Platform::current()),
-
-            // Accept clipboard events without duplicating web key commands
-            dispatcher: craft_keymap::egui::Dispatcher::new().with_repeat(true).with_clipboard_events(true),
+            dispatcher: crate::shortcut_dispatch::Dispatcher::default(),
+            docks: docking::LiveDock::default(),
+            framework_dialogs: craft_ui::dialog::DialogHost::new(),
+            framework_host: crate::framework::host(),
             system_clipboard: None,
             fonts: fonts::UiFonts::default(),
             fonts_ready: false,
+            fonts_frame: None,
             ui_gesture_active: false,
+            build_version: materialcraft_engine::VERSION.to_owned(),
+            build_commit: String::new(),
+            at_exit: None,
         };
         i18n::set_language(&app.ui.prefs.language);
         app.apply_prefs();
@@ -450,18 +466,26 @@ impl eframe::App for MaterialCraftApp {
         }
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    /// The one exit path macOS has: its quit ends the process before `run_native` returns.
+    fn on_exit(&mut self) {
+        if let Some(at_exit) = self.at_exit.take() {
+            at_exit();
+        }
+    }
+
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         control::feed_input(self, raw);
+        self.before_input(ctx);
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(not(target_arch = "wasm32"))]
-        self.step_then(ctx, craft_quit::on_close_request);
-        #[cfg(target_arch = "wasm32")]
         self.step(ctx);
+        self.close_path(ctx);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::framework::before_ui(ui.ctx(), &*frame);
         self.draw(ui);
         #[cfg(not(target_arch = "wasm32"))]
         self.dialogs.show_pending(Some(&*frame));
@@ -471,17 +495,14 @@ impl eframe::App for MaterialCraftApp {
 }
 
 impl MaterialCraftApp {
-    /// [`Self::step`], then the platform's close handling, which sees a close `step` canceled
-    #[cfg(not(target_arch = "wasm32"))]
-    fn step_then(&mut self, ctx: &egui::Context, close: impl FnOnce(&egui::Context) -> bool) {
-        self.step(ctx);
-        close(ctx);
-    }
-
     /// Per-frame logic before drawing: styles, the control channel, cooking, shortcuts
     pub fn step(&mut self, ctx: &egui::Context) {
         if !self.fonts_ready {
             theme::install(ctx);
+            ctx.request_repaint();
+            return;
+        }
+        if self.reruns_fonts_frame(ctx) {
             ctx.request_repaint();
             return;
         }
@@ -509,7 +530,7 @@ impl MaterialCraftApp {
             self.session.finish_edit();
         }
 
-        crate::unsaved::handle_close(self, ctx);
+        crate::unsaved::finish_quit(self, ctx);
         control::poll(self, ctx);
         web_files::poll(self);
         #[cfg(not(target_arch = "wasm32"))]
@@ -544,19 +565,29 @@ impl MaterialCraftApp {
         }
     }
 
+    /// Whether this pass is egui's rerun of the frame that only installed the fonts
+    fn reruns_fonts_frame(&mut self, ctx: &egui::Context) -> bool {
+        self.fonts_frame = self.fonts_frame.filter(|frame| *frame == ctx.cumulative_frame_nr());
+        self.fonts_frame.is_some()
+    }
+
     /// Draw the whole window into `ui`
     pub fn draw(&mut self, ui: &mut egui::Ui) {
         crate::annotation::activate(self, crate::annotation::target(self));
+        let ctx = ui.ctx().clone();
         if !self.fonts_ready {
             self.fonts_ready = true;
+            self.fonts_frame = Some(ctx.cumulative_frame_nr());
+            return;
+        }
+        if self.reruns_fonts_frame(&ctx) {
             return;
         }
 
-        let ctx = ui.ctx().clone();
         let t0 = now_ms();
 
         // Tab can focus a menu or toolbar button while drawing; preserve keyboard ownership
-        self.graph.keyboard_was_focused = ctx.egui_wants_keyboard_input();
+        self.graph.keyboard_was_focused = crate::framework::widget_has_keyboard(&ctx);
         menus::menu_bar(self, ui);
         if self.ui.prefs.show_toolbar {
             toolbar::main_toolbar(self, ui);
@@ -565,12 +596,14 @@ impl MaterialCraftApp {
         self.ui.explorer.hovered = false;
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(theme::Tokens::get(&ctx).chrome)).show(ui, |ui| docking::show(self, ui));
         windows::show(self, &ctx);
+        self.framework_dialogs.run(ui);
+        crate::framework::release_keyboard(&ctx);
         #[cfg(not(target_arch = "wasm32"))]
-        if self.window_layout.is_some() {
+        if crate::window_controls::app_draws_frame(&ctx) {
             crate::window_controls::resize_zones(ui);
         }
 
-        let gesture_active = ctx.input(|input| input.pointer.any_down()) || ctx.egui_wants_keyboard_input();
+        let gesture_active = ctx.input(|input| input.pointer.any_down()) || crate::framework::widget_has_keyboard(&ctx);
         if !gesture_active && (self.ui_gesture_active || ctx.input(|input| input.pointer.any_released())) {
             self.session.finish_edit();
         }
@@ -582,6 +615,10 @@ impl MaterialCraftApp {
         self.ui_ms = if self.ui_ms == 0.0 { dt } else { self.ui_ms * 0.9 + dt * 0.1 };
     }
 }
+
+#[cfg(test)]
+#[path = "material_craft_app.exit_hook_test.rs"]
+mod exit_hook_tests;
 
 #[cfg(test)]
 #[path = "material_craft_app.test.rs"]

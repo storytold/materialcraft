@@ -41,7 +41,7 @@ pub fn current() -> &'static Language {
 
 /// Returns true if `code` is a right-to-left language (e.g. Arabic `"ar"`).
 pub fn is_rtl_code(code: &str) -> bool {
-    craft_ui::direction::resolve(code, craft_ui::direction::Setting::Language) == craft_ui::direction::Direction::Rtl
+    craft_i18n::direction(code) == craft_i18n::Direction::Rtl
 }
 
 /// Returns true if the current UI language is right-to-left.

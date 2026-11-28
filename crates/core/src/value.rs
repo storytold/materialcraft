@@ -133,16 +133,7 @@ impl Value {
                 Value::Float4([a[0], a[1], a[2], a[3]])
             }
             Value::Color(_) => Value::Color(parse_color(j)?),
-            Value::Int(_) => Value::Int(match j.as_i64() {
-                Some(value) => i32::try_from(value).ok()?,
-                None => {
-                    let value = j.as_f64()?.round();
-                    if !value.is_finite() || value < i32::MIN as f64 || value > i32::MAX as f64 {
-                        return None;
-                    }
-                    value as i32
-                }
-            }),
+            Value::Int(_) => Value::Int(parse_integer(j)?),
             Value::Int2(_) => Value::Int2(parse_integers(j)?),
             Value::Int3(_) => Value::Int3(parse_integers(j)?),
             Value::Int4(_) => Value::Int4(parse_integers(j)?),
@@ -175,8 +166,21 @@ fn parse_integers<const COUNT: usize>(value: &serde_json::Value) -> Option<[i32;
 
     let mut result = [0; COUNT];
     for (target, component) in result.iter_mut().zip(components) {
-        *target = i32::try_from(component.as_i64()?).ok()?;
+        *target = parse_integer(component)?;
     }
 
     Some(result)
+}
+
+fn parse_integer(value: &serde_json::Value) -> Option<i32> {
+    match value.as_i64() {
+        Some(value) => i32::try_from(value).ok(),
+        None => {
+            let value = value.as_f64()?.round();
+            if !value.is_finite() || value < i32::MIN as f64 || value > i32::MAX as f64 {
+                return None;
+            }
+            Some(value as i32)
+        }
+    }
 }

@@ -9,13 +9,17 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState, menus};
 fn harness() -> Harness<'static, MaterialCraftApp> {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.ui.windows.home = false;
-    let mut harness = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(1.0).build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app,
-    );
+    let mut harness = Harness::builder()
+        .with_context_setup(materialcraft_ui_egui::framework::install_headless)
+        .with_size(vec2(1600.0, 960.0))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(
+            |ui, app: &mut MaterialCraftApp| {
+                app.step(&ui.ctx().clone());
+                app.draw(ui);
+            },
+            app,
+        );
     harness.run_steps(6);
     harness
 }

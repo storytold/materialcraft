@@ -199,7 +199,7 @@ fn stretch_for(physical: [f32; 3], pixels: [u32; 2]) -> f32 {
 
 /// Space toggles tiling, F fits the image and C, R, G, B and A pick the channels, while the pointer is over the image
 fn keys(app: &mut MaterialCraftApp, ui: &Ui, response: &Response) {
-    if !response.hovered() || ui.ctx().egui_wants_keyboard_input() || crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked() {
+    if !response.hovered() || crate::framework::widget_has_keyboard(ui.ctx()) || crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked() {
         return;
     }
 

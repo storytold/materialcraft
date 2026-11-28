@@ -14,6 +14,11 @@ materialcraft-render = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "persistence"] }
 egui = { workspace = true }
 craft-ui = { workspace = true }
+craft-behavior = { workspace = true }
+craft-host = { workspace = true }
+craft-theme = { workspace = true }
+craft-i18n = { workspace = true }
+craft-window = { workspace = true, features = ["ui"] }
 craft-keymap = { workspace = true, features = ["egui"] }
 egui-phosphor = { version = "0.14", features = ["regular"] }
 serde = { workspace = true }
@@ -25,14 +30,11 @@ craft-zip = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 craft-atomic = { workspace = true }
+craft-png = { workspace = true }
 sha2 = { workspace = true }
 sys-locale = "0.3"
 craft-update = { workspace = true }
 craft-dialogs = { workspace = true }
-craft-quit = { workspace = true, features = ["egui"] }
-craft-window = { workspace = true, features = ["egui"] }
-# Floating panels open as OS windows.
-craft-ui = { workspace = true, features = ["native-windows"] }
 
 # Browser file I/O (web_files.rs): async pickers and Blob downloads.
 [target.'cfg(target_arch = "wasm32")'.dependencies]

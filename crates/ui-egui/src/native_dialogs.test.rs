@@ -248,7 +248,7 @@ fn the_prompts_save_with_a_path_saves_and_runs_the_action_at_once() {
 
 #[test]
 fn the_app_shows_a_requested_dialog_and_applies_its_answer() {
-    let mut harness = egui_kittest::Harness::builder().build_eframe(|_| app());
+    let mut harness = egui_kittest::Harness::builder().with_context_setup(crate::framework::install_headless).build_eframe(|_| app());
     harness.step();
     harness.step();
     let path = temp("frames.sbs");
@@ -452,29 +452,31 @@ fn a_held_close_waits_for_the_save_dialog() {
     answer_prompt_with_save(&mut app);
     app.session.modified = false;
     let ctx = egui::Context::default();
+    crate::framework::install_headless(&ctx);
     let mut input = egui::RawInput::default();
     input.viewports.entry(egui::ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
-    let mut output = ctx.run_ui(input, |ui| crate::unsaved::handle_close(&mut app, ui.ctx()));
+    let mut output = ctx.run_ui(input, |ui| app.close_path(ui.ctx()));
     output.textures_delta.clear();
     let commands = output.viewport_output.remove(&egui::ViewportId::ROOT).map(|root| root.commands).unwrap_or_default();
     assert!(commands.contains(&egui::ViewportCommand::CancelClose));
 }
 
+/// The runtime brings a held window forward, a minimized one included, so the prompt can show.
 #[test]
 fn a_held_close_restores_a_minimized_window() {
-    for (minimized, restored) in [(Some(true), true), (Some(false), false), (None, false)] {
-        let mut app = modified_app_asking_to_quit();
-        app.ui.windows.unsaved = None;
-        let ctx = egui::Context::default();
-        let mut input = egui::RawInput::default();
-        let root = input.viewports.entry(egui::ViewportId::ROOT).or_default();
-        root.minimized = minimized;
-        root.events.push(egui::ViewportEvent::Close);
-        let mut output = ctx.run_ui(input, |ui| crate::unsaved::handle_close(&mut app, ui.ctx()));
-        output.textures_delta.clear();
-        let commands = output.viewport_output.remove(&egui::ViewportId::ROOT).map(|root| root.commands).unwrap_or_default();
-        assert_eq!(commands.contains(&egui::ViewportCommand::Minimized(false)), restored, "{minimized:?}");
-    }
+    let mut app = modified_app_asking_to_quit();
+    app.ui.windows.unsaved = None;
+    let ctx = egui::Context::default();
+    crate::framework::install_headless(&ctx);
+    let mut input = egui::RawInput::default();
+    let root = input.viewports.entry(egui::ViewportId::ROOT).or_default();
+    root.minimized = Some(true);
+    root.events.push(egui::ViewportEvent::Close);
+    let mut output = ctx.run_ui(input, |ui| app.close_path(ui.ctx()));
+    output.textures_delta.clear();
+    let commands = output.viewport_output.remove(&egui::ViewportId::ROOT).map(|root| root.commands).unwrap_or_default();
+    assert!(commands.contains(&egui::ViewportCommand::Minimized(false)), "{commands:?}");
+    assert!(app.ui.windows.unsaved.is_some(), "the prompt asks");
 }
 
 #[test]

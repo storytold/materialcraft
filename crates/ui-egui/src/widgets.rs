@@ -1,7 +1,6 @@
 //! Compact widgets matching the app's look: labelled slim sliders, icon buttons, section
 //! headers, channel toggle chips and color swatches.
 
-use craft_ui::buttons::{ButtonVisuals, IconButton, IconButtonStyle};
 use egui::{Color32, CornerRadius, Response, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::theme::Tokens;
@@ -179,24 +178,33 @@ pub fn elided(painter: &egui::Painter, text: impl Into<String>, size: f32, color
 }
 
 /// A square icon button (Phosphor glyph) in a rounded tool well: `selected` sits in the accent
-/// tinted well (the shared Craft icon button, `craft_ui::buttons`).
+/// tinted well, a hovered one in the row-hover well and a pressed one in the tool well; keyboard
+/// focus draws an inset accent outline. `tooltip` is its accessible name and tooltip. A
+/// non-finite, non-positive or oversized (over 4096 points) size gives an inert zero-size response.
 pub fn icon_button(ui: &mut Ui, icon: &str, tooltip: &str, selected: bool, size: f32) -> Response {
     let tk = Tokens::get(ui.ctx());
-    let well = |fill, icon| ButtonVisuals { fill, stroke: Stroke::NONE, icon };
-    let style = IconButtonStyle {
-        normal: well(Color32::TRANSPARENT, tk.text),
-        hovered: well(tk.row_hover, tk.text_strong),
-        pressed: Some(well(tk.tool_active, tk.text_strong)),
-        selected: well(tk.tool_active, tk.text_strong),
-        corner_radius: CornerRadius::same(6),
-        focus_stroke: Stroke::new(1.0, tk.accent),
+    let valid = size.is_finite() && size > 0.0 && size <= 4096.0;
+    let (rect, response) = ui.allocate_exact_size(if valid { vec2(size, size) } else { egui::Vec2::ZERO }, if valid { Sense::click() } else { Sense::hover() });
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, valid && ui.is_enabled(), selected, tooltip));
+    if !valid {
+        return response;
+    }
+    let (fill, color) = if selected || response.is_pointer_button_down_on() {
+        (tk.tool_active, tk.text_strong)
+    } else if response.hovered() {
+        (tk.row_hover, tk.text_strong)
+    } else {
+        (Color32::TRANSPARENT, tk.text)
     };
-    IconButton::new(tooltip, vec2(size, size), &style)
-        .selected(selected)
-        .show(ui, |ui, rect, color| {
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(size * 0.62), color);
-        })
-        .on_hover_text(tooltip)
+    let radius = CornerRadius::same(6);
+    if fill != Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, radius, fill);
+    }
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(size * 0.62), color);
+    if response.has_focus() && rect.width() > 4.0 && rect.height() > 4.0 {
+        ui.painter().rect_stroke(rect.shrink(2.0), radius, Stroke::new(1.0, tk.accent), egui::StrokeKind::Inside);
+    }
+    response.on_hover_text(tooltip)
 }
 
 /// A flat button filled with the accent, white lettering (a dialog's main action).

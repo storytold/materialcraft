@@ -138,17 +138,29 @@ pub(crate) fn dialog_size(ctx: &egui::Context, preferred: egui::Vec2) -> egui::V
 
 fn about(app: &mut MaterialCraftApp, ctx: &egui::Context) {
     let mut open = true;
+    let identity = crate::os_window::identity();
+    let nightly = identity == crate::os_window::LaunchIdentity::NightlyV1;
+    let name = crate::os_window::name_for(identity);
     modal(ctx, "about", tr("About MaterialCraft"), &mut open, vec2(400.0, 260.0), |ui| {
         let tk = Tokens::get(ui.ctx());
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("MaterialCraft").size(22.0).strong().color(tk.accent));
-            ui.label(format!("{} {}", tr("Version"), materialcraft_engine::VERSION));
+            ui.label(RichText::new(name).size(22.0).strong().color(tk.accent));
+            ui.label(format!("{} {}", tr("Version"), app.build_version));
+            if nightly {
+                // The exact commit the feed names, when the build recorded one. Nothing is invented.
+                let commit = if app.build_commit.is_empty() { "unavailable" } else { app.build_commit.as_str() };
+                ui.label(RichText::new(format!("Commit: {commit}")).size(11.0));
+            }
             ui.add_space(6.0);
             ui.label(tr("Node-based procedural materials, built in pure Rust."));
             ui.label(tr("An open-source Crafting App by the ArtCraft team and community."));
             ui.add_space(6.0);
             ui.hyperlink_to("getartcraft.com/apps/materialcraft", "https://getartcraft.com/apps/materialcraft");
             ui.hyperlink_to("discord.gg/artcraft", "https://discord.gg/artcraft");
+            if nightly {
+                // Opens only after a click. No diagnostics, paths or documents are sent automatically.
+                ui.hyperlink_to(tr("Report a problem"), "https://github.com/storytold/materialcraft/issues/new");
+            }
             ui.add_space(6.0);
             ui.label(RichText::new("MIT OR Apache-2.0").size(11.0).color(tk.text_dim));
         });

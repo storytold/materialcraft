@@ -1,0 +1,142 @@
+name: Nightly Linux build
+
+# Builds the unsigned Linux MaterialCraft Nightly tarball (packaging/linux/nightly.sh) on a hosted
+# runner and checks it as the Launcher unpacks it: a flat archive of the GUI, its launcher, the icon
+# and notices, 755 executables, and the version query both plainly and in the Launcher's profile form. No secrets
+# and no environment: the real Nightly is signed by the shared release-ref signer.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-linux-${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  synthetic:
+    name: Packaging fixtures (no build)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Synthetic packaging suites
+        run: python3 packaging/nightly-tests.py
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          for script in packaging/nightly-common.sh packaging/linux/nightly.sh packaging/linux/nightly-launch.sh \
+            packaging/linux/nightly-arch-launch.sh packaging/linux/AppRun packaging/macos/nightly.sh \
+            packaging/macos/nightly-lib.sh packaging/macos/nightly-sign.sh packaging/macos/nightly-verify.sh; do
+            bash -n "$script"
+          done
+
+  archive:
+    name: Nightly tar (x86_64, unsigned)
+    needs: synthetic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out craft-fonts
+        uses: storytold/craft-common-actions/actions/checkout-craft-fonts@f5141455aac7b2eb4708aa259d8ffcdf10fde939
+        with:
+          ref: c1db6d1a8ed772191241c3d185e2104be84d8691
+      - uses: storytold/craft-common-actions/actions/checkout-craft-i18n@f5141455aac7b2eb4708aa259d8ffcdf10fde939
+      - id: rust
+        uses: storytold/craft-common-actions/actions/rust-channel@f5141455aac7b2eb4708aa259d8ffcdf10fde939
+      - uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
+        with:
+          toolchain: ${{ steps.rust.outputs.toolchain }}
+          components: ${{ steps.rust.outputs.components }}
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+      - name: Prepare a Nightly identity for this commit
+        run: |
+          set -euo pipefail
+          base="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"].split("-")[0])')"
+          sha="$(git rev-parse HEAD)"
+          date="$(date -u +%Y-%m-%d)"
+          {
+            echo "MATERIALCRAFT_BUILD_SHA=$sha"
+            echo "MATERIALCRAFT_BUILD_DATE=$date"
+            echo "MATERIALCRAFT_VERSION=$base-nightly.${date//-/}.$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT.g${sha:0:12}"
+          } >>"$GITHUB_ENV"
+      - name: Build the unsigned Nightly tar
+        env:
+          MATERIALCRAFT_BUILD_CHANNEL: nightly-v1
+          CARGO_TARGET_DIR: ${{ runner.temp }}/nightly-targets
+          DIST: ${{ runner.temp }}/nightly-dist
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+          CRAFT_FONTS_REQUIRED: "1"
+        run: bash packaging/linux/nightly.sh --arch x86_64
+      - name: Check the archive and the version query
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/nightly-dist/materialcraft-$MATERIALCRAFT_VERSION-linux-x86_64-nightly.tar.gz"
+          mkdir -p "$RUNNER_TEMP/unpacked" "$RUNNER_TEMP/home" "$RUNNER_TEMP/tmp" "$RUNNER_TEMP/profile"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/unpacked"
+          # The standard layout: the launcher an unpacked tar starts, and the GUI beside it.
+          test -x "$RUNNER_TEMP/unpacked/materialcraft"
+          test -x "$RUNNER_TEMP/unpacked/materialcraft-bin"
+          test -f "$RUNNER_TEMP/unpacked/materialcraft-nightly.png"
+          for notice in README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md; do
+            test -f "$RUNNER_TEMP/unpacked/$notice"
+          done
+          # GUI only: no CLI, portable marker, desktop entry, MIME database or helper scripts; only the
+          # GUI, its launcher, the icon and the notices.
+          # The allowlist is a glob loop rather than `ls | grep -v`, which shellcheck refuses (SC2010).
+          shopt -s nullglob dotglob
+          for entry in "$RUNNER_TEMP"/unpacked/*; do
+            case "${entry##*/}" in
+              materialcraft | materialcraft-bin | materialcraft-nightly.png | README.md | LICENSE-MIT | LICENSE-APACHE | NOTICE | ATTRIBUTION.md | OFL-*.txt) ;;
+              *)
+                echo "unexpected archive member ${entry##*/}"
+                exit 1
+                ;;
+            esac
+          done
+          query() {
+            local out
+            out="$(env -i HOME="$RUNNER_TEMP/home" TMPDIR="$RUNNER_TEMP/tmp/" PATH=/usr/bin:/bin \
+              timeout 15 "$RUNNER_TEMP/unpacked/materialcraft" "$@" 2>"$RUNNER_TEMP/stderr")"
+            test ! -s "$RUNNER_TEMP/stderr" || { echo "the version query wrote to standard error: $(head -c 2000 "$RUNNER_TEMP/stderr")"; exit 1; }
+            test "$out" = "MaterialCraft $MATERIALCRAFT_VERSION (nightly-v1)" || { echo "the version query reports '$out'"; exit 1; }
+          }
+          query --version
+          query --launch-profile nightly-v1 --profile-root "$RUNNER_TEMP/profile" --version
+          # The shipped launcher answers the same query, and needs no profile to do it.
+          launcher_out="$(env -i HOME="$RUNNER_TEMP/home" TMPDIR="$RUNNER_TEMP/tmp/" PATH=/usr/bin:/bin \
+            timeout 15 "$RUNNER_TEMP/unpacked/materialcraft" --version)"
+          test "$launcher_out" = "MaterialCraft $MATERIALCRAFT_VERSION (nightly-v1)" \
+            || { echo "the tar launcher reports '$launcher_out'"; exit 1; }
+          test ! -e "$RUNNER_TEMP/home/.local/share/materialcraft-nightly" \
+            || { echo "a version query created the nightly profile"; exit 1; }
+          echo "==> verified (unsigned): MaterialCraft $MATERIALCRAFT_VERSION (nightly-v1), plain and in the Launcher's profile form"
+      - name: Keep the unsigned archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: materialcraft-nightly-linux-x86_64-unsigned
+          path: ${{ runner.temp }}/nightly-dist/materialcraft-${{ env.MATERIALCRAFT_VERSION }}-linux-x86_64-nightly.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

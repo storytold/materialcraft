@@ -58,7 +58,7 @@ impl UiFonts {
         defs.font_data.insert(name.clone(), data);
         defs.families.entry(FontFamily::Proportional).or_default().push(name.clone());
         defs.families.entry(FontFamily::Monospace).or_default().push(name);
-        ctx.set_fonts(defs);
+        crate::theme::load_fonts(ctx, defs);
         self.installed = true;
     }
 

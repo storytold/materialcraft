@@ -9,5 +9,5 @@ pub(crate) fn finished(ui: &Ui, owner: PointerButton) -> bool {
 }
 
 pub(crate) fn cancelled(ui: &Ui) -> bool {
-    ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
+    !ui.input(|input| input.focused) || crate::framework::escape_pressed(ui.ctx())
 }

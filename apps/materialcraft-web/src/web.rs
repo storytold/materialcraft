@@ -60,6 +60,7 @@ async fn run(canvas: web_sys::HtmlCanvasElement) -> Result<(), String> {
             canvas,
             options,
             Box::new(|cc| {
+                materialcraft_ui_egui::framework::install_headless(&cc.egui_ctx);
                 let mut app = MaterialCraftApp::new(cc, session);
 
                 // One thread cooks in the browser, so keep previews small

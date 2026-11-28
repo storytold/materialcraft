@@ -158,7 +158,7 @@ pub(super) fn rename_dialog(app: &mut MaterialCraftApp, ctx: &egui::Context) {
         .show(ctx, |ui| {
             let response = ui.text_edit_singleline(&mut name);
             crate::widgets::name(&response, egui::Role::TextInput, "Name");
-            if !ctx.memory(|memory| memory.has_focus(response.id)) && !ctx.egui_wants_keyboard_input() {
+            if !ctx.memory(|memory| memory.has_focus(response.id)) && !crate::framework::widget_has_keyboard(ctx) {
                 response.request_focus();
             }
             accept |= response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
@@ -167,7 +167,7 @@ pub(super) fn rename_dialog(app: &mut MaterialCraftApp, ctx: &egui::Context) {
                 cancel |= ui.button(tr("Cancel")).clicked();
             });
         });
-    cancel |= ctx.input(|input| input.key_pressed(egui::Key::Escape));
+    cancel |= crate::framework::escape_pressed(ctx);
     app.ui.explorer.rename = if open && !cancel { Some((target.clone(), name.clone())) } else { None };
     if accept && activate(app, target.document()) {
         let mut parameters = target.parameters();

@@ -14,7 +14,7 @@ fn harness(w: f32, h: f32) -> Harness<'static, MaterialCraftApp> {
     app.session.view3d.override_resolution = true;
     app.session.view3d.viewport_resolution = true;
     app.session.view3d.render_scale = 25;
-    Harness::builder().with_size(vec2(w, h)).with_pixels_per_point(1.0).build_ui_state(
+    Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(w, h)).with_pixels_per_point(1.0).build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
             app.step(&ui.ctx().clone());
             app.draw(ui);

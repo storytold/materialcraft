@@ -65,7 +65,7 @@ impl PackageSave {
             });
         });
         app.ui.windows.package_save = Some(request);
-        let dismissed = !open || cancel || ctx.input(|input| input.key_pressed(egui::Key::Escape));
+        let dismissed = !open || cancel || crate::framework::escape_pressed(ctx);
         if accept || dismissed {
             Self::finish(app, accept && !dismissed, download);
         }

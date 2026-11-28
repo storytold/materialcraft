@@ -85,12 +85,17 @@ pub(crate) fn pick(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, sear
     editor.inspected_node = Some(id);
 }
 
+/// The search popup's area
+pub(super) fn area() -> egui::Id {
+    egui::Id::unique("function-node-search")
+}
+
 pub(super) fn show(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui, camera: &GraphCamera) {
     let blocked = crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked();
     let Some(mut search) = editor.search.take() else { return };
 
     let tokens = Tokens::get(ui.ctx());
-    let area = egui::Id::unique("function-node-search");
+    let area = area();
     let mut close = false;
     let mut chosen = None;
     egui::Area::new(area).fixed_pos(camera.to_screen(search.at)).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
@@ -115,10 +120,11 @@ pub(super) fn show(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: 
                 }
             });
             let list = candidates(app, editor, &search.text);
-            let (up, down, enter, escape) = ui.input(|input| {
+            let (up, down, enter) = ui.input(|input| {
                 let pressed = |key| !blocked && input.key_pressed(key);
-                (pressed(egui::Key::ArrowUp), pressed(egui::Key::ArrowDown), pressed(egui::Key::Enter), pressed(egui::Key::Escape))
+                (pressed(egui::Key::ArrowUp), pressed(egui::Key::ArrowDown), pressed(egui::Key::Enter))
             });
+            let escape = !blocked && crate::framework::escape_pressed(ui.ctx());
             if down {
                 search.selected_index = (search.selected_index + 1).min(list.len().saturating_sub(1));
             }
@@ -154,7 +160,10 @@ pub(super) fn show(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: 
         && ui.ctx().pointer_interact_pos().is_some_and(|pointer| !ui.ctx().layer_id_at(pointer).is_some_and(|layer| layer.id == area));
     if let Some(candidate) = chosen.filter(|_| !blocked) {
         pick(app, editor, &search, &candidate);
-    } else if !close && !clicked_outside {
+        crate::framework::focus_canvas(ui.ctx());
+    } else if close {
+        crate::framework::focus_canvas(ui.ctx());
+    } else if !clicked_outside {
         editor.search = Some(search);
     }
 }

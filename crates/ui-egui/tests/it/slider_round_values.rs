@@ -18,7 +18,11 @@ fn harness(ppp: f32, render: bool, definition: &str) -> (Harness<'static, Materi
     let mut app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
     let id = NodeId(app.run("graph.node.add", json!({"def":definition})).unwrap()["id"].as_u64().unwrap());
     app.session.reset_history();
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_pixels_per_point(ppp).with_step_dt(1.0 / 60.0);
+    let builder = Harness::builder()
+        .with_context_setup(materialcraft_ui_egui::framework::install_headless)
+        .with_size(vec2(1600.0, 960.0))
+        .with_pixels_per_point(ppp)
+        .with_step_dt(1.0 / 60.0);
     let builder = if render { builder.wgpu() } else { builder };
     let mut h = builder.build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
@@ -85,12 +89,16 @@ fn fractional_parameter_values_remain_reachable() {
 
 #[test]
 fn bar_slider_drag_reaches_exact_round_values() {
-    let mut h = Harness::builder().with_size(vec2(800.0, 400.0)).with_pixels_per_point(1.0).build_ui_state(
-        |ui, value: &mut f32| {
-            widgets::bar_slider(ui, "Brightness", value, 0.0..=1.0, 128.0);
-        },
-        0.0f32,
-    );
+    let mut h = Harness::builder()
+        .with_context_setup(materialcraft_ui_egui::framework::install_headless)
+        .with_size(vec2(800.0, 400.0))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(
+            |ui, value: &mut f32| {
+                widgets::bar_slider(ui, "Brightness", value, 0.0..=1.0, 128.0);
+            },
+            0.0f32,
+        );
     h.run_steps(3);
     let rect = h.get(By::new().role(egui::accesskit::Role::Slider).label("Brightness")).rect();
     let start = pos2(rect.left() + rect.width() * 0.2, rect.center().y);
@@ -112,12 +120,16 @@ fn bar_slider_drag_reaches_exact_round_values() {
 
 #[test]
 fn bar_slider_drag_preserves_fractional_values() {
-    let mut h = Harness::builder().with_size(vec2(800.0, 400.0)).with_pixels_per_point(1.0).build_ui_state(
-        |ui, value: &mut f32| {
-            widgets::bar_slider(ui, "Brightness", value, 0.0..=1.0, 128.0);
-        },
-        0.0f32,
-    );
+    let mut h = Harness::builder()
+        .with_context_setup(materialcraft_ui_egui::framework::install_headless)
+        .with_size(vec2(800.0, 400.0))
+        .with_pixels_per_point(1.0)
+        .build_ui_state(
+            |ui, value: &mut f32| {
+                widgets::bar_slider(ui, "Brightness", value, 0.0..=1.0, 128.0);
+            },
+            0.0f32,
+        );
     h.run_steps(3);
     let rect = h.get(By::new().role(egui::accesskit::Role::Slider).label("Brightness")).rect();
     let start = pos2(rect.left() + rect.width() * 0.2, rect.center().y);

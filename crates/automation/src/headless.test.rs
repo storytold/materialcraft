@@ -3,6 +3,28 @@ mod end_merge_tests {
     use crate::headless::{Filesystem, Headless, RenderOptions};
     use serde_json::json;
 
+    #[test]
+    fn linked_material_source_opens_as_sbs_with_a_mcraft_name() {
+        use materialcraft_engine::{Session, core::Package, file_cmds};
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut source = Headless::new(Session::new(Package::new("Linked source")), Filesystem::TrustedLocal);
+        source.command_run("file.new", json!({"template": "empty"})).unwrap();
+        source.command_run("graph.node.add", json!({"def": "uniform"})).unwrap();
+        let xml = file_cmds::save_bytes(&source.session).unwrap();
+        let archive = file_cmds::save_files_at(&source.session, "archive.mcraft").unwrap().zip().unwrap();
+
+        for (name, bytes) in [("source.sbs", &xml), ("source.mcraft", &xml), ("archive.mcraft", &archive)] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            let mut opened = Headless::new(Headless::default_session(), Filesystem::TrustedLocal);
+            opened.load(path.to_str().unwrap()).unwrap_or_else(|error| panic!("{name}: {error}"));
+            let graph = opened.session.graph().unwrap();
+            assert_eq!(graph.nodes.len(), 1, "{name}");
+            assert_eq!(graph.nodes[0].def, "uniform", "{name}");
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn trusted_reads_are_bounded_and_regular_files_only() {
