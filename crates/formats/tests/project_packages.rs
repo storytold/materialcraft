@@ -69,7 +69,10 @@ fn archive_is_only_native_xml_and_original_resources() {
     let archive = zip::ZipArchive::new(Cursor::new(&bytes)).unwrap();
 
     assert_eq!(archive.len(), 4);
-    assert!(archive.file_names().all(|name| name == "package.sbs" || name.starts_with("resources/")));
+    assert!(archive.file_names().all(|name| {
+        let name = name.unwrap();
+        name == "package.sbs" || name.starts_with("resources/")
+    }));
 
     let read = project::read(&bytes, "moved.mcraft").unwrap();
 

@@ -78,7 +78,8 @@ eframe = { version = "0.37", default-features = false }
 egui = "0.37"
 rfd = "0.17"
 rustix = { version = "1", default-features = false, features = ["std", "fs", "process"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+# Independent ZIP interoperability fixtures only.
+zip = { version = "=9.8.2", default-features = false, features = ["deflate-flate2"] }
 mikktspace = { version = "0.3", default-features = false, features = ["glam"] }
 rmcp = { version = "3.5", default-features = false, features = ["server", "macros", "transport-io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync", "net", "io-util", "time"] }

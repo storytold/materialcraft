@@ -280,10 +280,7 @@ mod tests {
     fn zip64_end_records_are_accepted() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("1.mcraft");
-        let mut writer = zip::ZipWriter::new(File::create(&path).unwrap());
-        writer.set_zip64_comment(Some(""));
-        writer.start_file("package.sbs", zip::write::SimpleFileOptions::default()).unwrap();
-        writer.finish().unwrap();
+        std::fs::write(&path, craft_zip::zip64_entry_count_sample(1)).unwrap();
 
         assert!(has_recovery_footer(&path).unwrap());
     }

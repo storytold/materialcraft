@@ -51,12 +51,15 @@ fn toggle(h: &mut Harness<'static, MaterialCraftApp>) {
 
 #[test]
 fn display_toggle_updates_the_session_and_rerenders_the_normal_map() {
+    let mut app = app();
+    // Exercise real rendered pixels without a viewport-sized CPU render competing with other UI tests.
+    app.run("view.3d", json!({"overrideResolution": true, "viewportResolution": false, "renderResolution": [64, 64]})).unwrap();
     let mut h = Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1400.0, 860.0)).build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
             app.step(&ui.ctx().clone());
             app.draw(ui);
         },
-        app(),
+        app,
     );
     settle(&mut h, 0);
     let before = h.state().view3d.shown.clone().unwrap();

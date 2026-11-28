@@ -185,18 +185,11 @@ pub fn dropped(app: &mut MaterialCraftApp, ctx: &egui::Context, file: &egui::Dro
 
 /// A zip of `(name, bytes)` files (export downloads several maps at once)
 pub fn zip_files(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
-    use std::io::Write as _;
-    let mut buf = std::io::Cursor::new(Vec::new());
-    {
-        let mut z = zip::ZipWriter::new(&mut buf);
-        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-        for (name, bytes) in files {
-            z.start_file(name.as_str(), opts).map_err(|e| e.to_string())?;
-            z.write_all(bytes).map_err(|e| e.to_string())?;
-        }
-        z.finish().map_err(|e| e.to_string())?;
+    let mut archive = craft_zip::Writer::new();
+    for (name, bytes) in files {
+        archive.add(name, bytes, craft_zip::Compression::Stored).map_err(|e| e.to_string())?;
     }
-    Ok(buf.into_inner())
+    archive.finish().map_err(|e| e.to_string())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -358,13 +351,21 @@ mod tests {
 
     #[test]
     fn zip_round_trips() {
-        let files = vec![("a.png".to_string(), b"one".to_vec()), ("b.png".to_string(), vec![7u8; 4096])];
+        let files = vec![
+            ("z-normal.png".into(), vec![7u8; 4096]),
+            ("a-base.png".into(), b"one".to_vec()),
+            ("表面.mtlx".into(), b"<materialx/>".to_vec()),
+            ("textures/empty".into(), Vec::new()),
+        ];
         let bytes = zip_files(&files).unwrap();
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
-        assert_eq!(zip.len(), 2);
-        for (name, data) in &files {
+        assert_eq!(zip.len(), files.len());
+        for (index, (name, data)) in files.iter().enumerate() {
+            let mut member = zip.by_index(index).unwrap();
+            assert_eq!(member.name().unwrap(), name.as_str());
+            assert_eq!(member.compression(), zip::CompressionMethod::Stored);
             let mut out = Vec::new();
-            std::io::Read::read_to_end(&mut zip.by_name(name).unwrap(), &mut out).unwrap();
+            std::io::Read::read_to_end(&mut member, &mut out).unwrap();
             assert_eq!(&out, data);
         }
     }
