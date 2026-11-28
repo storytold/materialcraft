@@ -33,6 +33,16 @@ fn language_switching_and_arabic_translations_work() {
     // Fallback for unknown text
     assert_eq!(tr("Unknown untranslated string 1234"), "Unknown untranslated string 1234");
 
+    // Russian goes through the same switch: its catalog is used and the layout stays left-to-right.
+    // Checked as "translated", not against exact wording.
+    set_language("ru");
+    assert_eq!(current().code, "ru");
+    for key in ["Properties", "Preferences", "New graph", "Export outputs"] {
+        assert_ne!(tr(key), key, "{key:?} has a Russian translation");
+    }
+    assert!(!is_rtl());
+    assert_eq!(tr("Unknown untranslated string 1234"), "Unknown untranslated string 1234");
+
     // Reset to English
     set_language("en");
 }

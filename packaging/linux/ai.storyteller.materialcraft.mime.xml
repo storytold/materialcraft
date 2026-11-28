@@ -4,6 +4,7 @@
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-materialcraft">
     <comment>MaterialCraft package</comment>
+    <comment xml:lang="ru">Пакет MaterialCraft</comment>
     <sub-class-of type="application/zip"/>
     <icon name="ai.storyteller.materialcraft"/>
     <glob pattern="*.mcraft" weight="60"/>
