@@ -3781,6 +3781,7 @@ dependencies = [
  "craft-atomic",
  "craft-behavior",
  "craft-dialogs",
+ "craft-fonts-build",
  "craft-host",
  "craft-i18n",
  "craft-keymap",

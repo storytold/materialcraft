@@ -23,7 +23,7 @@ the authorship and licenses recorded in ATTRIBUTION.md.
 
 Builds made with craft-fonts (CRAFT_FONTS_DIR; all official releases) also embed the fonts listed
 in https://github.com/storytold/craft-fonts/blob/main/ATTRIBUTION.md (BIZ UDPGothic on desktop and
-web, Noto Sans CJK SC on desktop, and Liberation Mono Regular for missing SBS fonts), under the
+web, Noto Sans CJK SC on desktop, Noto Sans Georgian on desktop and web, and Liberation Mono Regular for missing SBS fonts), under the
 SIL Open Font License 1.1. The UI font notices ship as OFL-<family>.txt. The Liberation Mono
 notice follows, so it accompanies packages and installers even when font build inputs are absent
 at packaging time.

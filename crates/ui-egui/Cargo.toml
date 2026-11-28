@@ -8,6 +8,10 @@ license.workspace = true
 [lints]
 workspace = true
 
+[build-dependencies]
+craft-fonts-build = { workspace = true }
+sha2 = { workspace = true }
+
 [dependencies]
 materialcraft-engine = { workspace = true }
 materialcraft-render = { workspace = true }
