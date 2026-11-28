@@ -6,6 +6,14 @@ edition.workspace = true
 license.workspace = true
 build = "build.rs"
 
+[lib]
+name = "materialcraft_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "materialcraft-cli"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
@@ -14,9 +22,13 @@ materialcraft-automation = { workspace = true }
 materialcraft-engine = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
 
 [build-dependencies]
 winresource = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
+clap_complete = { workspace = true }
+clap_mangen = { workspace = true }

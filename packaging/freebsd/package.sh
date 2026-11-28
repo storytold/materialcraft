@@ -54,8 +54,12 @@ echo "==> MaterialCraft $VERSION for FreeBSD $ARCH"
 
 # The release VM has 12 GB; full parallelism on the biggest crates runs it out of memory.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+# The man-and-completions example writes materialcraft-cli's man pages and shell completions below.
+# It is built in its own cargo run: built with the binaries, its dev-dependencies' features would
+# be unified into them.
 if [[ "$SKIP_BUILD" = 0 ]]; then
   (cd "$ROOT" && cargo build --release --locked -p materialcraft -p materialcraft-cli)
+  (cd "$ROOT" && cargo build --release --locked -p materialcraft-cli --example man-and-completions)
 fi
 WORK="$CARGO_TARGET_DIR/freebsd-package"
 STAGE="$WORK/$BASENAME"
@@ -73,6 +77,16 @@ if [[ "$DRY_RUN" = 1 ]]; then
     printf '#!/bin/sh\necho "%s %s (dry-run stub)"\n' "$b" "$VERSION" >"$BIN/$b"
     chmod 755 "$BIN/$b"
   done
+  # A stub of the example: it writes the files the real one does.
+  mkdir -p "$BIN/examples"
+  cat >"$BIN/examples/man-and-completions" <<'STUB'
+#!/bin/sh
+mkdir -p "$1"
+for f in materialcraft-cli.bash _materialcraft-cli materialcraft-cli.fish materialcraft-cli.elv _materialcraft-cli.ps1 materialcraft-cli.1 materialcraft-cli-info.1; do
+  echo "dry-run stub" >"$1/$f"
+done
+STUB
+  chmod 755 "$BIN/examples/man-and-completions"
 fi
 
 # ---- stage a /usr/local-style tree --------------------------------------------------------------
@@ -88,10 +102,27 @@ sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$MATERIALCRAFT_BUILD_DATE/g" \
   "$LINUX/$APP_ID.metainfo.xml.in" >"$STAGE/share/metainfo/$APP_ID.metainfo.xml"
 cp -R "$ROOT/assets/app-icon/hicolor" "$STAGE/share/icons/"
 copy_docs "$STAGE/share/doc/materialcraft"
+# materialcraft-cli's man pages and shell completions, from its clap definition, written by the
+# example built above (a --skip-build run needs it built too). Under /usr/local, man pages go in
+# man/ and the completions in the directories bash, zsh and fish read there.
+CLI_DOCS="$BIN/examples/man-and-completions"
+if [[ ! -x "$CLI_DOCS" ]]; then
+  echo "error: $CLI_DOCS is not built (cargo build --release -p materialcraft-cli --example man-and-completions)" >&2
+  exit 1
+fi
+"$CLI_DOCS" "$WORK/cli-docs"
+mkdir -p "$STAGE/man/man1" "$STAGE/share/bash-completion/completions" \
+  "$STAGE/share/zsh/site-functions" "$STAGE/share/fish/vendor_completions.d"
+install -m 644 "$WORK"/cli-docs/*.1 "$STAGE/man/man1/"
+install -m 644 "$WORK/cli-docs/materialcraft-cli.bash" "$STAGE/share/bash-completion/completions/materialcraft-cli"
+install -m 644 "$WORK/cli-docs/_materialcraft-cli" "$STAGE/share/zsh/site-functions/_materialcraft-cli"
+install -m 644 "$WORK/cli-docs/materialcraft-cli.fish" "$STAGE/share/fish/vendor_completions.d/materialcraft-cli.fish"
 
 for f in bin/materialcraft bin/materialcraft-cli "share/applications/$APP_ID.desktop" \
   "share/icons/hicolor/256x256/apps/$APP_ID.png" "share/icons/hicolor/scalable/apps/$APP_ID.svg" \
-  share/doc/materialcraft/LICENSE-MIT share/doc/materialcraft/LICENSE-APACHE; do
+  share/doc/materialcraft/LICENSE-MIT share/doc/materialcraft/LICENSE-APACHE \
+  man/man1/materialcraft-cli.1 share/bash-completion/completions/materialcraft-cli share/zsh/site-functions/_materialcraft-cli \
+  share/fish/vendor_completions.d/materialcraft-cli.fish; do
   if [[ ! -e "$STAGE/$f" ]]; then echo "error: $f is missing from the package" >&2; exit 1; fi
 done
 

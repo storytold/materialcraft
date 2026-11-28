@@ -67,8 +67,16 @@ echo "==> MaterialCraft $VERSION for Linux $ARCH ($FORMATS, channel=${MATERIALCR
 
 if [[ "$SKIP_BUILD" = 0 ]]; then
   (cd "$ROOT" && cargo build --release --locked -p materialcraft -p materialcraft-cli ${CROSS_TARGET:+--target "$CROSS_TARGET"})
+  # The man-and-completions example writes materialcraft-cli's man pages and shell completions
+  # below. It is built in its own cargo run: built with the binaries, its dev-dependencies'
+  # features would be unified into them. A cross build cannot run it, so it is built for the host.
+  if [[ "$IS_NIGHTLY" != 1 ]]; then
+    (cd "$ROOT" && cargo build --release --locked -p materialcraft-cli --example man-and-completions)
+  fi
 fi
 BIN="$CARGO_TARGET_DIR/${CROSS_TARGET:+$CROSS_TARGET/}release"
+# Host-built: the example is run here, so a cross build finds it in the host's release directory.
+HOST_BIN="$CARGO_TARGET_DIR/release"
 WORK="$CARGO_TARGET_DIR/linux-package"
 STAGE="$WORK/root"
 rm -rf "$WORK"
@@ -77,6 +85,23 @@ rm -rf "$WORK"
 install -Dm755 "$BIN/materialcraft" "$STAGE/usr/bin/materialcraft"
 install -Dm755 "$BIN/materialcraft-cli" "$STAGE/usr/bin/materialcraft-cli"
 "${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/materialcraft" "$STAGE/usr/bin/materialcraft-cli" 2>/dev/null || true
+# materialcraft-cli's man pages and shell completions (RFC-0018 rule 1.9), from its clap definition,
+# written by the example built above (a --skip-build run needs it built too). zsh reads
+# site-functions on Fedora and openSUSE; the deb also links the completion into Debian's
+# vendor-completions (nfpm.yaml). A Nightly build renames the CLI to materialcraft-nightly-cli, so
+# it ships none: pages and completions for materialcraft-cli would document a command it lacks.
+if [[ "$IS_NIGHTLY" != 1 ]]; then
+  CLI_DOCS="$HOST_BIN/examples/man-and-completions"
+  if [[ ! -x "$CLI_DOCS" ]]; then
+    echo "error: $CLI_DOCS is not built (cargo build --release -p materialcraft-cli --example man-and-completions)" >&2
+    exit 1
+  fi
+  "$CLI_DOCS" "$WORK/cli-docs"
+  install -Dm644 -t "$STAGE/usr/share/man/man1" "$WORK"/cli-docs/*.1
+  install -Dm644 "$WORK/cli-docs/materialcraft-cli.bash" "$STAGE/usr/share/bash-completion/completions/materialcraft-cli"
+  install -Dm644 "$WORK/cli-docs/_materialcraft-cli" "$STAGE/usr/share/zsh/site-functions/_materialcraft-cli"
+  install -Dm644 "$WORK/cli-docs/materialcraft-cli.fish" "$STAGE/usr/share/fish/vendor_completions.d/materialcraft-cli.fish"
+fi
 install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"
 if [[ "$IS_NIGHTLY" = 1 ]]; then
   sed -e 's|^StartupWMClass=.*|StartupWMClass=ai.storyteller.materialcraft.nightly-v1|' \
@@ -185,7 +210,11 @@ WRAPPER
   # shellcheck disable=SC2016
   [[ -d "$NFPM_STAGE/usr/lib" ]] || DROP_LIB_TREE='\|^  - src: \${STAGE}/usr/lib/|,+2d;'
   # shellcheck disable=SC2016
-  sed "${DROP_LIB_TREE}s|\${STAGE}|$NFPM_STAGE|g;s|\${NFPM_BIN}|$NFPM_BIN|g;s|\${NFPM_CLI}|$NFPM_CLI|g" "$HERE/nfpm.yaml" >"$WORK/nfpm.yaml"
+  # The zsh link into Debian's vendor-completions is for the stable CLI's completion; a Nightly has none.
+  DROP_ZSH_LINK=
+  # shellcheck disable=SC2016
+  [[ "$IS_NIGHTLY" != 1 ]] || DROP_ZSH_LINK='\|^  - src: /usr/share/zsh/site-functions/_materialcraft-cli|,+3d;'
+  sed "${DROP_LIB_TREE}${DROP_ZSH_LINK}s|\${STAGE}|$NFPM_STAGE|g;s|\${NFPM_BIN}|$NFPM_BIN|g;s|\${NFPM_CLI}|$NFPM_CLI|g" "$HERE/nfpm.yaml" >"$WORK/nfpm.yaml"
   # The riscv64 cross sysroot is Ubuntu 24.04, whose glibc floor is 2.39.
   if [[ "$ARCH" = riscv64 ]]; then sed -i "s/libc6 (>= 2.35)/libc6 (>= 2.39)/" "$WORK/nfpm.yaml"; fi
   for fmt in deb rpm; do

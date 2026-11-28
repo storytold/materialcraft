@@ -66,9 +66,9 @@ fn failed_materialx_reexport_preserves_the_last_complete_material() {
     run(dir, &["new", "pbr", "source.sbs", "--name", "Oak", "--size", "32"]);
     let export = |folder, size| run(dir, &["export", "source.sbs", folder, "--profile", "materialx", "--size", size]);
     let first = export("material", "32");
-    let added = run(dir, &["run", "source.sbs", "graph.node.add", r#"{"def":"output","params":{"identifier":"extra"}}"#, "-o", "source.sbs"]);
+    let added = run(dir, &["run", "source.sbs", "graph.node.add", r#"{"def":"output","params":{"identifier":"extra"}}"#, "-o", "source.sbs", "--in-place"]);
     let wire = json!({"from":1,"to":added["id"],"toPort":"input"}).to_string();
-    run(dir, &["run", "source.sbs", "graph.connect", &wire, "-o", "source.sbs"]);
+    run(dir, &["run", "source.sbs", "graph.connect", &wire, "-o", "source.sbs", "--in-place"]);
     let next = export("reference", "64");
     let material = dir.join("material");
     let original_files: Vec<_> = first["maps"]
