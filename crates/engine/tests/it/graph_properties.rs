@@ -9,6 +9,19 @@ use serde_json::json;
 mod history_preferences;
 
 #[test]
+fn graph_size_clamps_large_exponents_without_wrapping() {
+    let mut package = Package::new("Source");
+    package.graphs.push(Graph::new("Graph"));
+    let mut session = Session::new(package);
+    let large = 1_u64 << 32;
+    let result = execute(&mut session, "graph.size", &json!({"log2": [large, large + 10]})).unwrap();
+    assert_eq!(result, json!({"width": 8192, "height": 8192}));
+    assert_eq!(session.graph().unwrap().size, [13, 13]);
+    let result = execute(&mut session, "graph.size", &json!({"log2": [8]})).unwrap();
+    assert_eq!(result, json!({"width": 256, "height": 1024}));
+}
+
+#[test]
 fn inactive_seed_gestures_merge_and_finish_independently() {
     let mut package = Package::new("Source");
     package.graphs.push(Graph::new("Inspected"));

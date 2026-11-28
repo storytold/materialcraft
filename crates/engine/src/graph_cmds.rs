@@ -122,7 +122,8 @@ fn size(s: &mut Session, p: &J) -> Result<J> {
     let target = crate::GraphTarget::resolve(s, p)?;
     let log = |px: u64| 63 - px.clamp(1, 1 << 20).leading_zeros();
     let (w, h) = if let Some(a) = p.get("log2").and_then(J::as_array) {
-        (a.first().and_then(J::as_u64).unwrap_or(10) as u32, a.get(1).and_then(J::as_u64).unwrap_or(10) as u32)
+        let log2 = |value: Option<&J>| u32::try_from(value.and_then(J::as_u64).unwrap_or(10)).unwrap_or(u32::MAX);
+        (log2(a.first()), log2(a.get(1)))
     } else {
         let w = u64p(p, "width").ok_or_else(|| bad("graph.size", "`width` is required"))?;
         (log(w), log(u64p(p, "height").unwrap_or(w)))
