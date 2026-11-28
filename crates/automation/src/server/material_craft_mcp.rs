@@ -219,8 +219,9 @@ impl MaterialCraftMcp {
         to_result(self.call("bitmap.import", params(&p)).await)
     }
 
-    #[tool(description = "Cook a graph at full size and write every output (base color, normal, roughness, …) into a folder \
-        relative to the write root. Returns the written files.")]
+    #[tool(description = "Cook a graph and write its connected outputs into a folder relative to the write root. \
+        By default, use the graph’s size and write all connected outputs. Set size to override the export size \
+        or outputs to select output identifiers. Returns the written files.")]
     async fn outputs_export(&self, Parameters(p): Parameters<ExportParams>) -> Result<CallToolResult, McpError> {
         to_result(self.call("outputs.export", params(&p)).await)
     }
