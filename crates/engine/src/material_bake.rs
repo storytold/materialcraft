@@ -90,10 +90,28 @@ pub fn cook(s: &Session, p: &J, read: impl Fn(&str) -> Result<Vec<u8>>) -> Resul
 
 /// Encode every file before the caller writes to its destination. Paths in the report are relative.
 pub fn export(s: &Session, p: &J, read: impl Fn(&str) -> Result<Vec<u8>>) -> Result<(Vec<Exported>, J)> {
+    let (files, report, _) = export_with_cooked(s, p, None, read)?;
+    Ok((files, report))
+}
+
+/// Export outputs, reusing `cached` full-size cook results when the request has no size, value, or
+/// image overrides and every requested connected output is already cached. Returns the freshly cooked
+/// result (when cacheable) so callers like `Headless` can retain it for follow-up exports/renders.
+pub fn export_with_cooked(s: &Session, p: &J, cached: Option<&Cooked>, read: impl Fn(&str) -> Result<Vec<u8>>) -> Result<(Vec<Exported>, J, Option<Cooked>)> {
     let option = |key| p.get(key).filter(|value| !value.is_null());
     let request = ExportRequest::from_params(s, p)?;
     let graph = s.pkg.graph(request.graph)?;
     let selected = request.outputs.as_deref();
+    let cache_eligible = |options: &MaterialOptions| options.size.is_none() && options.values.is_empty() && options.inputs.is_empty();
+    let cache_covers = |cooked: &Cooked| -> bool {
+        let index = GraphIndex::new(graph);
+        graph
+            .nodes
+            .iter()
+            .filter(|node| node.def == "output")
+            .filter(|node| request.includes(&materialcraft_eval::identifier(node)) && !index.incoming(node.id).is_empty())
+            .all(|node| cooked.image(node.id, 0).is_some())
+    };
     let materialx = match option("profile") {
         Some(value) if value == "materialx" => true,
         Some(value) if value == "maps" => false,
@@ -104,8 +122,14 @@ pub fn export(s: &Session, p: &J, read: impl Fn(&str) -> Result<Vec<u8>>) -> Res
             }
 
             let options = MaterialOptions::from_params(graph, p, read)?;
+            let eligible = cache_eligible(&options);
+            if eligible && let Some(hit) = cached.filter(|c| cache_covers(c)) {
+                let (files, details) = crate::file_cmds::encode_outputs_with_details(graph, hit, &request)?;
+                return Ok((files, json!({ "details": details }), None));
+            }
             let cooked = options.cook(s, request.graph, selected, None)?;
-            return Ok((crate::file_cmds::encode_outputs(graph, &cooked, &request)?, json!({})));
+            let (files, details) = crate::file_cmds::encode_outputs_with_details(graph, &cooked, &request)?;
+            return Ok((files, json!({ "details": details }), eligible.then_some(cooked)));
         }
     };
 
@@ -128,8 +152,19 @@ pub fn export(s: &Session, p: &J, read: impl Fn(&str) -> Result<Vec<u8>>) -> Res
     };
 
     let options = MaterialOptions::from_params(graph, p, read)?;
-    let cooked = options.cook(s, request.graph, selected, None)?;
-    let (files, mut report) = encode_maps(graph, &cooked, &request, materialx, scale, normal_y_down)?;
+    let eligible = cache_eligible(&options);
+    let owned_cooked;
+    let cooked_ref: &Cooked = if eligible && let Some(hit) = cached.filter(|c| cache_covers(c)) {
+        owned_cooked = None;
+        hit
+    } else {
+        owned_cooked = Some(options.cook(s, request.graph, selected, None)?);
+        match owned_cooked.as_ref() {
+            Some(c) => c,
+            None => return Err(bad("file.export", "cooked output unavailable")),
+        }
+    };
+    let (files, mut report) = encode_maps(graph, cooked_ref, &request, materialx, scale, normal_y_down)?;
 
     // Report the same graph selected by the legacy numeric coercion
     let mut interface = info(s, &json!({"graph": request.graph}))?;
@@ -142,7 +177,7 @@ pub fn export(s: &Session, p: &J, read: impl Fn(&str) -> Result<Vec<u8>>) -> Res
     }
 
     report["material"] = interface;
-    Ok((files, report))
+    Ok((files, report, if eligible { owned_cooked } else { None }))
 }
 
 fn shader_input(usage: &str) -> Option<&'static str> {
@@ -224,7 +259,7 @@ fn encode_maps(
             image
         };
 
-        let float = height || request.depth == Some(Depth::F32) || image.data().iter().any(|value| !(0.0..=1.0).contains(value));
+        let float = height || request.depth_for(&identifier) == Some(Depth::F32) || image.data().iter().any(|value| !(0.0..=1.0).contains(value));
         if float && request.color_spaces.get(&identifier).is_some_and(|space| space.encodes_srgb()) {
             return Err(bad("file.export", format!("EXR output `{identifier}` requires linear values; omit the sRGB override or select raw or linear")));
         }
@@ -232,7 +267,7 @@ fn encode_maps(
         let (ext, depth) = if float {
             ("exr", Depth::F32)
         } else {
-            let depth = request.depth.unwrap_or(if color { Depth::U8 } else { Depth::U16 });
+            let depth = request.depth_for(&identifier).unwrap_or(if color { Depth::U8 } else { Depth::U16 });
             ("png", depth)
         };
         let stem = materialcraft_formats::safe_file_name(&identifier);

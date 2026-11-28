@@ -5,7 +5,8 @@ use base64::Engine as _;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock as Content};
-use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use rmcp::service::RequestContext;
+use rmcp::{ErrorData as McpError, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -86,11 +87,40 @@ impl MaterialCraftMcp {
 
     /// One control-channel method on the backend
     async fn call(&self, method: &str, p: Value) -> Result<Value, AutomationError> {
+        self.call_with_context(method, p, None).await
+    }
+
+    async fn call_with_context(&self, method: &str, p: Value, ctx: Option<&RequestContext<RoleServer>>) -> Result<Value, AutomationError> {
+        struct CancelGuard {
+            flag: Arc<std::sync::atomic::AtomicBool>,
+            watcher: Option<tokio::task::JoinHandle<()>>,
+        }
+        impl Drop for CancelGuard {
+            fn drop(&mut self) {
+                self.flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                if let Some(handle) = self.watcher.take() {
+                    handle.abort();
+                }
+            }
+        }
         match &*self.backend {
             Backend::Headless(h) => {
+                if ctx.is_some_and(|c| c.ct.is_cancelled()) {
+                    return Err(AutomationError::Other(format!("`{method}` cancelled")));
+                }
                 let (h, m) = (h.clone(), method.to_string());
+                let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let watcher = ctx.map(|c| {
+                    let ct = c.ct.clone();
+                    let flag = cancel.clone();
+                    tokio::spawn(async move {
+                        ct.cancelled().await;
+                        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                    })
+                });
+                let _guard = CancelGuard { flag: cancel.clone(), watcher };
                 // Edits run on snapshots (`Session::edit`), so a panicking command leaves the session consistent: keep serving after a poisoned lock
-                tokio::task::spawn_blocking(move || h.lock().unwrap_or_else(PoisonError::into_inner).handle(&m, &p))
+                tokio::task::spawn_blocking(move || h.lock().unwrap_or_else(PoisonError::into_inner).handle_with_cancel(&m, &p, Some(&cancel)))
                     .await
                     .unwrap_or_else(|_| Err(AutomationError::Other(format!("internal error in `{method}`"))))
             }
@@ -234,9 +264,9 @@ impl MaterialCraftMcp {
 
     #[tool(description = "Headless: render the material on the 3D view's scene, or a node's output (view 2d), as a PNG up to \
         2048 px a side. In bridge mode use view_screenshot.")]
-    async fn view_render(&self, Parameters(p): Parameters<RenderParams>) -> Result<CallToolResult, McpError> {
+    async fn view_render(&self, ctx: RequestContext<RoleServer>, Parameters(p): Parameters<RenderParams>) -> Result<CallToolResult, McpError> {
         let note = format!("render {}", params(&p));
-        image_result(self.call("render", params(&p)).await, &note, false)
+        image_result(self.call_with_context("render", params(&p), Some(&ctx)).await, &note, false)
     }
 
     #[tool(description = "Bridge mode: PNG of the live app's 3D or 2D view.")]

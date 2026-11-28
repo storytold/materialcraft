@@ -28,9 +28,12 @@ pub struct RenderParams {
     /// Cook at the full graph size instead of the preview size
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full: Option<bool>,
-    /// 3D: UV repeats of the material on the scene for this render only
+    /// 2D and 3D: UV repeats of the material or node image for this render only
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiling: Option<f32>,
+    /// 2D: normalized UV crop rectangle `[x, y, width, height]` (width and height > 0)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crop: Option<[f32; 4]>,
     /// 3D beauty render: real displacement from the height output, ambient occlusion and a shadowed key light (slower)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hq: Option<bool>,

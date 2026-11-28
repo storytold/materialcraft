@@ -104,4 +104,130 @@ mod end_merge_tests {
         assert_ne!(headless.scene.as_ref().unwrap().1.mesh.positions, first_positions);
         assert!(previous_mesh.upgrade().is_none(), "the previous headless scene must be released");
     }
+
+    #[test]
+    fn full_cache_tracks_document_activation_and_direct_session_undo() {
+        let dir = tempfile::tempdir().unwrap();
+        let path_a = dir.path().join("doc_a.sbs");
+        let path_b = dir.path().join("doc_b.sbs");
+
+        let make_doc = |path: &std::path::Path, color: [f64; 4]| {
+            let mut h = Headless::new(materialcraft_engine::new_session(), Filesystem::TrustedLocal);
+            let u = h.command_run("graph.node.add", json!({"def": "uniform", "params": {"color": color}})).unwrap()["id"].as_u64().unwrap();
+            let o = h.command_run("graph.node.add", json!({"def": "output", "params": {"usage": 0}})).unwrap()["id"].as_u64().unwrap();
+            h.command_run("graph.connect", json!({"from": u, "to": o})).unwrap();
+            h.save(Some(path.to_str().unwrap())).unwrap();
+        };
+        make_doc(&path_a, [1.0, 0.0, 0.0, 1.0]);
+        make_doc(&path_b, [0.0, 0.0, 1.0, 1.0]);
+
+        let mut h = Headless::new(materialcraft_engine::new_session(), Filesystem::TrustedLocal);
+        let opts = RenderOptions { view: Some("2d".into()), width: Some(16), height: Some(16), full: true, ..RenderOptions::default() };
+
+        h.load(path_a.to_str().unwrap()).unwrap();
+        let png_a_first = h.render_png(&opts).unwrap().png;
+
+        h.load(path_b.to_str().unwrap()).unwrap();
+        let png_b = h.render_png(&opts).unwrap().png;
+        assert_ne!(png_a_first, png_b);
+
+        // Re-activating already-open doc A must not reuse doc B's full_cache.
+        h.load(path_a.to_str().unwrap()).unwrap();
+        let png_a_reactivated = h.render_png(&opts).unwrap().png;
+        assert_eq!(png_a_reactivated, png_a_first, "reactivating doc A returned stale full_cache from doc B");
+
+        // Direct mutation via public `session` (undo + inspect clearing dirty) must invalidate full_cache.
+        let uniform_id = h.session.graph().unwrap().nodes.iter().find(|n| n.def == "uniform").unwrap().id.0;
+        h.command_run("graph.node.param", json!({"id": uniform_id, "param": "color", "value": [0.0, 1.0, 0.0, 1.0]})).unwrap();
+        let png_green = h.render_png(&opts).unwrap().png;
+        assert_ne!(png_green, png_a_first);
+
+        assert!(h.session.undo().is_some());
+        let _ = h.inspect();
+        let png_after_direct_undo = h.render_png(&opts).unwrap().png;
+        assert_eq!(png_after_direct_undo, png_a_first, "direct session.undo() must invalidate full_cache");
+    }
+
+    #[test]
+    fn resolve_2d_target_honors_explicit_port_without_node() {
+        let mut h = Headless::new(materialcraft_engine::new_session(), Filesystem::Denied);
+        h.command_run("file.new", json!({"template": "empty", "name": "Mat"})).unwrap();
+        let out = h.command_run("graph.node.add", json!({"def": "output", "params": {"usage": 0}})).unwrap()["id"].as_u64().unwrap();
+        let opts = RenderOptions { view: Some("2d".into()), node: None, port: Some(2), ..RenderOptions::default() };
+        let (resolved_id, resolved_port) = h.resolve_2d_target(&opts).unwrap();
+        assert_eq!(resolved_id.0, out);
+        assert_eq!(resolved_port, 2);
+    }
+
+    #[test]
+    fn render_3d_full_cooks_cross_graph_sources_without_preview_cook() {
+        let mut h = Headless::new(materialcraft_engine::new_session(), Filesystem::Denied);
+        h.command_run("file.new", json!({"template": "empty", "name": "Main", "size": 64})).unwrap();
+        let u0 = h.command_run("graph.node.add", json!({"def": "uniform", "params": {"color": [0.0, 0.0, 0.0, 1.0]}})).unwrap()["id"].as_u64().unwrap();
+        let o0 = h.command_run("graph.node.add", json!({"def": "output", "params": {"usage": 0}})).unwrap()["id"].as_u64().unwrap();
+        h.command_run("graph.connect", json!({"from": u0, "to": o0})).unwrap();
+
+        let g1_idx = h.command_run("file.new", json!({"template": "empty", "name": "Other", "size": 64})).unwrap()["graph"].as_u64().unwrap();
+        let u1 = h.command_run("graph.node.add", json!({"def": "uniform", "params": {"color": [1.0, 0.1, 0.1, 1.0]}})).unwrap()["id"].as_u64().unwrap();
+        let o1 = h.command_run("graph.node.add", json!({"def": "output", "params": {"usage": 0}})).unwrap()["id"].as_u64().unwrap();
+        h.command_run("graph.connect", json!({"from": u1, "to": o1})).unwrap();
+
+        // Switch back to Main and assign Other's output to baseColor WITHOUT running a preview cook.
+        h.command_run("graph.open", json!({"graph": "Main"})).unwrap();
+        let opts = RenderOptions { view: Some("3d".into()), width: Some(32), height: Some(32), full: true, ..RenderOptions::default() };
+        let dark_png = h.render_png(&opts).unwrap().png;
+
+        h.command_run("view.3d.assign", json!({"graph": g1_idx, "node": o1, "channel": "baseColor"})).unwrap();
+        let cross_graph_png = h.render_png(&opts).unwrap().png;
+        assert_ne!(cross_graph_png, dark_png, "cross-graph channel must be cooked at full resolution, not silently dropped");
+    }
+
+    #[test]
+    fn render_png_with_cancel_rejects_preset_cancel_even_on_cache_hit() {
+        let mut h = Headless::new(materialcraft_engine::new_session(), Filesystem::Denied);
+        h.command_run("file.new", json!({"template": "pbr", "name": "Mat", "size": 32})).unwrap();
+        let opts_2d = RenderOptions { view: Some("2d".into()), width: Some(16), height: Some(16), full: true, ..RenderOptions::default() };
+        let opts_3d = RenderOptions { view: Some("3d".into()), width: Some(16), height: Some(16), full: true, ..RenderOptions::default() };
+        // Populate both caches first.
+        h.render_png(&opts_2d).unwrap();
+        h.render_png(&opts_3d).unwrap();
+        // A pre-set cancel flag must fail before returning cached renders.
+        let cancelled = std::sync::atomic::AtomicBool::new(true);
+        assert!(h.render_png_with_cancel(&opts_2d, Some(&cancelled)).is_err());
+        assert!(h.render_png_with_cancel(&opts_3d, Some(&cancelled)).is_err());
+    }
+
+    #[test]
+    fn export_does_not_mark_partial_cache_complete_for_disconnected_3d_channel_and_reports_encoded_depth() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = Headless::new(materialcraft_engine::new_session(), Filesystem::TrustedLocal);
+        let u_out = h.command_run("graph.node.add", json!({"def": "uniform", "params": {"color": [0.0, 0.0, 0.0, 1.0]}})).unwrap()["id"].as_u64().unwrap();
+        let out = h.command_run("graph.node.add", json!({"def": "output", "params": {"usage": 0}})).unwrap()["id"].as_u64().unwrap();
+        h.command_run("graph.connect", json!({"from": u_out, "to": out})).unwrap();
+
+        // Add a disconnected red uniform node and assign it as 3D baseColor.
+        let disconnected =
+            h.command_run("graph.node.add", json!({"def": "uniform", "params": {"color": [1.0, 0.1, 0.1, 1.0]}})).unwrap()["id"].as_u64().unwrap();
+
+        let opts = RenderOptions { view: Some("3d".into()), width: Some(32), height: Some(32), full: true, ..RenderOptions::default() };
+        let dark_png = h.render_png(&opts).unwrap().png;
+
+        h.command_run("view.3d.assign", json!({"node": disconnected, "channel": "baseColor"})).unwrap();
+        // Export populates output-rooted full_cache; it must NOT mark the cache complete.
+        let jpg_dir = dir.path().join("jpg");
+        let jpg_report = h.export(&json!({"dir": jpg_dir.to_str().unwrap(), "format": "jpg", "depth": 16})).unwrap();
+        assert_eq!(jpg_report["details"][0]["depth"], json!(8), "JPEG always encodes 8-bit samples");
+
+        let exr_dir = dir.path().join("exr");
+        let exr_report = h.export(&json!({"dir": exr_dir.to_str().unwrap(), "format": "exr", "depth": 8})).unwrap();
+        assert_eq!(exr_report["details"][0]["depth"], json!(32), "EXR always encodes 32-bit float samples");
+
+        let png_dir = dir.path().join("png");
+        let png_report = h.export(&json!({"dir": png_dir.to_str().unwrap(), "format": "png", "depth": 32})).unwrap();
+        assert_eq!(png_report["details"][0]["depth"], json!(16), "PNG clamps non-U8 requests to 16-bit");
+
+        // Full 3D render after export must still cook the disconnected assigned channel.
+        let after_export_png = h.render_png(&opts).unwrap().png;
+        assert_ne!(after_export_png, dark_png, "disconnected 3D channel must not be dropped by export-populated cache");
+    }
 }

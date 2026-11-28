@@ -176,7 +176,7 @@ impl Session {
 
         if reaches(&self.pkg, &changed, &sources) {
             self.modified = true;
-            self.dirty = true;
+            self.mark_dirty();
             self.cook_epoch = self.cook_epoch.wrapping_add(1);
         }
 

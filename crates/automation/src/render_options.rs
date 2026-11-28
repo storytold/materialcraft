@@ -16,8 +16,10 @@ pub struct RenderOptions {
     pub port: Option<usize>,
     /// Cook at full size instead of the preview size
     pub full: bool,
-    /// 3D: UV repeats override (the session's view is not changed)
+    /// 2D and 3D: UV repeats override (the session's view is not changed)
     pub tiling: Option<f32>,
+    /// 2D: normalized UV crop rectangle `[x, y, width, height]` (each in 0..1; width/height > 0)
+    pub crop: Option<[f32; 4]>,
     /// 3D: beauty render: the height output displaces a subdivided mesh, with ray-traced ambient occlusion, a shadowed key light and 3×3 supersampling. Slower; for stills
     pub hq: bool,
     /// 3D, with `hq`: displacement depth in scene radii (default 0.04)

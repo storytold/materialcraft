@@ -20,6 +20,8 @@ pub struct ExportRequest {
     pub pattern: String,
     /// `None` keeps each output's own format
     pub depth: Option<Depth>,
+    /// Per-output bit depth overrides (`8`, `16`, or `32`); overrides `depth` for matching identifiers.
+    pub depths: HashMap<String, Depth>,
     /// `None` keeps the graph's size
     pub size: Option<ExportSize>,
     /// Output identifiers to write; `None` writes every connected output
@@ -31,7 +33,16 @@ pub struct ExportRequest {
 impl ExportRequest {
     /// Every connected output of graph `graph` as PNG at the graph's size
     pub fn new(graph: usize) -> Self {
-        Self { graph, format: "png".into(), pattern: "$(graph)_$(identifier)".into(), depth: None, size: None, outputs: None, color_spaces: HashMap::new() }
+        Self {
+            graph,
+            format: "png".into(),
+            pattern: "$(graph)_$(identifier)".into(),
+            depth: None,
+            depths: HashMap::new(),
+            size: None,
+            outputs: None,
+            color_spaces: HashMap::new(),
+        }
     }
 
     /// Read `file.export` params, checking them against the session's package
@@ -49,15 +60,7 @@ impl ExportRequest {
             return Err(bad(CMD, format!("unknown format `{format}`")));
         }
 
-        let depth = match p.get("depth") {
-            None | Some(J::Null) => None,
-            Some(value) => Some(match value.as_f64() {
-                Some(8.0) => Depth::U8,
-                Some(16.0) => Depth::U16,
-                Some(32.0) => Depth::F32,
-                _ => return Err(bad(CMD, format!("depth must be 8, 16 or 32, not {value}"))),
-            }),
-        };
+        let depth = parse_depth_opt(p.get("depth"))?;
 
         let identifiers = output_identifiers(graph);
         let outputs = match p.get("outputs") {
@@ -71,6 +74,7 @@ impl ExportRequest {
             format,
             pattern: strp(p, "pattern").unwrap_or("$(graph)_$(identifier)").to_string(),
             depth,
+            depths: per_output_depths(p.get("depths"), &identifiers, &graph.name)?,
             size: export_size(CMD, p.get("size"))?,
             outputs,
             color_spaces: color_spaces(p.get("colorSpaces"), &identifiers, &graph.name)?,
@@ -82,10 +86,40 @@ impl ExportRequest {
         self.outputs.as_ref().is_none_or(|outputs| outputs.iter().any(|output| output == identifier))
     }
 
+    /// Explicit bit depth for `identifier`, falling back to the request-wide `depth`.
+    pub fn depth_for(&self, identifier: &str) -> Option<Depth> {
+        self.depths.get(identifier).copied().or(self.depth)
+    }
+
     /// The color space output `identifier` with `usage` is written in
     pub fn color_space(&self, identifier: &str, usage: &str) -> ColorSpace {
         self.color_spaces.get(identifier).copied().unwrap_or_else(|| ColorSpace::for_usage(usage))
     }
+}
+
+fn parse_depth_value(value: &J) -> Result<Depth> {
+    match value.as_f64() {
+        Some(8.0) => Ok(Depth::U8),
+        Some(16.0) => Ok(Depth::U16),
+        Some(32.0) => Ok(Depth::F32),
+        _ => Err(bad(CMD, format!("depth must be 8, 16 or 32, not {value}"))),
+    }
+}
+
+fn parse_depth_opt(value: Option<&J>) -> Result<Option<Depth>> {
+    match value {
+        None | Some(J::Null) => Ok(None),
+        Some(v) => Ok(Some(parse_depth_value(v)?)),
+    }
+}
+
+fn per_output_depths(value: Option<&J>, identifiers: &[String], graph: &str) -> Result<HashMap<String, Depth>> {
+    let entries = match value {
+        None | Some(J::Null) => return Ok(HashMap::new()),
+        Some(J::Object(entries)) => entries,
+        Some(_) => return Err(bad(CMD, "`depths` must map output identifiers to 8, 16 or 32")),
+    };
+    entries.iter().map(|(identifier, depth)| Ok((known_output(identifier, identifiers, graph)?.to_string(), parse_depth_value(depth)?))).collect()
 }
 
 fn output_identifiers(graph: &Graph) -> Vec<String> {

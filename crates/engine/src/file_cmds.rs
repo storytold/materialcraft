@@ -157,7 +157,7 @@ pub fn replace_package(session: &mut Session, package: Package, path: Option<Str
 
     session.reset_history();
     session.modified = false;
-    session.dirty = true;
+    session.mark_dirty();
     session.load_warnings.clear();
 }
 
@@ -370,8 +370,36 @@ pub fn export_outputs(s: &Session, request: &ExportRequest) -> Result<Vec<Export
     encode_outputs(s.pkg.graph(request.graph)?, &cooked, request)
 }
 
+/// Effective sample bit depth written by `materialcraft_formats::encode` for `(format, depth)`.
+fn encoded_bits(format: &str, depth: Depth) -> u8 {
+    match format.trim_start_matches('.').to_ascii_lowercase().as_str() {
+        "exr" | "hdr" => 32,
+        "png" if depth != Depth::U8 => 16,
+        _ => 8,
+    }
+}
+
 pub(crate) fn encode_outputs(graph: &materialcraft_core::Graph, cooked: &materialcraft_eval::Cooked, request: &ExportRequest) -> Result<Vec<Exported>> {
-    let mut files = Vec::new();
+    Ok(encode_outputs_with_details(graph, cooked, request)?.0)
+}
+
+pub(crate) fn encode_outputs_with_details(
+    graph: &materialcraft_core::Graph,
+    cooked: &materialcraft_eval::Cooked,
+    request: &ExportRequest,
+) -> Result<(Vec<Exported>, Vec<J>)> {
+    use rayon::prelude::*;
+
+    struct EncodeJob<'a> {
+        file: String,
+        identifier: String,
+        usage: &'a str,
+        image: &'a craft_texture::Image,
+        depth: Depth,
+        srgb: bool,
+    }
+
+    let mut jobs = Vec::new();
     let mut names = std::collections::HashSet::new();
     for (id, usage, identifier, image) in materialcraft_eval::outputs(graph, cooked) {
         let Some(image) = image.filter(|_| request.includes(&identifier)) else { continue };
@@ -383,23 +411,45 @@ pub(crate) fn encode_outputs(graph: &materialcraft_core::Graph, cooked: &materia
 
         let node = graph.node(id)?;
         let output_format = if node.base.format == materialcraft_core::OutputFormat::Inherit { graph.format } else { node.base.format };
-        let depth = request.depth.unwrap_or_else(|| Depth::from_format(output_format));
+        let depth = request.depth_for(&identifier).unwrap_or_else(|| Depth::from_format(output_format));
 
         // Keep grayscale float exports scene-linear unless the caller picks a color space
         let srgb = request.color_space(&identifier, usage).encodes_srgb()
             && !(image.kind() == craft_texture::Kind::Gray
                 && matches!(request.format.as_str(), "exr" | "hdr")
                 && !request.color_spaces.contains_key(&identifier));
-        let bytes = encode(image, &request.format, depth, srgb)?;
-        files.push(Exported { file, bytes });
+        jobs.push(EncodeJob { file, identifier, usage, image, depth, srgb });
     }
 
-    if files.is_empty() {
+    if jobs.is_empty() {
         let reason = if request.outputs.is_some() { "the selected outputs are not connected" } else { "the graph has no connected output nodes" };
         return Err(bad("file.export", reason));
     }
 
-    Ok(files)
+    let encoded: Result<Vec<(Exported, J)>> = jobs
+        .par_iter()
+        .map(|job| {
+            let bytes = encode(job.image, &request.format, job.depth, job.srgb)?;
+            let bits = encoded_bits(&request.format, job.depth);
+            let detail = json!({
+                "file": job.file,
+                "identifier": job.identifier,
+                "usage": job.usage,
+                "size": [job.image.width(), job.image.height()],
+                "depth": bits,
+                "bytes": bytes.len(),
+            });
+            Ok((Exported { file: job.file.clone(), bytes }, detail))
+        })
+        .collect();
+
+    let mut files = Vec::with_capacity(jobs.len());
+    let mut details = Vec::with_capacity(jobs.len());
+    for (exported, detail) in encoded? {
+        files.push(exported);
+        details.push(detail);
+    }
+    Ok((files, details))
 }
 
 #[cfg(not(target_arch = "wasm32"))]

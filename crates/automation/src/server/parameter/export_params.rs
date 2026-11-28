@@ -14,6 +14,9 @@ pub struct ExportParams {
     /// 8, 16 or 32 bits (default: the graph's output format)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+    /// Per-output bit depth overrides (`8`, `16` or `32`), e.g. `{"Height": 16}` alongside `depth: 8`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depths: Option<std::collections::BTreeMap<String, u32>>,
     /// The larger side or [width, height] in pixels, rounded down to powers of two from 16 to 8192.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "size_schema")]
