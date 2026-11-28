@@ -55,10 +55,14 @@ fn comment_delete(session: &mut Session, parameters: &J) -> Result<J> {
     let target = crate::AnnotationTarget::resolve(session, parameters)?;
     let id = u64p(parameters, "id").ok_or_else(|| bad("graph.comment.delete", "`id` is required"))?;
 
-    session.edit("Delete comment", |session| {
-        let mut items = target.items(session)?;
-        items.comments.retain(|comment| comment.id != id);
+    let mut items = target.items(session)?;
+    let previous = items.comments.len();
+    items.comments.retain(|comment| comment.id != id);
+    if previous == items.comments.len() {
+        return Err(bad("graph.comment.delete", format!("no comment {id}")));
+    }
 
+    session.edit("Delete comment", |session| {
         target.replace(session, items)?;
         Ok(J::Null)
     })

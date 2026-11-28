@@ -67,6 +67,26 @@ fn annotation_properties_and_selection_survive_edits_undo_and_native_save() {
     assert_eq!(session.graph().unwrap().comments.len(), 1);
 }
 
+#[test]
+fn deleting_a_missing_comment_keeps_the_package_clean_and_undo_empty() {
+    let mut session = new_session();
+    let comment = execute(&mut session, "graph.comment.add", &json!({"text": "Keep me"})).unwrap()["id"].as_u64().unwrap();
+    let mut session = materialcraft_engine::Session::new(session.pkg);
+    let original = session.pkg.clone();
+
+    let error = execute(&mut session, "graph.comment.delete", &json!({"id": u64::MAX})).unwrap_err();
+    assert!(error.to_string().contains("no comment"));
+    assert_eq!(session.pkg, original);
+    assert!(!session.modified);
+    assert!(!session.can_undo());
+
+    execute(&mut session, "graph.comment.delete", &json!({"id": comment})).unwrap();
+    assert!(session.graph().unwrap().comments.is_empty());
+    assert!(session.modified);
+    assert_eq!(session.undo().as_deref(), Some("Delete comment"));
+    assert_eq!(session.pkg, original);
+}
+
 /// Pins share annotation selection, properties, deletion and undo.
 #[test]
 fn navigation_pins_select_edit_delete_and_save() {
