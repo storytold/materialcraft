@@ -87,6 +87,20 @@ mod end_merge_tests {
     }
 
     #[test]
+    fn invalid_full_render_view_does_not_cook_or_change_preview_state() {
+        let mut h = Headless::new(materialcraft_engine::new_session(), Filesystem::Denied);
+        h.session.preview_size = Some(64);
+        h.session.dirty = false;
+        let before = (h.session.preview_size, h.session.dirty, h.session.cook_epoch);
+        for view in ["typo", "2D", "3D"] {
+            let options = RenderOptions { view: Some(view.into()), full: true, ..RenderOptions::default() };
+            let err = h.render_png(&options).err().expect("invalid view").to_string();
+            assert!(err.contains(&format!("unknown view `{view}`")), "{err}");
+            assert_eq!((h.session.preview_size, h.session.dirty, h.session.cook_epoch), before);
+        }
+    }
+
+    #[test]
     fn same_name_custom_mesh_reload_rebuilds_the_headless_scene() {
         let mut headless = Headless::new(materialcraft_engine::new_session(), Filesystem::Denied);
         let first_mesh = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";

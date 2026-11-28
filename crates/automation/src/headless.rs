@@ -272,6 +272,11 @@ impl Headless {
 
     /// Render the assigned material or a node output as PNG
     pub fn render_png(&mut self, o: &RenderOptions) -> Result<Rendered, AutomationError> {
+        let is_2d = match o.view.as_deref().unwrap_or("3d") {
+            "2d" => true,
+            "3d" => false,
+            other => return Err(bad(format!("unknown view `{other}` (3d or 2d)"))),
+        };
         let max = if self.trusted() { MAX_LOCAL_RENDER_SIDE } else { MAX_PNG_SIDE };
         let saved = self.session.preview_size;
         if o.full {
@@ -279,11 +284,7 @@ impl Headless {
             self.session.dirty = true;
         }
         self.session.cook_if_dirty();
-        let out = match o.view.as_deref().unwrap_or("3d") {
-            "2d" => self.render_2d(o, max),
-            "3d" => Ok(self.render_3d(o, max)),
-            other => Err(bad(format!("unknown view `{other}` (3d or 2d)"))),
-        };
+        let out = if is_2d { self.render_2d(o, max) } else { Ok(self.render_3d(o, max)) };
 
         if o.full {
             self.session.preview_size = saved;
