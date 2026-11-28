@@ -203,6 +203,28 @@ fn delete(s: &mut Session, p: &J) -> Result<J> {
     })
 }
 
+fn would_create_cycle(connections: &[Connection], from: NodeId, to: NodeId) -> bool {
+    if from == to {
+        return true;
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut stack = vec![to];
+    while let Some(node) = stack.pop() {
+        if node == from {
+            return true;
+        }
+        if !seen.insert(node) {
+            continue;
+        }
+        for connection in connections {
+            if connection.from == node {
+                stack.push(connection.to);
+            }
+        }
+    }
+    false
+}
+
 fn delete_relink(s: &mut Session, p: &J) -> Result<J> {
     if s.annotation_selection.is_some() && p.get("ids").is_none() {
         return delete_annotation(s);
@@ -210,20 +232,118 @@ fn delete_relink(s: &mut Session, p: &J) -> Result<J> {
 
     let ids = ids_param(s, "edit.deleteRelink", p)?;
     s.edit("Delete and relink", |s| {
-        for id in &ids {
-            // Port order comes from the node definition, not the order its wires were created.
-            let input = s.input_ports(*id).into_iter().next();
-            let g = s.graph_mut()?;
-            let src = input.and_then(|port| g.input_of(*id, &port)).map(|c| (c.from, c.from_port.clone()));
-            let outs: Vec<(NodeId, String)> = g.connections.iter().filter(|c| c.from == *id).map(|c| (c.to, c.to_port.clone())).collect();
-            g.remove_nodes(&[*id]);
-            if let Some((from, port)) = src {
-                for (to, to_port) in outs {
-                    let _ = g.connect(from, &port, to, &to_port);
+        let ports_by_id: Vec<Vec<String>> = ids.iter().map(|id| s.input_ports(*id)).collect();
+        let id_set: std::collections::BTreeSet<NodeId> = ids.iter().cloned().collect();
+        let (sources, outs) = {
+            let graph = s.graph()?;
+            let mut sources: BTreeMap<NodeId, Option<(NodeId, String)>> = BTreeMap::new();
+            for (id, ports) in ids.iter().zip(&ports_by_id) {
+                // Port order comes from the node definition, not the order its wires were created.
+                let node = graph.node(*id).ok();
+                let port = ports.iter().find(|port| !node.is_some_and(|node| node.input_values.contains_key(*port)));
+                let entry = port.and_then(|port| graph.input_of(*id, port)).map(|c| (c.from, c.from_port.clone()));
+                sources.insert(*id, entry);
+            }
+            let outs: BTreeMap<NodeId, Vec<(NodeId, String)>> =
+                graph.connections.iter().filter(|c| id_set.contains(&c.from)).map(|c| (c.from, (c.to, c.to_port.clone()))).fold(
+                    BTreeMap::new(),
+                    |mut map, (from, to)| {
+                        map.entry(from).or_default().push(to);
+                        map
+                    },
+                );
+            (sources, outs)
+        };
+        // Only deleted nodes feeding a surviving target need a resolved source.
+        let needed: std::collections::BTreeSet<NodeId> =
+            outs.iter().filter(|(_, tos)| tos.iter().any(|(to, _)| !id_set.contains(to))).map(|(from, _)| *from).collect();
+        let mut resolved: BTreeMap<NodeId, Option<(NodeId, String)>> = BTreeMap::new();
+        for id in &needed {
+            if resolved.contains_key(id) {
+                continue;
+            }
+            let mut path: Vec<NodeId> = Vec::new();
+            let mut seen: std::collections::BTreeSet<NodeId> = std::collections::BTreeSet::new();
+            let mut current = sources.get(id).cloned().flatten();
+            let terminal: Option<(NodeId, String)> = loop {
+                match current {
+                    None => break None,
+                    Some((from, port)) if !id_set.contains(&from) => break Some((from, port)),
+                    Some((from, _)) => {
+                        if let Some(r) = resolved.get(&from) {
+                            break r.clone();
+                        }
+                        if !seen.insert(from) {
+                            break None;
+                        }
+                        path.push(from);
+                        current = sources.get(&from).cloned().flatten();
+                    }
                 }
+            };
+            resolved.insert(*id, terminal.clone());
+            for node in path {
+                resolved.insert(node, terminal.clone());
             }
         }
-        s.selection.retain(|i| !ids.contains(i));
+        let mut surviving_connections: Vec<Connection> =
+            s.graph()?.connections.iter().filter(|c| !id_set.contains(&c.from) && !id_set.contains(&c.to)).cloned().collect();
+
+        // Stage each replacement before validating it, so dynamic numbered
+        // destination ports (recomputed from connections) survive: the
+        // original deleted -> target wire is retargeted to the resolved
+        // surviving source first, keeping the slot visible to the validator.
+        // Normal endpoint and type checks still run via validate_connection;
+        // invalid replacements are reverted and skipped.
+        for from in outs.keys() {
+            for (to, to_port) in &outs[from] {
+                if id_set.contains(to) {
+                    continue;
+                }
+                let Some((source, port)) = resolved.get(from).cloned().flatten() else {
+                    continue;
+                };
+                if would_create_cycle(&surviving_connections, source, *to) {
+                    continue;
+                }
+
+                let wire_idx = {
+                    let g = s.graph()?;
+                    g.connections.iter().position(|c| id_set.contains(&c.from) && c.to == *to && c.to_port == *to_port)
+                };
+
+                let graph_len = s.graph().map(|g| g.connections.len()).unwrap_or(0);
+                let in_place = wire_idx.filter(|idx| *idx < graph_len);
+
+                let saved_selection = s.selection.clone();
+                s.selection.clear();
+                let valid = crate::connection_commands::validate_connection(s, source, &port, *to, to_port).is_ok();
+                s.selection = saved_selection;
+
+                if !valid {
+                    continue;
+                }
+
+                // Apply the replacement only after validation has used the
+                // pre-deletion destination port.
+                if let Some(idx) = in_place {
+                    let g = s.graph_mut()?;
+                    if let Some(connection) = g.connections.get_mut(idx) {
+                        connection.from = source;
+                        connection.from_port = port.clone();
+                    }
+                } else {
+                    let g = s.graph_mut()?;
+                    g.connections.push(Connection { from: source, from_port: port.clone(), to: *to, to_port: to_port.clone() });
+                }
+
+                surviving_connections.push(Connection { from: source, from_port: port.clone(), to: *to, to_port: to_port.clone() });
+            }
+        }
+
+        let graph = s.graph_mut()?;
+        graph.remove_nodes(&ids);
+        s.selection.retain(|i| !id_set.contains(i));
         Ok(json!({"deleted": ids.len()}))
     })
 }
