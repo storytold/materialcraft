@@ -18,8 +18,15 @@ fn system_variables_use_caller_scope_even_when_a_local_name_exists() {
         ("$depthpow2".into(), Value::Float(0.125)),
         ("$number".into(), Value::Float(7.0)),
     ]);
-    let mut context =
-        EvaluationContext { scope: FunctionScope::Node, position: [0.25, 0.75], size: [256.0, 128.0], images: &[], tile: true, variables: &variables };
+    let mut context = EvaluationContext {
+        image_formats: &[],
+        scope: FunctionScope::Node,
+        position: [0.25, 0.75],
+        size: [256.0, 128.0],
+        images: &[],
+        tile: true,
+        variables: &variables,
+    };
 
     for scope in [FunctionScope::Node, FunctionScope::PixelProcessor, FunctionScope::FxMap] {
         context.scope = scope;
@@ -43,6 +50,26 @@ fn system_variables_use_caller_scope_even_when_a_local_name_exists() {
 }
 
 #[test]
+fn a_property_integer_getter_reads_zero_for_an_unbound_reserved_name() {
+    let variables = BTreeMap::new();
+    let context = EvaluationContext {
+        scope: FunctionScope::Node,
+        position: [0.5; 2],
+        size: [8.0, 4.0],
+        images: &[],
+        image_formats: &[],
+        tile: true,
+        variables: &variables,
+    };
+    for name in ["$randomseed", "$missing_count"] {
+        assert_eq!(evaluate("get_integer1", name, &context).unwrap(), Value::Int(0));
+        assert_eq!(evaluate("isdefined", name, &context).unwrap(), Value::Bool(false));
+    }
+    assert_eq!(evaluate("get_integer1", "$tiling", &context).unwrap(), Value::Int(3));
+    assert!(evaluate("get_integer1", "$depth", &context).is_err());
+}
+
+#[test]
 fn system_values_are_typed_finite_and_read_only() {
     for (name, operation, value) in [
         ("$time", "get_float1", Value::Float(f32::NAN)),
@@ -52,13 +79,29 @@ fn system_values_are_typed_finite_and_read_only() {
         ("$tiling", "get_integer1", Value::Int(4)),
     ] {
         let variables = BTreeMap::from([(name.into(), value)]);
-        let context = EvaluationContext { scope: FunctionScope::Node, position: [0.0; 2], size: [16.0; 2], images: &[], tile: true, variables: &variables };
+        let context = EvaluationContext {
+            image_formats: &[],
+            scope: FunctionScope::Node,
+            position: [0.0; 2],
+            size: [16.0; 2],
+            images: &[],
+            tile: true,
+            variables: &variables,
+        };
 
         assert!(evaluate(operation, name, &context).is_err(), "{name}");
     }
 
     let variables = BTreeMap::new();
-    let context = EvaluationContext { scope: FunctionScope::Node, position: [0.0; 2], size: [16.0; 2], images: &[], tile: true, variables: &variables };
+    let context = EvaluationContext {
+        image_formats: &[],
+        scope: FunctionScope::Node,
+        position: [0.0; 2],
+        size: [16.0; 2],
+        images: &[],
+        tile: true,
+        variables: &variables,
+    };
     let mut graph = FunctionGraph::default();
     let value = graph.add_constant(Value::Float(9.0));
     graph.output = Some(graph.add("set", &[value], Some(Value::Text("$time".into()))));

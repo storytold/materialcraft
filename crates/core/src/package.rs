@@ -7,7 +7,7 @@ pub const PACKAGE_EXT: &str = "sbs";
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Package {
     pub name: String,
-    /// Baseline version read from SBS. Unversioned packages use the current release on first write.
+    /// Original SBS format header. The writer chooses its schema revision for new packages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format_version: Option<String>,
     pub graphs: Vec<Graph>,

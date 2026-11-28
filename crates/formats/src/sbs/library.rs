@@ -47,6 +47,37 @@ pub fn contains_file(path: &std::path::Path) -> bool {
     path.parent().and_then(|parent| parent.canonicalize().ok()).is_some_and(|parent| parent.starts_with(root))
 }
 
+/// Return a portable package link for an unchanged bundled file beneath the canonical library root.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn bundled_package_uri(canonical_root: &std::path::Path, path: &std::path::Path) -> Option<String> {
+    use std::io::Read;
+
+    if !path.is_absolute() {
+        return None;
+    }
+    let file = path.canonicalize().ok()?;
+    let relative = file.strip_prefix(canonical_root).ok()?.to_str()?.replace('\\', "/");
+    let uri = format!("sbs://{relative}");
+    relative_path(&uri).ok()?;
+    BUNDLED.binary_search(&uri.as_str()).ok()?;
+
+    // A locally edited package at a shipped path must keep pointing to those edits.
+    let mut file = std::fs::File::open(file).ok()?;
+    let expected = read_embedded(&relative).ok()?;
+    if file.metadata().ok()?.len() != expected.len() as u64 {
+        return None;
+    }
+    let mut buffer = [0; 8192];
+    for chunk in expected.chunks(buffer.len()) {
+        let actual = buffer.get_mut(..chunk.len())?;
+        file.read_exact(actual).ok()?;
+        if actual != chunk {
+            return None;
+        }
+    }
+    (file.read(&mut buffer).ok()? == 0).then_some(uri)
+}
+
 /// Read a validated library alias from the configured directory or the embedded fallback.
 pub fn read(uri: &str) -> Result<Vec<u8>, String> {
     let relative = relative_path(uri)?;

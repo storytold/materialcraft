@@ -5,6 +5,20 @@ use materialcraft_engine::{
 };
 use serde_json::json;
 
+#[test]
+fn graph_parent_dimensions_round_up_and_include_a_single_texel() {
+    let mut session = Session::new(Package::new("Small"));
+    execute(&mut session, "file.new", &json!({"template": "empty", "size": 3})).unwrap();
+    assert_eq!(session.graph().unwrap().size_px(), [4, 4]);
+    for (requested, expected) in [([1, 1], [1, 1]), ([1, 8], [1, 8]), ([3, 5], [4, 8]), ([6, 9], [8, 16]), ([17, 31], [32, 32]), ([0, u64::MAX], [1, 8192])] {
+        let result = execute(&mut session, "graph.size", &json!({"width": requested[0], "height": requested[1]})).unwrap();
+        assert_eq!(result, json!({"width": expected[0], "height": expected[1]}));
+        assert_eq!(session.graph().unwrap().size_px(), expected);
+    }
+    execute(&mut session, "graph.size", &json!({"log2": [0, 1u64 << 32]})).unwrap();
+    assert_eq!(session.graph().unwrap().size_px(), [1, 8192]);
+}
+
 #[path = "graph_property/history_preferences.rs"]
 mod history_preferences;
 
@@ -170,4 +184,15 @@ fn a_function_label_updates_instances_without_renaming_references() {
     let node = &reopened.pkg.graphs[1].function.as_ref().unwrap().nodes[0];
     assert_eq!(materialcraft_engine::nodes::function::node_label(node), "Readable label");
     assert_eq!(node.instance.as_ref().unwrap().graph, "Stable_identifier");
+}
+
+#[test]
+fn graph_seed_inheritance_can_be_edited_without_changing_the_offset() {
+    let mut session = materialcraft_engine::new_session();
+    execute(&mut session, "graph.seed", &json!({"seed": 17, "inheritance": "absolute"})).unwrap();
+    execute(&mut session, "graph.seed", &json!({"inheritance": "relativeToParent"})).unwrap();
+    let graph = session.graph().unwrap();
+    assert_eq!((graph.seed, graph.seed_mode), (17, materialcraft_engine::core::ParameterInheritance::RelativeToParent));
+    assert!(execute(&mut session, "graph.seed", &json!({"seed": 3, "inheritance": "unknown"})).is_err());
+    assert_eq!(session.graph().unwrap().seed, 17);
 }

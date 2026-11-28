@@ -14,7 +14,7 @@ use super::read_node::ReadNode;
 use super::sbs_value::{SbsValue, exposed_default, sbs_constant, to_natural_value, to_param_value};
 use super::type_code;
 use super::warnings::Warnings;
-use super::xml::{child_element, child_value, children_named, parse_floats};
+use super::xml::{child_element, child_value, children_named, parse_floats, string_parameter};
 use materialcraft_core::{
     BaseParameter, ComponentUsage, Connection, ExposedParameter, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, MISSING_NODE, Node, NodeId, OutputFormat, Package,
     ParameterInheritance, Resource, ResourceBytes, Value,
@@ -207,9 +207,19 @@ impl<'text> SbsReader<'text, '_> {
 
     pub(super) fn read_graph(&mut self, element: XmlNode<'_, 'text>, name: String) -> Graph {
         let mut graph = Graph::new(&name);
-        let base = read_base_params(child_element(element, "baseParameters"), self.warnings);
+        let mut base = read_base_params(child_element(element, "baseParameters"), self.warnings);
+        use materialcraft_core::{GraphSizeOffset, SizeMode};
+        graph.output_size_function = base.functions.remove(&BaseParameter::OutputSize);
+        match base.size_mode {
+            SizeMode::Absolute => graph.absolute_output_size = Some(base.size),
+            SizeMode::RelativeToParent => graph.relative_output_size = Some(GraphSizeOffset::Parent(base.size)),
+            SizeMode::RelativeToInput if base.size != [0; 2] => graph.relative_output_size = Some(GraphSizeOffset::Input(base.size)),
+            SizeMode::RelativeToInput => {}
+        }
         graph.format = if BaseParameter::Format.inheritance(&base) == ParameterInheritance::Absolute { base.format } else { OutputFormat::Inherit };
         graph.seed = base.seed;
+        graph.seed_mode = base.seed_mode;
+        graph.seed_function = base.functions.remove(&BaseParameter::RandomSeed);
         graph.pixel_ratio = base.pixel_ratio;
         graph.pixel_ratio_mode = base.pixel_ratio_mode;
         graph.tiling = base.tiling;
@@ -325,8 +335,12 @@ impl<'text> SbsReader<'text, '_> {
                 continue;
             }
 
-            let default = exposed_default(code, child_element(input, "defaultValue").and_then(sbs_constant).as_ref());
-            if child_value(input, "isConnectable") == Some("1") {
+            let default = exposed_default(
+                code,
+                child_element(input, "materialcraftDefault").or_else(|| child_element(input, "defaultValue")).and_then(sbs_constant).as_ref(),
+            );
+            let connectable = child_value(input, "isConnectable") == Some("1");
+            if connectable && !element.has_tag_name("function") {
                 image_inputs.insert(
                     child_value(input, "uid").unwrap_or("").to_string(),
                     InputBridge { identifier: id, type_code: code as u32, usage: component_usage::read(input), default },
@@ -353,6 +367,7 @@ impl<'text> SbsReader<'text, '_> {
                 label,
                 group,
                 default,
+                connectable,
                 min,
                 max,
                 options: Vec::new(),
@@ -470,6 +485,7 @@ impl<'text> SbsReader<'text, '_> {
             "compInputBridge" => {
                 let entry = child_value(implementation, "entry").unwrap_or("");
                 let input = image_inputs.get(entry);
+                let identifier = input.map_or("input", |input| input.identifier.as_str());
                 let code = input.map_or(1, |input| input.type_code);
                 let definition = match code {
                     1 => "input_color",
@@ -477,9 +493,14 @@ impl<'text> SbsReader<'text, '_> {
                     _ => "input_value",
                 };
 
+                if matches!(code, 1 | 2)
+                    && let Some(url) = string_parameter(implementation, "bitmapresourcepath")
+                {
+                    let resource = if url.is_empty() { None } else { self.resource_binding(url, &graph.name) };
+                    super::preview_binding::read_resource(graph, identifier, resource);
+                }
                 let (id, index, node) = push_node(graph, definition, pos);
                 if let Some(node) = node {
-                    let identifier = input.map_or("input", |input| input.identifier.as_str());
                     node.params.insert("identifier".into(), Value::Text(identifier.to_string()));
                     node.params.insert("usage".into(), Value::Enum(input.map_or(ComponentUsage::ANY_INDEX, |input| input.usage)));
                     if let Some(input) = input {
@@ -721,6 +742,16 @@ impl<'text> SbsReader<'text, '_> {
             }
 
             if let Some(&(_, mc_name)) = filter.params.iter().find(|(sbs, _)| *sbs == param_name) {
+                if filter.sbs == "grayscaleconversion" && mc_name == "weights" {
+                    if let Some(weights) = value {
+                        for (i, channel) in ["red", "green", "blue", "alpha"].into_iter().enumerate() {
+                            node.params.insert(channel.into(), Value::Float(weights.float(i)));
+                        }
+                    } else {
+                        self.set_param(node, mc_name, &Value::Float4([0.0; 4]), 0, *param, graph_name);
+                    }
+                    continue;
+                }
                 let Some(param_def) = def.param(mc_name) else { continue };
 
                 self.set_param(node, mc_name, &param_def.default, param_def.options.len(), *param, graph_name);
@@ -731,11 +762,6 @@ impl<'text> SbsReader<'text, '_> {
                 ("bitmap", "bitmapresourcepath", Some(SbsValue::Text(url))) | ("svg", "vectorresourcepath", Some(SbsValue::Text(url))) => {
                     if let Some(name) = self.resource_binding(&url, graph_name) {
                         node.params.insert("resource".into(), Value::Text(name));
-                    }
-                }
-                ("grayscaleconversion", "channelsweights", Some(weights)) => {
-                    for (i, channel) in ["red", "green", "blue", "alpha"].into_iter().enumerate() {
-                        node.params.insert(channel.into(), Value::Float(weights.float(i)));
                     }
                 }
                 _ if HANDLED_PARAMS.contains(&(filter.sbs, param_name)) => {}

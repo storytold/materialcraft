@@ -66,7 +66,8 @@ materialcraft-ui-egui = { path = "crates/ui-egui" }
 # external
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Preserve decimal parameter values before converting them to the graph's storage type.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10" # MIT OR Apache-2.0; stable content keys for persistent previews.
 glam = { version = "0.30", features = ["serde", "bytemuck"] }
 rayon = "1"
@@ -99,6 +100,11 @@ craft-behavior = { git = "https://github.com/storytold/craft-libs", rev = "d7010
 craft-host = { git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
 craft-theme = { git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
 craft-i18n = { git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
+craft-font-catalog = { git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c", default-features = false }
+harfrust = "0.13"
+read-fonts = { version = "0.43", default-features = false }
+unicode-bidi = "0.3.18"
+vello_common = { version = "0.2", default-features = false, features = ["std"] }
 # Keyboard bindings (chords, dispatch and display text): storytold/craft-libs, MIT OR Apache-2.0
 craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c", features = ["egui"] }
 # Native dialogs that do not block the event loop: storytold/craft-libs, MIT OR Apache-2.0

@@ -9,6 +9,58 @@ fn no_linked_files(_: &str) -> Option<Vec<u8>> {
 }
 
 #[test]
+fn connectable_function_argument_survives_save_and_reopen() {
+    let xml = br#"<package><content><function><identifier v="ReadAmount"/><uid v="1"/><type v="256"/>
+        <paraminputs><paraminput><identifier v="amount"/><uid v="2"/><isConnectable v="1"/>
+        <type v="256"/><defaultValue><constantValueFloat1 v=".1875"/></defaultValue></paraminput></paraminputs>
+        <paramValue><dynamicValue><rootnode v="3"/><paramNodes><paramNode><uid v="3"/><function v="get_float1"/>
+        <type v="256"/><funcDatas><funcData><name v="get"/><constantValue><constantValueString v="amount"/>
+        </constantValue></funcData></funcDatas></paramNode></paramNodes></dynamicValue></paramValue></function></content></package>"#;
+    let package = read_sbs(xml, "argument.sbs", &no_linked_files).unwrap().pkg;
+    let graph = &package.graphs[0];
+    assert_eq!(graph.input_value("amount"), Some(&Value::Float(0.1875)));
+    let saved = write_sbs(&package).unwrap();
+    let document = roxmltree::Document::parse(std::str::from_utf8(&saved).unwrap()).unwrap();
+    let argument = document.descendants().find(|node| node.has_tag_name("paraminput")).unwrap();
+    assert_eq!(super::xml::child_value(argument, "isConnectable"), Some("1"));
+    let reopened = read_sbs(&saved, "argument.sbs", &no_linked_files).unwrap().pkg;
+    assert_eq!(reopened.graphs[0].exposed, graph.exposed);
+}
+
+#[test]
+fn absolute_graph_output_size_survives_parent_size_changes_and_save() {
+    let xml = br#"<package><content><graph><identifier v="Fixed"/>
+        <baseParameters><parameter><name v="outputsize"/><relativeTo v="0"/>
+        <paramValue><constantValueInt2 v="6 5"/></paramValue></parameter></baseParameters>
+        <options><option><name v="defaultParentSize"/><value v="7x8"/></option></options>
+        </graph></content></package>"#;
+    let mut package = read_sbs(xml, "fixed.sbs", &no_linked_files).unwrap().pkg;
+    assert_eq!(package.graphs[0].size, [7, 8]);
+    assert_eq!(package.graphs[0].size_px(), [64, 32]);
+    package.graphs[0].size = [8, 7];
+    let saved = write_sbs(&package).unwrap();
+    let loaded = read_sbs(&saved, "fixed.sbs", &no_linked_files).unwrap().pkg;
+    assert_eq!(loaded.graphs[0].size, [8, 7]);
+    assert_eq!(loaded.graphs[0].size_px(), [64, 32]);
+}
+
+#[test]
+fn small_default_parent_sizes_round_trip_per_axis() {
+    for (width, height) in [(0, 0), (0, 3), (2, 0), (1, 1), (2, 3), (3, 3), (4, 2), (5, 4)] {
+        let xml = format!(
+            r#"<package><content><graph><identifier v="Small"/>
+            <options><option><name v="defaultParentSize"/><value v="{width}x{height}"/></option></options>
+            </graph></content></package>"#
+        );
+        let package = read_sbs(xml.as_bytes(), "small.sbs", &no_linked_files).unwrap().pkg;
+        assert_eq!(package.graphs[0].size, [width, height]);
+        let saved = write_sbs(&package).unwrap();
+        let loaded = read_sbs(&saved, "small.sbs", &no_linked_files).unwrap().pkg;
+        assert_eq!(loaded.graphs[0].size_px(), [1 << width, 1 << height]);
+    }
+}
+
+#[test]
 fn shuffle_roundtrip_preserves_signed_channel_selectors() {
     for selector in [-2_i32, -1, 8, 9, 16, 255] {
         let xml = format!(
@@ -100,38 +152,64 @@ fn sniffs_sbs() {
 }
 
 #[test]
-fn first_sbs_save_assigns_the_workspace_version_to_both_fields() {
+fn first_sbs_save_declares_the_graph_schema_and_current_updater() {
     let unversioned = read_sbs(b"<package><content/></package>", "unversioned.sbs", &no_linked_files).unwrap().pkg;
     for package in [Package::new("New file"), unversioned] {
         assert!(package.format_version.is_none());
 
         let text = String::from_utf8(write_sbs(&package).unwrap()).unwrap();
         let document = roxmltree::Document::parse(&text).unwrap();
-        for field in ["formatVersion", "updaterVersion"] {
-            assert_eq!(super::xml::child_value(document.root_element(), field), Some(env!("CARGO_PKG_VERSION")));
-        }
+        assert_eq!(super::xml::child_value(document.root_element(), "formatVersion"), Some("1.1.0.202401"));
+        assert_eq!(super::xml::child_value(document.root_element(), "updaterVersion"), Some(env!("CARGO_PKG_VERSION")));
     }
 }
 
 #[test]
-fn later_sbs_saves_keep_the_original_format_version_and_refresh_the_updater() {
-    for baseline in ["0.0.7", "1.1.0.202401"] {
+fn later_sbs_saves_upgrade_release_headers_and_keep_existing_schema_revisions() {
+    for (baseline, saved) in [("0.0.7", "1.1.0.202401"), ("0.1.3", "1.1.0.202401"), ("1.1.0.202401", "1.1.0.202401"), ("1.1.0.202502", "1.1.0.202502")] {
         let old = format!(r#"<package><identifier v="Older file"/><formatVersion v="{baseline}"/><updaterVersion v="0.0.1"/><content/></package>"#);
         let mut package = read_sbs(old.as_bytes(), "older.sbs", &no_linked_files).unwrap().pkg;
+        assert_eq!(package.format_version.as_deref(), Some(baseline));
         for _ in 0..3 {
-            assert_eq!(package.format_version.as_deref(), Some(baseline));
-
             // Snapshot/restore and subsequent saves must retain the baseline too
             package = serde_json::from_slice(&serde_json::to_vec(&package).unwrap()).unwrap();
             let bytes = write_sbs(&package).unwrap();
             let document = roxmltree::Document::parse(std::str::from_utf8(&bytes).unwrap()).unwrap();
 
-            assert_eq!(super::xml::child_value(document.root_element(), "formatVersion"), Some(baseline));
+            assert_eq!(super::xml::child_value(document.root_element(), "formatVersion"), Some(saved));
             assert_eq!(super::xml::child_value(document.root_element(), "updaterVersion"), Some(env!("CARGO_PKG_VERSION")));
 
             package = read_sbs(&bytes, "saved.sbs", &no_linked_files).unwrap().pkg;
+            assert_eq!(package.format_version.as_deref(), Some(saved));
         }
     }
+}
+
+#[test]
+fn graph_inputs_write_one_lane_integer_defaults() {
+    let source = br#"<package><content><graph><identifier v="settings"/><paraminputs>
+        <paraminput><identifier v="count"/><uid v="17"/><type v="16"/><defaultValue><constantValueInt32 v="-3"/></defaultValue></paraminput>
+        <paraminput><identifier v="mode"/><uid v="18"/><type v="16"/><defaultValue><constantValueInt1 v="37"/></defaultValue></paraminput>
+        </paraminputs></graph></content></package>"#;
+    let mut pkg = read_sbs(source, "settings.sbs", &no_linked_files).unwrap().pkg;
+    let graph = &mut pkg.graphs[0];
+    let mode = graph.exposed.iter_mut().find(|parameter| parameter.id == "mode").unwrap();
+    mode.default = Value::Enum(37);
+    let input = graph.add_node("input_value", [0.0, 0.0]);
+    let node = graph.node_mut(input).unwrap();
+    node.params.insert("identifier".into(), Value::Text("wire".into()));
+    node.params.insert("default".into(), Value::Int(16_777_217));
+    let bytes = write_sbs(&pkg).unwrap();
+    let doc = roxmltree::Document::parse(std::str::from_utf8(&bytes).unwrap()).unwrap();
+    let defaults: Vec<_> = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("paraminput"))
+        .map(|input| {
+            let default = super::xml::child_element(input, "defaultValue").unwrap().children().find(roxmltree::Node::is_element).unwrap();
+            (super::xml::child_value(input, "identifier").unwrap(), default.tag_name().name(), default.attribute("v").unwrap())
+        })
+        .collect();
+    assert_eq!(defaults, [("wire", "constantValueInt1", "16777217"), ("count", "constantValueInt1", "-3"), ("mode", "constantValueInt1", "37")]);
 }
 
 #[test]
@@ -348,6 +426,40 @@ fn native_function_fixture_retains_operation_types_and_ports() {
 }
 
 #[test]
+fn distance_metric_survives_a_package_round_trip() {
+    let mut package = Package::new("Distances");
+    let mut graph = Graph::new("Distances");
+    for metric in [1, 2] {
+        let node = graph.add_node("distance", [0.0; 2]);
+        graph.node_mut(node).unwrap().params.insert("metric".into(), Value::Enum(metric));
+    }
+    package.graphs.push(graph);
+    let bytes = write_sbs(&package).unwrap();
+    let document = roxmltree::Document::parse(std::str::from_utf8(&bytes).unwrap()).unwrap();
+    assert_eq!(document.descendants().filter(|n| n.has_tag_name("name") && n.attribute("v") == Some("distancemode")).count(), 2);
+    let read = read_sbs(&bytes, "distances.sbs", &no_linked_files).unwrap();
+    let metrics: Vec<_> = read.pkg.graphs[0].nodes.iter().filter_map(|n| n.params.get("metric").and_then(Value::as_i32)).collect();
+    assert_eq!(metrics, [1, 2]);
+}
+
+#[test]
+fn distance_preserves_declared_grayscale_and_color_outputs_when_the_switch_is_omitted() {
+    let xml = br#"<package><content><graph><identifier v="Distance outputs"/><compNodes>
+        <compNode><uid v="10"/><compOutputs><compOutput><uid v="11"/><comptype v="1"/></compOutput></compOutputs>
+        <compImplementation><compFilter><filter v="distance"/></compFilter></compImplementation></compNode>
+        <compNode><uid v="20"/><compOutputs><compOutput><uid v="21"/><comptype v="2"/></compOutput></compOutputs>
+        <compImplementation><compFilter><filter v="distance"/></compFilter></compImplementation></compNode>
+        </compNodes></graph></content></package>"#;
+    let loaded = read_sbs(xml, "distances.sbs", &no_linked_files).unwrap().pkg;
+    let saved = write_sbs(&loaded).unwrap();
+    let again = read_sbs(&saved, "distances.sbs", &no_linked_files).unwrap().pkg;
+    for package in [&loaded, &again] {
+        let colors: Vec<_> = package.graphs[0].nodes.iter().filter_map(|node| node.params.get("color_mode").and_then(Value::as_bool)).collect();
+        assert_eq!(colors, [true, false]);
+    }
+}
+
+#[test]
 fn image_output_types_follow_color_mode_and_blended_inputs() {
     let mut package = Package::new("Channels");
     let mut graph = Graph::new("Channels");
@@ -456,6 +568,94 @@ fn input_usage_defaults_and_unknown_metadata_stay_unclassified() {
         for node in &restored.pkg.graphs[0].nodes {
             assert_eq!(node.params.get("usage"), Some(&Value::Enum(ComponentUsage::ANY_INDEX)));
         }
+    }
+}
+
+#[test]
+fn graph_seed_inheritance_survives_sbs_saving() {
+    for mode in [None, Some(0), Some(1), Some(2)] {
+        for seed in [0, 5, -3] {
+            if mode.is_none() && seed != 0 {
+                continue;
+            }
+            let parameter = mode.map_or_else(String::new, |mode| {
+                format!(r#"<parameter><name v="randomseed"/><relativeTo v="{mode}"/><paramValue><constantValueInt32 v="{seed}"/></paramValue></parameter>"#)
+            });
+            let xml = format!(r#"<package><content><graph><identifier v="Field"/><baseParameters>{parameter}</baseParameters></graph></content></package>"#);
+            let package = read_sbs(xml.as_bytes(), "field.sbs", &no_linked_files).unwrap().pkg;
+            let bytes = write_sbs(&package).unwrap();
+            let text = std::str::from_utf8(&bytes).unwrap();
+            let document = roxmltree::Document::parse(text).unwrap();
+            let base = document.descendants().find(|n| n.has_tag_name("baseParameters")).unwrap();
+            let saved = super::base_parameters::read_base_params(Some(base), &mut Default::default());
+            use materialcraft_core::ParameterInheritance::{Absolute, RelativeToInput, RelativeToParent};
+            let expected = match mode {
+                Some(0) => Absolute,
+                Some(1) => RelativeToParent,
+                _ => RelativeToInput,
+            };
+            assert_eq!((saved.seed_mode, saved.seed), (expected, seed), "source {mode:?} {seed}");
+        }
+    }
+}
+
+#[test]
+fn graph_seed_functions_round_trip_with_their_inheritance() {
+    use materialcraft_core::BaseParameter;
+    let xml = r#"<package><content><graph><identifier v="Field"/><baseParameters>
+      <parameter><name v="randomseed"/><relativeTo v="1"/><paramValue><dynamicValue>
+        <rootnode v="21"/><paramNodes><paramNode><uid v="21"/><function v="const_int1"/><type v="16"/>
+        <funcDatas><funcData><name v="const_int1"/><constantValue><constantValueInt1 v="5"/></constantValue></funcData></funcDatas>
+        </paramNode></paramNodes></dynamicValue></paramValue></parameter></baseParameters></graph></content></package>"#;
+    let package = read_sbs(xml.as_bytes(), "seed.sbs", &no_linked_files).unwrap().pkg;
+    let saved = write_sbs(&package).unwrap();
+    let document = roxmltree::Document::parse(std::str::from_utf8(&saved).unwrap()).unwrap();
+    let element = document.descendants().find(|n| n.has_tag_name("baseParameters")).unwrap();
+    let base = super::base_parameters::read_base_params(Some(element), &mut Default::default());
+    assert_eq!(base.seed_mode, materialcraft_core::ParameterInheritance::RelativeToParent);
+    let function = base.functions.get(&BaseParameter::RandomSeed).expect("the saved seed has its authored function");
+    assert_eq!(function.node(function.output.unwrap()).unwrap().value, Some(materialcraft_core::Value::Int(5)));
+    assert_eq!(read_sbs(&saved, "copy.sbs", &no_linked_files).unwrap().pkg.graphs[0].functions().count(), 1);
+}
+
+#[test]
+fn relative_graph_size_offsets_keep_their_axes_and_inheritance_on_save() {
+    for (mode, axes) in [(1, [-1, 1]), (2, [1, -1]), (1, [0, 0]), (2, [-6, 0])] {
+        let [x, y] = axes;
+        let xml = format!(
+            r#"<package><content><graph><identifier v="Field"/><baseParameters><parameter><name v="outputsize"/><relativeTo v="{mode}"/><paramValue><constantValueInt2 v="{x} {y}"/></paramValue></parameter></baseParameters></graph></content></package>"#
+        );
+        let pkg = read_sbs(xml.as_bytes(), "field.sbs", &no_linked_files).unwrap().pkg;
+        let saved = write_sbs(&pkg).unwrap();
+        let doc = roxmltree::Document::parse(std::str::from_utf8(&saved).unwrap()).unwrap();
+        let element = doc.descendants().find(|n| n.has_tag_name("baseParameters")).unwrap();
+        let base = super::base_parameters::read_base_params(Some(element), &mut Default::default());
+        let expected = if mode == 1 { materialcraft_core::SizeMode::RelativeToParent } else { materialcraft_core::SizeMode::RelativeToInput };
+        assert_eq!((base.size_mode, base.size), (expected, axes));
+        assert_eq!(read_sbs(&saved, "copy.sbs", &no_linked_files).unwrap().pkg.graphs[0].size_px(), pkg.graphs[0].size_px());
+    }
+}
+
+#[test]
+fn computed_graph_output_sizes_round_trip_with_their_inheritance() {
+    use materialcraft_core::{BaseParameter, SizeMode, Value};
+    for (raw, expected) in [(0, SizeMode::Absolute), (1, SizeMode::RelativeToParent), (2, SizeMode::RelativeToInput)] {
+        let xml = format!(
+            r#"<package><content><graph><identifier v="Dimensions"/><baseParameters>
+          <parameter><name v="outputsize"/><relativeTo v="{raw}"/><paramValue><dynamicValue>
+            <rootnode v="41"/><paramNodes><paramNode><uid v="41"/><function v="const_int2"/><type v="32"/>
+            <funcDatas><funcData><name v="const_int2"/><constantValue><constantValueInt2 v="-1 1"/></constantValue></funcData></funcDatas>
+            </paramNode></paramNodes></dynamicValue></paramValue></parameter></baseParameters></graph></content></package>"#
+        );
+        let package = read_sbs(xml.as_bytes(), "dimensions.sbs", &no_linked_files).unwrap().pkg;
+        let saved = write_sbs(&package).unwrap();
+        let document = roxmltree::Document::parse(std::str::from_utf8(&saved).unwrap()).unwrap();
+        let element = document.descendants().find(|n| n.has_tag_name("baseParameters")).unwrap();
+        let base = super::base_parameters::read_base_params(Some(element), &mut Default::default());
+        let function = base.functions.get(&BaseParameter::OutputSize).expect("the saved size has its authored function");
+        assert_eq!(base.size_mode, expected);
+        assert_eq!(function.node(function.output.unwrap()).unwrap().value, Some(Value::Int2([-1, 1])));
+        assert_eq!(read_sbs(&saved, "copy.sbs", &no_linked_files).unwrap().pkg.graphs[0].functions().count(), 1);
     }
 }
 

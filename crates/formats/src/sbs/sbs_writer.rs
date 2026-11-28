@@ -5,13 +5,15 @@ use super::constant::NODE_HALF_SIZE;
 use super::filter_map::filter_by_def;
 use super::function_graph;
 use super::node_identifiers::NodeIdentifiers;
-use super::node_parameter::{param_xml, special_filter_params_xml, text_param};
+use super::node_parameter::{param_xml, resource_parameter_xml, special_filter_params_xml, text_param};
 use super::output::output_type;
-use super::sbs_value::{constant_xml, exposed_type_code};
+use super::sbs_value::{constant_xml, exposed_type_code, input_default_xml};
 use super::type_code;
 use super::xml::{format_float, is_parameters_element, xml_escape};
 use crate::{FormatError, Result};
-use materialcraft_core::{ComponentUsage, Connection, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, MISSING_NODE, Node, NodeId, Package, Value, missing_ports};
+use materialcraft_core::{
+    BaseParameter, ComponentUsage, Connection, Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, MISSING_NODE, Node, NodeId, Package, Value, missing_ports,
+};
 use materialcraft_nodes::find;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
@@ -145,13 +147,21 @@ impl SbsWriter {
 
             out.push_str("<compImplementation>");
             let ids = NodeIdentifiers { input_entry: input_entries.get(&node.id).copied(), graph_output: output_uids.get(&node.id).copied(), self_uid };
-            self.write_implementation(out, node, outputs, ids, pkg)?;
+            self.write_implementation(out, node, outputs, ids, graph, pkg)?;
             out.push_str("</compImplementation></compNode>");
         }
 
         out.push_str("</compNodes><baseParameters>");
-        out.push_str(&param_xml("randomseed", &Value::Int(graph.seed)).unwrap_or_default());
+        let (size_mode, size) = graph.output_size_setting();
         let base = materialcraft_core::BaseParameters {
+            size_mode,
+            size,
+            seed: graph.seed,
+            seed_mode: graph.seed_mode,
+            functions: [(BaseParameter::OutputSize, &graph.output_size_function), (BaseParameter::RandomSeed, &graph.seed_function)]
+                .into_iter()
+                .filter_map(|(parameter, function)| function.clone().map(|function| (parameter, function)))
+                .collect(),
             format: graph.format,
             format_mode: materialcraft_core::ParameterInheritance::Absolute,
             pixel_ratio: graph.pixel_ratio,
@@ -195,7 +205,7 @@ impl SbsWriter {
             } else {
                 value
             };
-            let default = constant_xml(value).unwrap_or_default();
+            let default = input_default_xml(value).unwrap_or_default();
             let code = match node.def.as_str() {
                 "input_value" => exposed_type_code(value),
                 "input_grayscale" => type_code::GRAY_IMAGE,
@@ -215,12 +225,14 @@ impl SbsWriter {
         for exposed in &graph.exposed {
             let uid = self.next_uid();
             exposed_uids.insert(exposed.id.clone(), uid);
-            let default = constant_xml(&exposed.default).unwrap_or_else(|| "<constantValueFloat1 v=\"0\"/>".into());
+            let default =
+                input_default_xml(graph.inputs.get(&exposed.id).unwrap_or(&exposed.default)).unwrap_or_else(|| "<constantValueFloat1 v=\"0\"/>".into());
             let group = if exposed.group.is_empty() { String::new() } else { format!("<group v=\"{}\"/>", xml_escape(&exposed.group)) };
+            let connection = if graph.function.is_some() && exposed.connectable { "<isConnectable v=\"1\"/>" } else { "" };
 
             let _ = write!(
                 out,
-                "<paraminput><identifier v=\"{}\"/><uid v=\"{}\"/><attributes><label v=\"{}\"/><description v=\"{}\"/></attributes><type v=\"{}\"/><defaultValue>{default}</defaultValue>",
+                "<paraminput><identifier v=\"{}\"/><uid v=\"{}\"/>{connection}<attributes><label v=\"{}\"/><description v=\"{}\"/></attributes><type v=\"{}\"/><defaultValue>{default}</defaultValue>",
                 xml_escape(&exposed.id),
                 uid,
                 xml_escape(&exposed.label),
@@ -229,6 +241,11 @@ impl SbsWriter {
             );
             if let Some(current) = graph.inputs.get(&exposed.id).and_then(constant_xml) {
                 let _ = write!(out, "<materialcraftValue>{current}</materialcraftValue>");
+                // SBS consumers use the current value as the declared default. Retain the
+                // authored reset value separately for our project and portable-material round trip.
+                if let Some(authored) = input_default_xml(&exposed.default) {
+                    let _ = write!(out, "<materialcraftDefault>{authored}</materialcraftDefault>");
+                }
             }
             super::parameter_widget::write(out, exposed);
             let _ = write!(out, "{group}</paraminput>");
@@ -271,6 +288,7 @@ impl SbsWriter {
         node: &Node,
         outputs: &[(String, u32, u64)],
         ids: NodeIdentifiers,
+        graph: &Graph,
         package: &Package,
     ) -> Result<()> {
         // The reader assigns a native default when a processor omits format
@@ -281,7 +299,14 @@ impl SbsWriter {
                 let _ = write!(out, "<compOutputBridge><output v=\"{}\"/></compOutputBridge>", ids.graph_output.unwrap_or(0));
             }
             "input_color" | "input_grayscale" | "input_value" => {
-                let _ = write!(out, "<compInputBridge><entry v=\"{}\"/><parameters>{base}</parameters></compInputBridge>", ids.input_entry.unwrap_or(0));
+                let _ = write!(out, "<compInputBridge><entry v=\"{}\"/><parameters>{base}", ids.input_entry.unwrap_or(0));
+                if node.def != "input_value"
+                    && let Some(name) = graph.input_images.get(&text_param(node, "identifier", "input"))
+                    && !name.is_empty()
+                {
+                    out.push_str(&resource_parameter_xml("bitmapresourcepath", name, ids.self_uid, package));
+                }
+                out.push_str("</parameters></compInputBridge>");
             }
             "graph_instance" => {
                 let sub_graph = node.instance.as_ref().map(|instance| instance.graph.clone()).unwrap_or_else(|| text_param(node, "graph", ""));
@@ -339,7 +364,10 @@ impl SbsWriter {
             def => match (filter_by_def(def), find(def)) {
                 (Some(filter), Some(catalog_def)) => {
                     let _ = write!(out, "<compFilter><filter v=\"{}\"/><parameters>{base}", filter.sbs);
-                    let value_of = |id: &str| node.params.get(id).or_else(|| catalog_def.param(id).map(|p| &p.default));
+                    let stored = |id: &str| node.params.get(id).or_else(|| catalog_def.param(id).map(|p| &p.default));
+                    let weights = (filter.sbs == "grayscaleconversion")
+                        .then(|| Value::Float4(["red", "green", "blue", "alpha"].map(|id| stored(id).and_then(Value::as_f32).unwrap_or(0.0))));
+                    let value_of = |id: &str| stored(id).or_else(|| if id == "weights" { weights.as_ref() } else { None });
                     for (sbs_name, mc_name) in filter.params {
                         let Some(value) = value_of(mc_name) else { continue };
 
@@ -379,7 +407,7 @@ impl SbsWriter {
                     out.push_str("</parameters>");
                     for parameter in ["curve", "gradient"] {
                         if let Some(value) = value_of(parameter) {
-                            out.push_str(&super::parameter_array::write(value, value_of("color_mode").and_then(Value::as_bool).unwrap_or(true), self));
+                            out.push_str(&super::parameter_array::write(value, self));
                         }
                     }
                     if let Some(Value::PatternGraph(graph)) = value_of("pattern") {

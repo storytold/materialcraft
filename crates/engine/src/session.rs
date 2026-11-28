@@ -1,6 +1,7 @@
 //! The session: the open package, the graph being edited, selection, views, snapshot undo and
 //! the cook cache.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use craft_texture::Image;
@@ -59,6 +60,8 @@ pub struct Session {
     pub pkg: Package,
     /// Where the package was opened from or last saved to.
     pub path: Option<String>,
+    /// Original link base when import warnings require a new save destination.
+    pub(crate) recovery_origin: Option<String>,
     /// Index of the graph being edited.
     pub graph: usize,
     pub selection: Vec<NodeId>,
@@ -138,6 +141,7 @@ impl Session {
             material_cooked: std::collections::BTreeMap::new(),
             pkg,
             path: None,
+            recovery_origin: None,
             graph: 0,
             selection: Vec::new(),
             annotation_selection: None,
@@ -251,6 +255,7 @@ impl Session {
         if let Some((snap, edited)) = self.group.take()
             && edited
         {
+            self.reset_changed_sampling(&snap.pkg);
             self.history.record(snap, None, self.history_prefs.undo_limit as usize);
             self.refresh_links();
         }
@@ -295,6 +300,7 @@ impl Session {
                 if let Some((_, edited)) = self.group.as_mut() {
                     *edited = true;
                 } else {
+                    self.reset_changed_sampling(&snapshot.pkg);
                     self.history.record(snapshot, key, self.history_prefs.undo_limit as usize);
                 }
                 self.changed();
@@ -353,6 +359,7 @@ impl Session {
 
         let s = self.history.undo(self.snapshot(""), self.history_prefs.undo_limit as usize)?;
         let label = s.label.clone();
+        self.reset_changed_sampling(&s.pkg);
         self.restore(s);
         self.finish_edit();
         self.dirty = true;
@@ -368,6 +375,7 @@ impl Session {
 
         let s = self.history.redo(self.snapshot(""), self.history_prefs.undo_limit as usize)?;
         let label = s.label.clone();
+        self.reset_changed_sampling(&s.pkg);
         self.restore(s);
         self.finish_edit();
         self.dirty = true;
@@ -396,14 +404,14 @@ impl Session {
         let hashes = resources.iter().map(|(_, bytes)| bytes.content_hash()).collect();
         decoded.lock().unwrap_or_else(PoisonError::into_inner).retain_resources(&hashes);
         move |requested: &str| {
-            let (name, linear) = craft_texture::split_resource_key(requested);
+            let (name, space) = materialcraft_nodes::BitmapColorSpace::split_resource_key(requested);
             let (_, bytes) = resources.iter().find(|(name_candidate, _)| name_candidate == name)?;
-            let key = (bytes.content_hash(), linear);
+            let key = (bytes.content_hash(), space);
             if let Some(image) = decoded.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
                 return Some(image);
             }
 
-            let image = materialcraft_formats::decode(bytes.as_slice(), linear).ok()?;
+            let image = materialcraft_formats::decode_with_color_space(bytes.as_slice(), space).ok()?;
             decoded.lock().unwrap_or_else(PoisonError::into_inner).insert(key, image.clone());
             Some(image)
         }
@@ -420,13 +428,40 @@ impl Session {
         self.decoded = Arc::new(Mutex::new(crate::decoded_images::DecodedImages::new(16 << 20)));
     }
 
+    // An extent or seed edit releases acquired input textures even if another edit restores
+    // the original value before the next preview. A grouped edit publishes only once.
+    fn reset_changed_sampling(&mut self, other: &Package) {
+        let context = |package: &Package, index: usize| package.graphs.get(index).map(|g| (g.size, g.seed, g.seed_mode));
+        let reset = |index, cooked: &mut Cooked| {
+            if cooked.preview_sampling.is_some() && context(&self.pkg, index) != context(other, index) {
+                cooked.preview_sampling = None;
+            }
+        };
+        if let Some(index) = self.cooked_graph {
+            reset(index, &mut self.cooked);
+        }
+        for (&index, cooked) in &mut self.material_cooked {
+            reset(index, cooked);
+        }
+    }
+
+    /// Take the sampling history from published graph previews before starting another cook.
+    pub fn preview_sampling(&self) -> BTreeMap<usize, Arc<materialcraft_eval::PreviewSampling>> {
+        self.cooked_graph
+            .into_iter()
+            .map(|graph| (graph, &self.cooked))
+            .chain(self.material_cooked.iter().map(|(&graph, cooked)| (graph, cooked)))
+            .filter_map(|(graph, cooked)| cooked.preview_sampling.clone().map(|sampling| (graph, sampling)))
+            .collect()
+    }
+
     /// Cook the open graph now (at the preview size), on this thread.
     pub fn cook(&mut self) -> &Cooked {
         let dec = self.resource_decoder();
         let mut opts = Options::new(&dec);
         opts.environment = self.environment;
         opts.max_size = self.preview_size;
-        let cooked = crate::PreviewCook::run(&self.pkg, self.graph, &self.material_preview.graphs(), &opts, &self.cache);
+        let cooked = crate::PreviewCook::with_previous(&self.pkg, self.graph, &self.material_preview.graphs(), &opts, &self.cache, &self.preview_sampling());
         self.accept_preview(cooked);
         self.dirty = false;
         self.cook_epoch = self.cook_epoch.wrapping_add(1);

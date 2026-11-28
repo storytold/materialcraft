@@ -18,7 +18,15 @@ fn session() -> Session {
 }
 
 fn value(function: &FunctionGraph) -> Value {
-    let context = EvaluationContext { scope: Default::default(), position: [0.5; 2], size: [16.0; 2], images: &[], tile: true, variables: &BTreeMap::new() };
+    let context = EvaluationContext {
+        image_formats: &[],
+        scope: Default::default(),
+        position: [0.5; 2],
+        size: [16.0; 2],
+        images: &[],
+        tile: true,
+        variables: &BTreeMap::new(),
+    };
     function::compile(function, 0).unwrap().evaluate(&context, &mut EvaluationState::default()).unwrap()
 }
 
@@ -233,8 +241,15 @@ fn supplied_functions_evaluate_before_and_after_save() {
             if graph.name == "compute_total_number" {
                 variables.insert("render_region".into(), Value::Float4([-0.5, 0.5, -0.5, 0.5]));
             }
-            let context =
-                EvaluationContext { scope: Default::default(), position: [0.5; 2], size: [256.0, 128.0], images: &[], tile: true, variables: &variables };
+            let context = EvaluationContext {
+                image_formats: &[],
+                scope: Default::default(),
+                position: [0.5; 2],
+                size: [256.0, 128.0],
+                images: &[],
+                tile: true,
+                variables: &variables,
+            };
             match source.evaluate(&context, &mut EvaluationState::default()) {
                 Ok(expected) => {
                     assert_eq!(saved.evaluate(&context, &mut EvaluationState::default()).unwrap(), expected, "{}", graph.sbs_path());

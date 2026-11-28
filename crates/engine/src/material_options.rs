@@ -1,6 +1,7 @@
 use craft_texture::Image;
-use materialcraft_core::{BaseParameter, Graph, SizeMode, Value};
+use materialcraft_core::{BaseParameter, Graph, OutputFormat, SizeMode, Value};
 use materialcraft_eval::{Cooked, Options};
+use materialcraft_nodes::BitmapColorSpace;
 use serde_json::Value as J;
 use std::{borrow::Cow, collections::BTreeMap};
 
@@ -13,6 +14,8 @@ pub struct MaterialOptions {
     pub size: Option<ExportSize>,
     pub values: BTreeMap<String, Value>,
     pub inputs: BTreeMap<String, Image>,
+    /// Known sample depth of each bound file before decoding to linear floats.
+    pub input_formats: BTreeMap<String, OutputFormat>,
 }
 
 impl MaterialOptions {
@@ -46,14 +49,26 @@ impl MaterialOptions {
             let mut remaining = MAX_DECODED_INPUT_BYTES;
             for (id, path) in value.as_object().ok_or_else(|| invalid("inputs must map image identifiers to file paths".into()))? {
                 let input = declared.iter().find(|input| input.identifier == *id).ok_or_else(|| invalid(format!("unknown image input `{id}`")))?;
-                let linear = if graph.input_images.contains_key(id) {
-                    graph.input_images_linear.contains(id)
+                let space = if graph.input_images.contains_key(id) {
+                    if graph.input_images_from_file.contains(id) {
+                        BitmapColorSpace::FromFile
+                    } else if graph.input_images_linear.contains(id) {
+                        BitmapColorSpace::Linear
+                    } else {
+                        BitmapColorSpace::Srgb
+                    }
                 } else {
                     let usage = if input.usage == "any" { id } else { &input.usage };
-                    !materialcraft_formats::material::srgb_usage(usage)
+                    if materialcraft_formats::material::srgb_usage(usage) { BitmapColorSpace::Srgb } else { BitmapColorSpace::Linear }
                 };
                 let path = path.as_str().ok_or_else(|| invalid(format!("inputs.{id} must be an image path")))?;
-                let image = materialcraft_formats::decode(&read(path)?, linear)?;
+                let bytes = read(path)?;
+                let image = materialcraft_formats::decode_with_color_space(&bytes, space)?;
+                if image.integer_sampling()
+                    && let Some(format) = materialcraft_core::png_sample_format(&bytes)
+                {
+                    options.input_formats.insert(id.clone(), format);
+                }
                 remaining = remaining.checked_sub(std::mem::size_of_val(image.data())).ok_or_else(|| invalid("decoded image inputs exceed 1 GiB".into()))?;
                 options.inputs.insert(id.clone(), image);
             }
@@ -74,7 +89,18 @@ impl MaterialOptions {
         let mut package = Cow::Borrowed(&session.pkg);
         if let Some(size) = self.size {
             let graph = package.to_mut().graph_mut(index)?;
-            graph.size = size.log2_size(graph.size);
+            let basis = match size {
+                ExportSize::LargerSide(_) => {
+                    // Size expressions must see the same exposed values as the export cook.
+                    graph.inputs.extend(self.values.clone());
+                    materialcraft_eval::graph_output_size(graph, session.environment).map_err(|error| bad("material.cook", error))?.map(u32::ilog2)
+                }
+                ExportSize::Exact(_) => graph.size,
+            };
+            graph.size = size.log2_size(basis);
+            graph.output_size_function = None;
+            graph.absolute_output_size = None;
+            graph.relative_output_size = None;
 
             // Fixed-size generators keep their native detail while final output bridges resample to the requested size
             for output in graph.nodes.iter_mut().filter(|node| node.def == "output") {
@@ -90,6 +116,7 @@ impl MaterialOptions {
         options.max_size = max_size;
         options.only = Some(roots);
         options.inputs.clone_from(&self.inputs);
+        options.bitmap_formats.clone_from(&self.input_formats);
         options.overrides.clone_from(&self.values);
 
         let cooked = materialcraft_eval::cook(&package, index, &options, &session.cache);

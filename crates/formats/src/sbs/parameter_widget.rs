@@ -40,7 +40,8 @@ pub(super) fn read(element: Node<'_, '_>, input: &mut ExposedParameter) {
     }
     if color && matches!(input.default, Value::Float4(_)) {
         // Color defaults use the same displayed-to-linear conversion as node colors
-        if let Some(value) = child_element(element, "defaultValue")
+        if let Some(value) = child_element(element, "materialcraftDefault")
+            .or_else(|| child_element(element, "defaultValue"))
             .and_then(super::sbs_value::sbs_constant)
             .and_then(|value| super::sbs_value::to_param_value(&Value::Color([0.0; 4]), &value, 0))
         {

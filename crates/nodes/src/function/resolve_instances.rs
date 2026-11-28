@@ -41,8 +41,18 @@ fn resolve(function: &mut FunctionGraph, local: &Package, sources: &BTreeMap<Str
             }
 
             let previous: BTreeMap<_, _> = instance.inputs.iter().zip(&node.inputs).map(|(port, value)| (port.identifier.clone(), *value)).collect();
-            instance.defaults =
-                graph.exposed.iter().map(|parameter| (parameter.id.clone(), graph.input_value(&parameter.id).unwrap_or(&parameter.default).clone())).collect();
+            instance.defaults = graph
+                .exposed
+                .iter()
+                .map(|parameter| {
+                    // An open socket reads its typed zero. Keep the authored value on the source for editing and saving.
+                    let value = match materialcraft_core::ValueType::of(&parameter.default) {
+                        Some(kind) if parameter.connectable => kind.default_value(),
+                        _ => graph.input_value(&parameter.id).unwrap_or(&parameter.default).clone(),
+                    };
+                    (parameter.id.clone(), value)
+                })
+                .collect();
             instance.inputs = graph
                 .exposed
                 .iter()

@@ -40,6 +40,7 @@ fn report_failure(app: &mut MaterialCraftApp, msg: String) {
                 base_values: Default::default(),
                 parameters: Default::default(),
                 outputs: Default::default(),
+                output_bases: None,
                 error: Some(msg.clone()),
                 ms: 0.0,
                 key: 0,
@@ -180,6 +181,7 @@ fn start(app: &mut MaterialCraftApp, now: f64) {
     let (gi, max) = (s.graph, s.preview_size);
     let environment = s.environment;
     let materials = s.material_preview.graphs();
+    let sampling = s.preview_sampling();
     let cache = s.cache.clone();
     let epoch = s.cook_epoch;
     let dec = s.resource_decoder();
@@ -192,7 +194,7 @@ fn start(app: &mut MaterialCraftApp, now: f64) {
         opts.environment = environment;
         opts.max_size = max;
         opts.cancel = Some(&thread_flag);
-        let cooked = guard("cook", || Ok(PreviewCook::run(&pkg, gi, &materials, &opts, &cache)));
+        let cooked = guard("cook", || Ok(PreviewCook::with_previous(&pkg, gi, &materials, &opts, &cache, &sampling)));
         let _ = tx.send(cooked);
     });
     match spawned {

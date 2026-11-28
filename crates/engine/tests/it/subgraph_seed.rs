@@ -11,6 +11,7 @@ fn grouping_noise_preserves_pixels_seed_and_undo() {
         let mut s = new_session();
         s.preview_size = None;
         run(&mut s, "graph.size", json!({"width": 64, "height": 32}));
+        run(&mut s, "graph.format", json!({"format": "f32"}));
         run(&mut s, "graph.seed", json!({"seed": seed}));
         let noise = run(&mut s, "graph.node.add", json!({"def": "pixel_processor"}))["id"].as_u64().unwrap();
         let mut function = materialcraft_engine::core::FunctionGraph::default();
@@ -49,5 +50,30 @@ fn grouping_noise_preserves_pixels_seed_and_undo() {
         let reopened_output = reopened.graph().unwrap().nodes.iter().find(|node| node.def == "output").unwrap().id;
 
         assert_eq!(reopened.cook().image(reopened_output, 0).unwrap().data(), before.data());
+        run(&mut s, "edit.undo", json!({}));
+        for changed_seed in [5, 89] {
+            run(&mut s, "graph.seed", json!({"seed": changed_seed}));
+            run(&mut reopened, "graph.seed", json!({"seed": changed_seed}));
+            assert_eq!(reopened.cook().image(reopened_output, 0).unwrap().data(), s.cook().image(output, 0).unwrap().data());
+        }
     }
+}
+
+#[test]
+fn editing_a_computed_graph_seed_preserves_the_expression_until_a_literal_is_set() {
+    use materialcraft_engine::core::{FunctionGraph, ParameterInheritance};
+    let mut session = new_session();
+    let mut function = FunctionGraph::default();
+    function.output = Some(function.add_constant(materialcraft_engine::core::Value::Int(5)));
+    session.pkg.graphs[0].seed_function = Some(function.clone());
+    run(&mut session, "graph.seed", json!({"inheritance": "relativeToParent"}));
+    assert_eq!(session.pkg.graphs[0].seed_mode, ParameterInheritance::RelativeToParent);
+    assert_eq!(session.pkg.graphs[0].seed_function.as_ref(), Some(&function));
+    let inspected = run(&mut session, "session.inspect", json!({}));
+    assert_eq!(inspected["graph"]["seedFunction"], serde_json::to_value(&function).unwrap());
+    run(&mut session, "graph.seed", json!({"seed": 17}));
+    assert_eq!(session.pkg.graphs[0].seed_function, None);
+    assert_eq!(session.pkg.graphs[0].seed, 17);
+    run(&mut session, "edit.undo", json!({}));
+    assert_eq!(session.pkg.graphs[0].seed_function, Some(function));
 }

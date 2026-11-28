@@ -19,6 +19,7 @@ fn main() -> Result<(), String> {
             let resource = |_: &str| None;
             let vars = BTreeMap::new();
             let context = CookContext {
+                input_formats: &[],
                 w: side,
                 h: side,
                 seed: 0,

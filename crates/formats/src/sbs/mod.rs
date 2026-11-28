@@ -44,7 +44,7 @@ pub use library_layout::read_layout;
 pub use read::{is_sbs, read_sbs};
 pub use sbs_document::SbsDocument;
 pub use sbs_read::SbsRead;
-pub use write::write_sbs;
+pub use write::{output_format_version, write_sbs};
 
 #[cfg(test)]
 mod tests;

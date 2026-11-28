@@ -32,7 +32,7 @@ pub(super) const FILTERS: &[FilterMap] = &[
         sbs: "distance",
         def: "distance",
         inputs: &[("mask", "mask"), ("source", "source")],
-        params: &[("distance", "distance"), ("combinedistance", "combine")],
+        params: &[("distance", "distance"), ("combinedistance", "combine"), ("distancemode", "metric"), ("colorswitch", "color_mode")],
     },
     FilterMap {
         sbs: "emboss",
@@ -46,12 +46,17 @@ pub(super) const FILTERS: &[FilterMap] = &[
         inputs: &[("input1", "input"), ("input2", "gradient"), ("inputgradient", "gradient")],
         params: &[("coordinate", "position"), ("uvselector", "orientation")],
     },
-    FilterMap { sbs: "gradient", def: "gradient_map", inputs: &[("input1", "input")], params: &[("colorswitch", "color_mode")] },
+    FilterMap {
+        sbs: "gradient",
+        def: "gradient_map",
+        inputs: &[("input1", "input")],
+        params: &[("colorswitch", "color_mode"), ("interpmode", "interpolation")],
+    },
     FilterMap {
         sbs: "grayscaleconversion",
         def: "grayscale_conversion",
         inputs: &[("input1", "input")],
-        params: &[("alphamult", "flatten_alpha"), ("mattelevel", "matte")],
+        params: &[("alphamult", "flatten_alpha"), ("mattelevel", "matte"), ("channelsweights", "weights")],
     },
     FilterMap { sbs: "hsl", def: "hsl", inputs: &[("input1", "input")], params: &[("hue", "hue"), ("saturation", "saturation"), ("luminosity", "lightness")] },
     FilterMap { sbs: "bitmap", def: "bitmap", inputs: &[], params: &[("colorswitch", "color_mode"), ("colorspace", "colour_space")] },
@@ -59,7 +64,14 @@ pub(super) const FILTERS: &[FilterMap] = &[
         sbs: "levels",
         def: "levels",
         inputs: &[("input1", "input")],
-        params: &[("levelinlow", "in_low"), ("levelinmid", "in_mid"), ("levelinhigh", "in_high"), ("leveloutlow", "out_low"), ("levelouthigh", "out_high")],
+        params: &[
+            ("levelinlow", "in_low"),
+            ("levelinmid", "in_mid"),
+            ("levelinhigh", "in_high"),
+            ("leveloutlow", "out_low"),
+            ("levelouthigh", "out_high"),
+            ("clampinterm", "clamp_intermediate"),
+        ],
     },
     FilterMap {
         sbs: "normal",
@@ -79,9 +91,21 @@ pub(super) const FILTERS: &[FilterMap] = &[
         sbs: "transformation",
         def: "transformation",
         inputs: &[("input1", "input")],
-        params: &[("offset", "offset"), ("mattecolor", "matte"), ("matrix22", "matrix"), ("filtering", "filtering")],
+        params: &[
+            ("offset", "offset"),
+            ("mattecolor", "matte"),
+            ("matrix22", "matrix"),
+            ("filtering", "filtering"),
+            ("mipmapmode", "mip_mode"),
+            ("manualmiplevel", "mip_level"),
+        ],
     },
-    FilterMap { sbs: "warp", def: "warp", inputs: &[("input1", "input"), ("inputgradient", "gradient")], params: &[("intensity", "intensity")] },
+    FilterMap {
+        sbs: "warp",
+        def: "warp",
+        inputs: &[("input1", "input"), ("inputgradient", "gradient")],
+        params: &[("intensity", "intensity"), ("warpfilter", "nearest")],
+    },
     FilterMap { sbs: "passthrough", def: "dot", inputs: &[("input", "input"), ("input1", "input")], params: &[] },
     FilterMap {
         sbs: "text",
@@ -110,12 +134,12 @@ pub(super) const FILTERS: &[FilterMap] = &[
             ("opacitymult", "opacity"),
             ("renderroi", "render_region"),
             ("tilingroi", "tiling_region"),
+            ("culling", "cull_outside"),
         ],
     },
 ];
 pub(super) const BASE_PARAMS: &[&str] = &["outputsize", "format", "randomseed", "tiling", "pixelsize", "pixelratio", "quality"];
-pub(super) const HANDLED_PARAMS: &[(&str, &str)] =
-    &[("bitmap", "bitmapresourcepath"), ("grayscaleconversion", "channelsweights"), ("transformation", "matrix22"), ("curve", "exposecurve")];
+pub(super) const HANDLED_PARAMS: &[(&str, &str)] = &[("bitmap", "bitmapresourcepath"), ("transformation", "matrix22"), ("curve", "exposecurve")];
 
 pub(super) fn filter_by_sbs_name(name: &str) -> Option<&'static FilterMap> {
     FILTERS.iter().find(|f| f.sbs == name)

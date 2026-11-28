@@ -11,6 +11,8 @@ pub struct NodeDefinition {
     pub inputs: Vec<PortDefinition>,
     /// The input supplying inherited base parameters, when it differs from port order
     pub primary_input: Option<&'static str>,
+    /// The image passed through when bypassed. Without a designated port, use the first wired image.
+    pub bypass_input: Option<&'static str>,
     pub outputs: Vec<PortDefinition>,
     pub params: Vec<ParameterDefinition>,
     /// A generator takes its size from the graph, not from an input

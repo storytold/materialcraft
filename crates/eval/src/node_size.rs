@@ -3,7 +3,13 @@ use materialcraft_nodes::NodeDefinition;
 
 /// Literal output size; cooking also evaluates any attached parameter function
 pub fn node_size(graph: &Graph, definition: Option<&NodeDefinition>, node: &Node, input: Option<(u32, u32)>, maximum: Option<u32>) -> (u32, u32) {
-    let parent = crate::ResolvedBaseParameters { size: graph.size_px(), ..Default::default() };
+    if node.disabled
+        && let Some((width, height)) = input
+    {
+        return limit([width, height], maximum);
+    }
+    let (size, size_underflow) = graph.resolved_output_size(None, None);
+    let parent = crate::ResolvedBaseParameters { size, size_underflow, ..Default::default() };
     let input = input
         .filter(|_| !definition.is_some_and(|definition| definition.generator))
         .map(|(width, height)| crate::ResolvedBaseParameters { size: [width, height], ..parent });

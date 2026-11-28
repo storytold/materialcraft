@@ -14,53 +14,38 @@ pub fn ports_with_connections<'a>(
     incoming: impl IntoIterator<Item = &'a materialcraft_core::Connection>,
 ) -> (Vec<Port>, Vec<Port>) {
     if node.def == "graph_instance" {
+        let ports = |source: &[materialcraft_core::GraphPort]| {
+            source
+                .iter()
+                .map(|port| Port {
+                    id: port.identifier.clone(),
+                    label: port.identifier.clone(),
+                    kind: match port.type_code {
+                        1 => PortKind::Color,
+                        2 => PortKind::Gray,
+                        _ => PortKind::Value,
+                    },
+                    value_type: materialcraft_core::ValueType::from_code(port.type_code),
+                })
+                .collect()
+        };
         if let Some(instance) = &node.instance {
-            let ports = |ports: &[materialcraft_core::GraphPort]| {
-                ports
-                    .iter()
-                    .map(|port| Port {
-                        id: port.identifier.clone(),
-                        label: port.identifier.clone(),
-                        kind: match port.type_code {
-                            1 => PortKind::Color,
-                            2 => PortKind::Gray,
-                            _ => PortKind::Value,
-                        },
-                    })
-                    .collect()
-            };
             return (ports(&instance.inputs), ports(&instance.outputs));
         }
         let Some((_, graph)) = instance_graph(package, node) else {
             return (Vec::new(), Vec::new());
         };
-
-        let graph_ports = |definition: &str| -> Vec<Port> {
-            graph
-                .nodes
-                .iter()
-                .filter(|node| node.def == definition || (definition == "input" && node.def.starts_with("input_")))
-                .map(|node| {
-                    let id = identifier(node);
-                    let kind = match node.def.as_str() {
-                        "input_grayscale" => PortKind::Gray,
-                        "input_color" => PortKind::Color,
-                        _ => PortKind::Any,
-                    };
-
-                    Port { label: id.clone(), id, kind }
-                })
-                .collect()
-        };
-
-        return (graph_ports("input"), graph_ports("output"));
+        let (inputs, outputs) = materialcraft_nodes::graph_interface::graph_ports(graph);
+        return (ports(&inputs), ports(&outputs));
     }
 
     if node.def == materialcraft_core::MISSING_NODE {
         let (inputs, outputs) = materialcraft_core::missing_ports(node);
-        let inputs = inputs.into_iter().map(|id| Port { label: id.clone(), id, kind: PortKind::Any }).collect();
-        let outputs =
-            outputs.into_iter().map(|(id, grayscale)| Port { label: id.clone(), id, kind: if grayscale { PortKind::Gray } else { PortKind::Color } }).collect();
+        let inputs = inputs.into_iter().map(|id| Port { label: id.clone(), id, kind: PortKind::Any, value_type: None }).collect();
+        let outputs = outputs
+            .into_iter()
+            .map(|(id, grayscale)| Port { label: id.clone(), id, kind: if grayscale { PortKind::Gray } else { PortKind::Color }, value_type: None })
+            .collect();
 
         return (inputs, outputs);
     }
@@ -69,7 +54,7 @@ pub fn ports_with_connections<'a>(
         return (Vec::new(), Vec::new());
     };
 
-    let catalog_port = |port: &materialcraft_nodes::PortDefinition| Port { id: port.id.into(), label: port.label.into(), kind: port.kind };
+    let catalog_port = |port: &materialcraft_nodes::PortDefinition| Port { id: port.id.into(), label: port.label.into(), kind: port.kind, value_type: None };
     let mut inputs: Vec<Port> = node
         .input_values
         .iter()
@@ -77,6 +62,7 @@ pub fn ports_with_connections<'a>(
             id: identifier.clone(),
             label: format!("{} ({})", crate::value_input_label(identifier), value_type.label()),
             kind: PortKind::Value,
+            value_type: Some(*value_type),
         })
         .collect();
     inputs.extend(definition.inputs.iter().map(catalog_port));
@@ -89,7 +75,12 @@ pub fn ports_with_connections<'a>(
             .max()
             .unwrap_or(1)
             .min(materialcraft_nodes::MAX_IMAGE_INPUTS);
-        inputs.extend((1..count).map(|index| Port { id: format!("{prefix}{index}"), label: format!("Input image {index}"), kind: PortKind::Any }));
+        inputs.extend((1..count).map(|index| Port {
+            id: format!("{prefix}{index}"),
+            label: format!("Input image {index}"),
+            kind: PortKind::Any,
+            value_type: None,
+        }));
     }
 
     (inputs, definition.outputs.iter().map(catalog_port).collect())

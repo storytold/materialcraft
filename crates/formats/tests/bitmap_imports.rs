@@ -3,6 +3,23 @@ use materialcraft_formats::{BITMAP_EXTENSIONS, BITMAP_FORMATS, Depth, decode, en
 use std::io::Cursor;
 
 #[test]
+fn grayscale_png_file_gamma_uses_the_measured_word_boundaries() {
+    let words = [1136, 3683, 4236];
+    let field = Image::gray(3, 1, |x, _| words[x as usize] as f32 / 65535.0);
+    let plain = encode(&field, "png", Depth::U16, false).unwrap();
+    for (gamma, crc, expected) in
+        [(43_181u32, 0x459c_89f9u32, [918, 3165, 3667]), (43_182, 0xdc95_d843, words), (47_847, 0xab61_51a4, words), (47_848, 0x3bde_4c35, [1391, 4253, 4858])]
+    {
+        let mut bytes = plain.clone();
+        let chunk = [4u32.to_be_bytes(), *b"gAMA", gamma.to_be_bytes(), crc.to_be_bytes()].concat();
+        bytes.splice(33..33, chunk);
+        let image = materialcraft_formats::decode_with_color_space(&bytes, materialcraft_nodes::BitmapColorSpace::FromFile).unwrap();
+        let stored: Vec<_> = image.data().iter().map(|v| (v * 65535.0).round() as u16).collect();
+        assert_eq!(stored, expected, "file gamma {gamma}");
+    }
+}
+
+#[test]
 fn bitmap_filters_are_specific_and_match_supported_extensions() {
     let extensions: std::collections::BTreeSet<_> = BITMAP_FORMATS.iter().flat_map(|(_, extensions)| extensions.iter().copied()).collect();
 
@@ -14,6 +31,25 @@ fn bitmap_filters_are_specific_and_match_supported_extensions() {
 
     assert_eq!(BITMAP_FORMATS[0], ("All formats", BITMAP_EXTENSIONS));
     assert_eq!(materialcraft_formats::VECTOR_FORMATS[0], ("All formats", materialcraft_formats::VECTOR_EXTENSIONS));
+}
+
+#[test]
+fn luminance_exr_preserves_linear_signed_and_hdr_samples() {
+    use craft_image_codecs::{ChannelLayout, EncodeOptions, Format, SampleType};
+    for sample in [SampleType::F16, SampleType::F32] {
+        for layout in [ChannelLayout::Gray, ChannelLayout::GrayA] {
+            let values = [-0.25, 0.0, 0.5, 3.0];
+            let input: Vec<_> = if layout == ChannelLayout::GrayA { values.into_iter().flat_map(|y| [y, 0.375]).collect() } else { values.to_vec() };
+            let source = craft_image_codecs::Image::from_normalized(4, 1, layout, sample, &input).unwrap();
+            let encoded = craft_image_codecs::encode(&source, Format::OpenExr, &EncodeOptions::default()).unwrap();
+            for linear in [false, true] {
+                let image = decode(&encoded, linear).unwrap();
+                assert!(image.is_gray());
+                assert_eq!(image.data(), values);
+                assert!(!image.integer_sampling());
+            }
+        }
+    }
 }
 
 #[test]

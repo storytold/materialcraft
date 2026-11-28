@@ -36,11 +36,8 @@ fn reload(session: &mut Session, parameters: &Value) -> Result<Value> {
     let bytes = read_package(&path)?;
     let linked = crate::file_cmds::linked_files(&path);
     let mut read = crate::file_cmds::read_package_bytes(&bytes, &path, &linked)?;
-    for (path, source) in &session.pkg.dependencies {
-        read.pkg.dependencies.entry(path.clone()).or_insert_with(|| source.clone());
-    }
     let safe_path = read.warnings.is_empty().then_some(path.clone());
-    read.warnings.extend(crate::linked_files::load(&mut read.pkg));
+    read.warnings.extend(session.load_file_links(&mut read.pkg));
 
     crate::file_cmds::replace_package(session, read.pkg, safe_path);
     session.load_warnings = read.warnings;

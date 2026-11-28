@@ -125,7 +125,7 @@ pub(super) fn param_row(app: &mut MaterialCraftApp, ui: &mut Ui, node: NodeId, p
         Value::Curve(curve) => {
             ui.label(RichText::new(tr(parameter.label)).color(tokens.text));
             if let Some(edited_curve) = curve_editor(ui, &format!("curve-{}-{}", node.0, parameter.id), &curve) {
-                set(app, node, parameter.id, json!(edited_curve.points.iter().map(|point| [point.x, point.y]).collect::<Vec<_>>()));
+                set(app, node, parameter.id, typed(&Value::Curve(edited_curve)));
             }
         }
         Value::Gradient(gradient) => {

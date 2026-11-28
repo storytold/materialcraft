@@ -51,7 +51,31 @@ fn native_gradient_default_midpoints_are_linear_and_components_are_preserved() {
             assert!((gradient.eval(0.5)[3] - if color { 0.4 } else { 1.0 }).abs() < 1e-6);
 
             let saved = write_sbs(&read.pkg).unwrap();
+            let xml = std::str::from_utf8(&saved).unwrap();
+            assert!(xml.contains(r#"<name v="gradientrgba"/>"#));
+            assert_eq!(xml.matches("<constantValueFloat4 ").count(), 2);
             read = read_sbs(&saved, "saved.sbs", &|_| None).unwrap();
         }
+    }
+}
+
+#[test]
+fn smooth_gradient_signed_bias_survives_sbs_round_trip() {
+    let xml = br#"<package><content><graph><identifier v="Ramp"/><compNodes><compNode><uid v="1"/>
+        <compImplementation><compFilter><filter v="gradient"/><parameters>
+        <parameter><name v="interpmode"/><paramValue><constantValueInt32 v="1"/></paramValue></parameter>
+        </parameters><paramsArrays><paramsArray><name v="gradientrgba"/><paramsArrayCells>
+        <paramsArrayCell><parameters><parameter><name v="midpoint"/>
+        <paramValue><constantValueFloat1 v="-0.375"/></paramValue></parameter></parameters></paramsArrayCell>
+        </paramsArrayCells></paramsArray></paramsArrays></compFilter>
+        </compImplementation></compNode></compNodes></graph></content></package>"#;
+    let mut read = read_sbs(xml, "ramp.sbs", &|_| None).unwrap();
+    for _ in 0..2 {
+        let params = &read.pkg.graphs[0].nodes[0].params;
+        assert_eq!(params["interpolation"].as_i32(), Some(1));
+        let Value::Gradient(gradient) = &params["gradient"] else { panic!("missing gradient") };
+        assert_eq!(gradient.keys[0].midpoint, 0.3125);
+        let saved = write_sbs(&read.pkg).unwrap();
+        read = read_sbs(&saved, "ramp.sbs", &|_| None).unwrap();
     }
 }

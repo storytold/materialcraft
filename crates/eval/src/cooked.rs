@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Default)]
 pub struct Cooked {
     pub nodes: BTreeMap<NodeId, NodeResult>,
+    pub preview_sampling: Option<std::sync::Arc<crate::PreviewSampling>>,
     /// Total wall time of the cook in milliseconds
     pub ms: f32,
     pub cancelled: bool,

@@ -303,7 +303,7 @@ impl Headless {
 
         let (w, h) = (options.width.unwrap_or(image.width()).clamp(16, maximum_side), options.height.unwrap_or(image.height()).clamp(16, maximum_side));
         let image = image.resize(w, h, true);
-        Ok((w, h, image.to_rgba8_display()))
+        Ok((w, h, materialcraft_engine::graph_pixels::rgba8(&image, self.session.view2d.srgb)))
     }
 
     fn render_3d(&mut self, o: &RenderOptions, max: u32) -> (u32, u32, Vec<u8>) {

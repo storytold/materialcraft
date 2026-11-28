@@ -6,6 +6,7 @@ pub struct OpenDocument {
     pub id: u64,
     pub pkg: Package,
     pub path: Option<String>,
+    recovery_origin: Option<String>,
     pub graph: usize,
     pub modified: bool,
     selection: Vec<NodeId>,
@@ -90,6 +91,7 @@ impl OpenDocument {
             material_preview: if show_outputs { MaterialPreview::for_graph(&pkg, 0) } else { MaterialPreview::default() },
             pkg,
             path,
+            recovery_origin: None,
             graph: 0,
             modified: false,
             selection: Vec::new(),
@@ -115,6 +117,7 @@ impl OpenDocument {
         exchange!(
             pkg,
             path,
+            recovery_origin,
             graph,
             modified,
             selection,

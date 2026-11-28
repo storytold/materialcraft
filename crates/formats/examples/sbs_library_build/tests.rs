@@ -39,16 +39,19 @@ fn flat_package_inventory_enforces_the_total_file_limit() {
 }
 
 #[test]
-fn conversion_starts_both_versions_at_the_workspace_release() {
-    let saved = materialcraft_formats::sbs::write_sbs(&materialcraft_core::Package::new("Version check")).unwrap();
-    let saved = xml::parse(std::str::from_utf8(&saved).unwrap()).unwrap();
-    let expected = xml::value(saved.root_element(), "updaterVersion").unwrap();
-    for source in [PACKAGE.to_string(), PACKAGE.replacen("<content>", "<updaterVersion v=\"1.1.0.202502\"/><content>", 1)] {
+fn conversion_preserves_the_schema_and_records_the_saving_release() {
+    for (source, schema) in [
+        (PACKAGE.to_string(), "1.1.0.202502"),
+        (PACKAGE.replacen("<content>", "<updaterVersion v=\"0.1.3\"/><content>", 1), "1.1.0.202502"),
+        (PACKAGE.replace("<formatVersion v=\"1.1.0.202502\"/>", ""), "1.1.0.202401"),
+        (PACKAGE.replace("1.1.0.202502", "0.1.3"), "1.1.0.202401"),
+    ] {
         let converted = convert::package(&source, "example.sbs", &identities("example.sbs")).unwrap();
         let converted = xml::parse(&converted.xml).unwrap();
 
-        assert_eq!(xml::value(converted.root_element(), "updaterVersion"), Some(expected));
-        assert_eq!(xml::value(converted.root_element(), "formatVersion"), Some(expected));
+        assert_eq!(xml::value(converted.root_element(), "updaterVersion"), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(xml::value(converted.root_element(), "formatVersion"), Some(schema));
+        assert_eq!(converted.root_element().children().filter(|n| n.has_tag_name("formatVersion")).count(), 1);
         assert_eq!(converted.root_element().children().filter(|n| n.has_tag_name("updaterVersion")).count(), 1);
     }
 }

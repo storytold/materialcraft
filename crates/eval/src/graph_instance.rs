@@ -36,19 +36,26 @@ pub(crate) fn instances_reach(pkg: &Package, from: usize, target: usize) -> bool
     false
 }
 
+pub(crate) struct CookedInstance {
+    pub ports: Vec<(NodeOutput, crate::ResolvedBaseParameters)>,
+    pub sampling: Option<(std::sync::Arc<crate::PreviewSampling>, u64)>,
+}
+
 pub(crate) fn cook_instance(
     package: &Package,
     graph_index: usize,
     node: &Node,
     input_ports: &[Port],
     output_ports: &[Port],
-    inputs: &[Option<&NodeOutput>],
+    inputs: &[Option<(&NodeOutput, crate::ResolvedBaseParameters)>],
+    input_keys: &[u64],
     params: &BTreeMap<String, Value>,
-    size: (u32, u32),
+    fixed: &[String],
     base: crate::resolved_base_parameters::ResolvedBaseParameters,
     options: &Options,
     cache: &Mutex<Cache>,
-) -> Result<Vec<NodeOutput>, String> {
+    previous: Option<&crate::PreviewSampling>,
+) -> Result<CookedInstance, String> {
     if options.depth >= MAX_DEPTH {
         return Err("graph instances nest too deep (does a graph use itself?)".into());
     }
@@ -67,12 +74,14 @@ pub(crate) fn cook_instance(
     let root_resource = options.resource_root.unwrap_or(options.resource);
     let resource = |name: &str| match &node.instance {
         Some(instance) if !instance.package.is_empty() => {
-            let (name, linear) = craft_texture::split_resource_key(name);
-            root_resource(&craft_texture::resource_key(&format!("{}\0{name}", instance.package), linear))
+            let (name, space) = materialcraft_nodes::BitmapColorSpace::split_resource_key(name);
+            root_resource(&space.resource_key(&format!("{}\0{name}", instance.package)))
         }
         _ => (options.resource)(name),
     };
     let mut source_options = Options::new(&resource);
+    let empty = crate::PreviewSampling::default();
+    source_options.previous_sampling = options.previous_sampling.map(|_| previous.unwrap_or(&empty));
     source_options.environment = options.environment;
     source_options.parent_tiling = Some(base.tiling);
     source_options.parent_pixel_ratio = Some(base.pixel_ratio);
@@ -85,9 +94,42 @@ pub(crate) fn cook_instance(
     source_options.graph_stack = options.graph_stack.clone();
     source_options.graph_stack.push(identity);
     source_options.only = Some(source_graph.nodes.iter().filter(|node| node.def == "output").map(|node| node.id).collect());
-    source_options.inputs = input_ports.iter().zip(inputs).filter_map(|(port, input)| Some((port.id.clone(), input.as_ref()?.as_image()?.clone()))).collect();
     source_options.overrides = params.iter().filter(|(k, _)| source_graph.exposed.iter().any(|e| &e.id == *k)).map(|(k, v)| (k.clone(), v.clone())).collect();
-    source_options.overrides.extend(input_ports.iter().zip(inputs).filter_map(|(port, input)| Some((port.id.clone(), input.as_ref()?.as_value()?.clone()))));
+    for exposed in &source_graph.exposed {
+        let name = &exposed.id;
+        if fixed.contains(name) || (!params.contains_key(name) && source_graph.input_value(name).is_some_and(crate::parameter::supports_literal_argument)) {
+            source_options.literal_inputs.push(name.clone());
+        }
+    }
+    for ((port, input), &key) in input_ports.iter().zip(inputs).zip(input_keys) {
+        // A stored argument drives its bridge even when the same port has a wire.
+        if let Some(expected) = port.value_type
+            && (node.params.contains_key(&port.id) || node.bindings.contains_key(&port.id) || node.functions.contains_key(&port.id))
+            && let Some(value) = params.get(&port.id)
+        {
+            if materialcraft_core::ValueType::of(value) != Some(expected) {
+                return Err(format!("input `{}` requires {}", port.id, expected.label()));
+            }
+            source_options.overrides.insert(port.id.clone(), value.clone());
+            source_options.literal_inputs.retain(|name| name != &port.id);
+            continue;
+        }
+        let Some((output, source_base)) = input else { continue };
+        if let Some((image, texture_format)) = output.texture(source_base.format) {
+            source_options.inputs.insert(port.id.clone(), image.clone());
+            source_options.input_formats.insert(port.id.clone(), texture_format);
+            source_options.input_bases.insert(port.id.clone(), *source_base);
+            if matches!(output, NodeOutput::BaseLevel(_)) {
+                source_options.base_level_inputs.insert(port.id.clone());
+                if source_options.previous_sampling.is_some() {
+                    source_options.preview_input_keys.insert(port.id.clone(), key);
+                }
+            }
+        } else if let Some(value) = output.as_value() {
+            source_options.overrides.insert(port.id.clone(), value.clone());
+            source_options.literal_inputs.retain(|name| name != &port.id);
+        }
+    }
     let cooked = cook(source, source_graph_index, &source_options, cache);
     if cooked.cancelled {
         return Err("cancelled".into());
@@ -97,20 +139,25 @@ pub(crate) fn cook_instance(
         return Err(format!("{}: {error}", source_graph.name));
     }
 
-    output_ports
+    let mut keys = Vec::new();
+    let ports = output_ports
         .iter()
         .map(|port| {
-            let output = source_graph
+            let result = source_graph
                 .nodes
                 .iter()
                 .find(|candidate| candidate.def == "output" && identifier(candidate) == port.id)
                 .and_then(|node| cooked.nodes.get(&node.id))
-                .and_then(|result| result.outputs.first())
                 .ok_or_else(|| format!("the source output `{}` is missing", port.id))?;
-            Ok(match output {
-                NodeOutput::Image(image) => NodeOutput::Image(image.resize(size.0, size.1, true)),
-                NodeOutput::Value(value) => NodeOutput::Value(value.clone()),
-            })
+            let output = result.outputs.first().ok_or_else(|| format!("the source output `{}` is empty", port.id))?;
+            if cooked.preview_sampling.is_some() {
+                keys.push(result.key);
+            }
+            // Images carry their source properties across the boundary. The caller owns the random seed.
+            let port_base = crate::ResolvedBaseParameters { seed: base.seed, ..result.base };
+            Ok((output.clone(), port_base))
         })
-        .collect()
+        .collect::<Result<_, String>>()?;
+    let sampling = cooked.preview_sampling.map(|state| (state, crate::cache_key::hash_of(&keys)));
+    Ok(CookedInstance { ports, sampling })
 }

@@ -132,7 +132,15 @@ fn native_value_types_survive_processors_and_sbs() {
     let mut session = Session::new(read.pkg);
     session.preview_size = Some(16);
     session.cook();
-    for (node, expected) in session.graph().unwrap().nodes.iter().zip(values) {
+    for (node, authored) in session.graph().unwrap().nodes.iter().zip(values) {
+        let Some(Value::Function(function)) = node.params.get("function") else { panic!("missing value function") };
+        let constant = function.node(function.output.unwrap()).unwrap();
+        assert_eq!(constant.value.as_ref(), Some(&authored));
+        let expected = match authored {
+            Value::Int(16_777_217) => Value::Int(16_777_216),
+            Value::Int2([i32::MIN, i32::MAX]) => Value::Int2([i32::MIN, i32::MIN]),
+            value => value,
+        };
         assert_eq!(session.cooked.value(node.id, 0), Some(&expected), "{:?}", session.cooked.nodes[&node.id].error);
     }
 }

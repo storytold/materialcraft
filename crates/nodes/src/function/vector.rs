@@ -1,6 +1,85 @@
 use super::value_type::{dimensions, floats, integer_value, integers, intermediate_float_value as float_value};
 use materialcraft_core::Value;
 
+#[derive(Clone, Copy)]
+pub(super) enum PatternComponent {
+    Register(usize),
+    Zero,
+}
+
+/// Evaluate packed pattern components in the order their consumers read them.
+pub(super) fn identify_pattern_components(program: &mut super::Program, end: usize, root: bool) {
+    let instructions = &program.instructions;
+    let prefix = &instructions[..end];
+    let mut packed_results: std::collections::BTreeSet<_> = prefix
+        .iter()
+        .filter_map(|op| match (op.definition.id, op.inputs.as_slice()) {
+            ("set", &[source]) if super::returned_product::float_width(op.type_code) > 1 => Some(source),
+            _ => None,
+        })
+        .collect();
+    // Writing the final vector to a pattern property consumes its components in the same order as a Set.
+    if root && prefix.get(program.output).is_some_and(|op| super::returned_product::float_width(op.type_code) > 1) {
+        packed_results.insert(program.output);
+    }
+    if (packed_results.is_empty() && !prefix.iter().any(|op| op.definition.id == "swizzle1" || op.call.is_some()))
+        || !prefix.iter().any(|op| matches!(op.definition.id, "rand" | "set") || op.call.is_some())
+    {
+        return;
+    }
+    let mut sources = Vec::with_capacity(prefix.len());
+    let mut projections = Vec::new();
+    let mut generated = Vec::new();
+    let mut ranges = Vec::with_capacity(prefix.len());
+    for (index, op) in prefix.iter().enumerate() {
+        let start = instructions.len() + generated.len();
+        let mut lanes = [None; 4];
+        if let Some(forwarded) = super::returned_product::forwarded(op, instructions, &sources, Some(PatternComponent::Zero)) {
+            lanes = forwarded;
+            if op.definition.id == "swizzle1"
+                && let Some(source) = lanes[0]
+            {
+                program.pattern_components.insert(index, source);
+            }
+        } else if let Some(projected) = super::pattern_channel_operations::project(op, instructions, &sources, &mut generated) {
+            lanes = projected;
+            // A complete conditional still owns its branch effects. For arithmetic, finish the
+            // operands of the first stored component before drawing those of the next component.
+            if packed_results.contains(&index)
+                && op.definition.id != "ifelse"
+                && let Some(packed) = super::pattern_channel_operations::pack(op, instructions.len(), &lanes, &mut generated)
+            {
+                program.pattern_components.insert(index, PatternComponent::Register(packed));
+            }
+        } else if let Some(call) = &op.call {
+            if let Some(arguments) = &call.pattern_arguments {
+                lanes = arguments.channels.map(|register| register.map(PatternComponent::Register));
+            } else if let Some(projection) = call.packed_projection(&op.inputs, &sources).or_else(|| call.packed_arithmetic(&op.inputs, &sources)) {
+                lanes = projection.channels.map(|register| register.map(PatternComponent::Register));
+                projections.push((index, projection));
+            }
+        }
+        if op.type_code == 256 && lanes[0].is_none() {
+            lanes[0] = Some(PatternComponent::Register(index));
+        }
+        sources.push(lanes);
+        ranges.push(start..instructions.len() + generated.len());
+    }
+    for (index, projection) in projections {
+        if let Some(call) = program.instructions.get_mut(index).and_then(|op| op.call.as_mut()) {
+            call.pattern_arguments = Some(projection);
+        }
+    }
+    if !generated.is_empty() {
+        for op in program.instructions.iter_mut().filter(|op| op.definition.id == "while") {
+            // Each repetition also invalidates the scalar channels derived from its condition or body.
+            let repeated: Vec<_> = op.control_registers.iter().filter_map(|&i| ranges.get(i)).flat_map(|r| r.clone()).collect();
+            op.control_registers.extend(repeated);
+        }
+        program.instructions.extend(generated);
+    }
+}
+
 pub(crate) fn evaluate(op: &str, args: &[Value], setting: Option<&Value>) -> Result<Value, String> {
     let first = args.first().ok_or("missing vector input")?;
     let count = op.chars().last().and_then(|c| c.to_digit(10)).unwrap_or(1) as usize;

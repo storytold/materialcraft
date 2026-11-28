@@ -3,7 +3,7 @@ pub use crate::linked_resource::reader as linked_files;
 
 use serde_json::{Value as J, json};
 
-use materialcraft_core::{Package, Resource, ResourceBytes};
+use materialcraft_core::{Graph, Package, Resource, ResourceBytes};
 use materialcraft_formats::{Depth, encode, output_name};
 
 use crate::commands::{CommandSpec, always, bad, boolp, has_graph, has_package, strp, u64p};
@@ -70,9 +70,9 @@ fn new_graph(session: &mut Session, parameters: &J) -> Result<J> {
     } else {
         TEMPLATES.iter().find(|entry| entry.0 == template_id).map_or("Graph", |entry| entry.1)
     };
-    let width = u64p(parameters, "size").unwrap_or(1024).clamp(16, 8192);
-    let height = u64p(parameters, "height").unwrap_or(width).clamp(16, 8192);
-    let [width_log2, height_log2] = [width, height].map(|side| 63 - side.leading_zeros());
+    let width = u64p(parameters, "size").unwrap_or(1024);
+    let height = u64p(parameters, "height").unwrap_or(width);
+    let [width_log2, height_log2] = [width, height].map(Graph::parent_size_log2);
     let base = strp(parameters, "name").map(str::to_string).unwrap_or_else(|| label.replace(' ', "_"));
     let folder = strp(parameters, "folder").unwrap_or("");
     let in_new_package = boolp(parameters, "newPackage").unwrap_or(false);
@@ -143,6 +143,7 @@ pub fn replace_package(session: &mut Session, package: Package, path: Option<Str
     session.pkg = package;
     session.document_open = true;
     session.path = path;
+    session.recovery_origin = None;
     session.graph = 0;
 
     session.clipboard = None;
@@ -178,13 +179,13 @@ pub fn open_bytes(session: &mut Session, bytes: &[u8], name: Option<String>) -> 
 }
 
 pub fn open_bytes_linked(session: &mut Session, bytes: &[u8], name: Option<String>, linked: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<()> {
-    open_resolved(session, bytes, name, linked, crate::linked_files::load)
+    open_resolved(session, bytes, name, linked, Session::load_file_links)
 }
 
 /// Resolve every external graph and its assets through the caller's read capability.
 pub fn open_bytes_scoped(session: &mut Session, bytes: &[u8], path: &str, read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<()> {
     let assets = |reference: &str| read(&crate::document_path::resolve(path, reference));
-    open_resolved(session, bytes, Some(path.into()), &assets, |pkg| crate::linked_files::load_scoped(pkg, read))
+    open_resolved(session, bytes, Some(path.into()), &assets, |_, pkg| crate::linked_files::load_scoped(pkg, read))
 }
 
 fn open_resolved(
@@ -192,7 +193,7 @@ fn open_resolved(
     bytes: &[u8],
     name: Option<String>,
     linked: &dyn Fn(&str) -> Option<Vec<u8>>,
-    load: impl FnOnce(&mut Package) -> Vec<String>,
+    load: impl FnOnce(&mut Session, &mut Package) -> Vec<String>,
 ) -> Result<()> {
     let name = name.map(|path| crate::document_path::normalize(&path));
     if let Some(name) = &name
@@ -213,10 +214,11 @@ fn open_resolved(
     for (path, source) in &session.pkg.dependencies {
         read.pkg.dependencies.entry(path.clone()).or_insert_with(|| source.clone());
     }
-    let link_warnings = load(&mut read.pkg);
-    let path = if read.warnings.is_empty() { name } else { None };
+    let link_warnings = load(session, &mut read.pkg);
+    let (path, recovery_origin) = if read.warnings.is_empty() { (name, None) } else { (None, name) };
     read.warnings.extend(link_warnings);
     session.open_package(read.pkg, path)?;
+    session.recovery_origin = recovery_origin;
     for warning in &read.warnings {
         session.warn(warning.clone());
     }
@@ -249,7 +251,8 @@ pub(crate) fn save_bytes_at(session: &Session, path: Option<&str>) -> Result<Vec
     }
 
     // Byte-only consumers (portable materials and recovery) retain standalone embedded SBS
-    Ok(materialcraft_formats::sbs::write_sbs(&package_for_save(session, path))?)
+    // A recovered document still has an import folder for its authored links.
+    Ok(materialcraft_formats::sbs::write_sbs(&package_for_save(session, path.or(session.recovery_origin.as_deref())))?)
 }
 
 fn package_for_save(session: &Session, path: Option<&str>) -> Package {
@@ -261,13 +264,90 @@ fn package_for_save(session: &Session, path: Option<&str>) -> Package {
             }
         }
 
+        let in_place = session.path.as_deref().is_some_and(|current| current == path || current == crate::document_path::normalize(path));
+        let mut packages = std::collections::BTreeMap::new();
         for instance in package.graphs.iter_mut().flat_map(|graph| graph.instances_mut()) {
-            if !instance.package.is_empty() {
-                instance.package = crate::document_path::relative(path, &instance.package);
+            // Catalog links follow the selected library even when the caller is saved inside it.
+            if instance.package.is_empty() || (in_place && instance.package.starts_with("sbs://")) {
+                continue;
             }
+            let source = std::mem::take(&mut instance.package);
+            let reference = packages
+                .entry(source)
+                .or_insert_with_key(|source| if in_place { crate::document_path::relative(path, source) } else { package_reference(session, path, source) });
+            instance.package.clone_from(reference);
         }
     }
     package
+}
+
+fn package_reference(_session: &Session, destination: &str, source: &str) -> String {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use materialcraft_formats::sbs::library;
+        use std::path::Path;
+
+        if Path::new(source).is_absolute()
+            && !library::contains_file(Path::new(destination))
+            && let Ok(root) = library::root().canonicalize()
+            && let Some(uri) = verified_library_reference(_session, &root, source)
+        {
+            return uri;
+        }
+    }
+    crate::document_path::relative(destination, source)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verified_library_reference(session: &Session, root: &std::path::Path, source: &str) -> Option<String> {
+    use materialcraft_formats::sbs::library;
+    use std::{collections::BTreeMap, path::Path};
+
+    let uri = library::bundled_package_uri(root, Path::new(source))?;
+    let mut names = BTreeMap::from([(source.to_string(), uri.clone())]);
+    let mut pending = vec![source.to_string()];
+    while let Some(key) = pending.pop() {
+        let package = session.pkg.dependencies.get(&key)?;
+        if package.graphs.is_empty() || !package.resources.is_empty() {
+            return None;
+        }
+        let package_uri = names.get(&key)?;
+        let mut reference = match session.library.packages.get(package_uri) {
+            Some(known) => (**known).clone(),
+            None => {
+                let bytes = library::read(package_uri).ok()?;
+                let mut read = materialcraft_formats::sbs::read_sbs(&bytes, package_uri, &linked_files(package_uri)).ok()?;
+                crate::linked_files::normalize_references(&mut read.pkg, package_uri);
+                read.pkg
+            }
+        };
+
+        let mut normalized = (**package).clone();
+        for instance in normalized.graphs.iter_mut().flat_map(|graph| graph.instances_mut()).filter(|instance| !instance.package.is_empty()) {
+            if let Some(uri) = names.get(&instance.package) {
+                instance.package.clone_from(uri);
+                continue;
+            }
+            let path = if instance.package.starts_with("sbs://") {
+                root.join(library::relative_path(&instance.package).ok()?)
+            } else {
+                Path::new(&instance.package).to_path_buf()
+            };
+            let child = library::bundled_package_uri(root, &path)?;
+            let key = std::mem::replace(&mut instance.package, child.clone());
+            names.insert(key.clone(), child);
+            pending.push(key);
+        }
+
+        // Loaded calls carry resolved argument types and bodies. Compare both copies
+        // against the same interfaces so that authored edits remain distinguishable.
+        crate::linked_packages::interfaces(&mut reference, &session.library.packages);
+        crate::linked_packages::interfaces(&mut normalized, &session.library.packages);
+        if normalized.graphs != reference.graphs {
+            return None;
+        }
+    }
+    Some(uri)
 }
 
 pub fn save_files_at(session: &Session, path: &str) -> Result<materialcraft_formats::project::ProjectFiles> {
@@ -353,7 +433,7 @@ pub(crate) fn save_to_path(s: &mut Session, path: &str) -> Result<J> {
 
     let bytes = write_package_at(s, &path)?;
     s.path = Some(path.clone());
-    s.refresh_links();
+    s.refresh_saved_links(&path);
     s.modified = false;
     Ok(json!({"path": path, "bytes": bytes}))
 }

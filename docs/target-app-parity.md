@@ -43,9 +43,8 @@ automation + tests), weighted by how much of the day each area carries. **Remain
 | Platforms | 4 | 50% | Windows, macOS, Linux, FreeBSD and web builds compile; browser file I/O; packaging scripts and release workflows | First release run |
 | **Total** | **100** | **≈ 69%** | | |
 
-Beyond the reference app: every edit is a command available through MCP, the CLI and the app's
-control channel (including synthetic mouse and keyboard input), the engine runs headless with the
-same results, and everything compiles to WebAssembly.
+MaterialCraft exposes every edit as a command through its MCP server, CLI and control channel,
+including synthetic mouse and keyboard input. The same engine runs headless and compiles to WebAssembly.
 
 ## Method
 

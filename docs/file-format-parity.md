@@ -10,10 +10,15 @@ The native SBS and primitive-library limitations in [atomic-workflow.md](atomic-
 
 > **Last reviewed:** 2026-11-04 · **Last updated:** 2026-11-04 · **Change:** major (SBS is the main project format) · **Target:** the professional node-based material workflow
 
-SBS packages are MaterialCraft's main project format (issue #49), read and written with its own
-clean-room code from the format's public documentation and sample files. The older `.mcraft`
-package is still read and written. MaterialCraft also reads and writes the open image formats
-material artists exchange.
+SBS packages are MaterialCraft's main project format (issue #49). Its clean-room Rust codec
+reads and writes them. The older `.mcraft` package is still read and written. MaterialCraft
+also reads and writes the open image formats material artists exchange.
+
+The atomic sample builds a height image and a scalar brightness output from a graph defined
+in Rust. Its round-trip test saves and reopens the generated graph, checks image errors below
+`1e-5` and compares typed values for equality. [Graph generator](../crates/engine/src/atomic_sample.rs) · [Round-trip test](../crates/engine/tests/it/atomics.rs)
+
+The published sample can be used and modified under either of its project licenses. [Sample file](../examples/atomic_sample.sbs) · [Attribution](../ATTRIBUTION.md) · [MIT](../LICENSE-MIT) · [Apache-2.0](../LICENSE-APACHE)
 
 | Format | Read | Write | Fidelity | Tests |
 |---|---|---|---|---|

@@ -5,9 +5,11 @@ pub mod atomic;
 pub mod catalog;
 pub mod function;
 pub mod ops;
+pub mod output_precision;
 pub mod pattern;
 mod raster;
 
+mod bitmap_color_space;
 mod cook_context;
 pub mod graph_interface;
 mod image_input;
@@ -20,9 +22,11 @@ mod parameter_descriptor;
 mod port_definition;
 mod port_kind;
 mod random;
+mod texture_sampler;
 
+pub use bitmap_color_space::BitmapColorSpace;
 pub use catalog::{catalog, categories, find};
-pub use cook_context::CookContext;
+pub use cook_context::{CookContext, GraphVariables};
 pub use image_input::{MAX_IMAGE_INPUTS, image_input_prefix};
 pub use node_definition::NodeDefinition;
 pub(crate) use node_definition_builder::node;
@@ -32,6 +36,7 @@ pub use parameter_definition::ParameterDefinition;
 pub use parameter_descriptor::ParameterDescriptor;
 pub use port_definition::PortDefinition;
 pub use port_kind::PortKind;
+pub use texture_sampler::{resize_bound_image, resize_connected_image, resize_input_level};
 
 pub type CookResult = Result<Vec<craft_texture::Image>, String>;
 pub type Cook = fn(&CookContext<'_>) -> CookResult;

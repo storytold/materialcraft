@@ -1,17 +1,19 @@
 use super::{
     EvaluationContext,
+    function_call::CallBindings,
     instruction::Instruction,
     value_type::{self, boolean, dimensions, floats, integers},
 };
 use materialcraft_core::Value;
 use std::collections::BTreeMap;
 
-pub(crate) fn evaluate(
+pub(super) fn evaluate(
     instruction: &Instruction,
     arguments: &[Value],
     variables: &mut BTreeMap<String, Value>,
-    random: &mut u32,
+    random: &mut crate::random::FunctionRandom,
     context: &EvaluationContext<'_>,
+    bindings: Option<(&CallBindings<'_>, &BTreeMap<String, Value>)>,
 ) -> Result<Value, String> {
     let op = instruction.definition.id;
     let first = || arguments.first().ok_or("missing first operand");
@@ -35,11 +37,23 @@ pub(crate) fn evaluate(
         let missing = || format!("undefined variable `{name}` in this context");
         let value = match context.variable(name, variables)? {
             Some(value) => value,
-            // User counters start at typed zero; unavailable system variables still error
-            None if !name.starts_with('$') => materialcraft_core::ValueType::from_code(instruction.type_code)
-                .filter(|kind| *kind != materialcraft_core::ValueType::String)
-                .map(materialcraft_core::ValueType::default_value)
-                .ok_or_else(missing)?,
+            // A pattern's traversal seed selects its stream. The integer getter has no binding for it.
+            None if context.scope.is_pattern() && name == "$randomseed" && op == "get_integer1" => Value::Int(0),
+            // Unbound integer names in node properties read as zero, including reserved spellings.
+            // Known system variables still enforce their own scope and type.
+            None if matches!(context.scope, super::FunctionScope::Node | super::FunctionScope::RandomSeed)
+                && op == "get_integer1"
+                && super::SystemVariable::named(name).is_none() =>
+            {
+                Value::Int(0)
+            }
+            // Unset numeric variables start at typed zero in a value processor.
+            None if !name.starts_with('$') || context.scope == super::FunctionScope::ValueProcessor => {
+                materialcraft_core::ValueType::from_code(instruction.type_code)
+                    .filter(|kind| *kind != materialcraft_core::ValueType::String)
+                    .map(materialcraft_core::ValueType::default_value)
+                    .ok_or_else(missing)?
+            }
             None => return Err(missing()),
         };
 
@@ -60,6 +74,30 @@ pub(crate) fn evaluate(
         return value_type::canonical(value);
     }
 
+    if context.scope.uses_seed_words() && !instruction.literal {
+        // Runtime scalar seed sums add the storage words. A float-to-integer cast retains the floored float's bits.
+        match (op, arguments) {
+            ("add", [Value::Int(left), Value::Int(right)]) => return Ok(Value::Int(left.wrapping_add(*right))),
+            ("add", [Value::Float(left), Value::Float(right)]) => {
+                let sum = f32::from_bits(left.to_bits().wrapping_add(right.to_bits()));
+                return Ok(Value::Float(super::arithmetic::flush_subnormal(sum)));
+            }
+            ("toint1", [Value::Float(value)]) => {
+                // Rounding a signaling NaN quiets it and preserves the seed payload.
+                let word = if value.is_nan() { value.to_bits() | 0x0040_0000 } else { value.floor().to_bits() };
+                return Ok(Value::Int(word as i32));
+            }
+            _ => {}
+        }
+    }
+
+    // A folded scalar cast interprets the 32-bit word as unsigned. Vector casts use signed lanes.
+    if op == "tofloat"
+        && instruction.literal
+        && let Value::Int(value) = first()?
+    {
+        return Ok(Value::Float(*value as u32 as f32));
+    }
     if op.starts_with("to") || op.contains("vector") || op.contains("swizzle") {
         return super::vector::evaluate(op, arguments, instruction.value.as_ref());
     }
@@ -78,7 +116,11 @@ pub(crate) fn evaluate(
         }
         "isdefined" => {
             let name = name()?;
-            Value::Bool(context.variable(name, variables)?.is_some())
+            let defined = match bindings {
+                Some((call, assignments)) if super::SystemVariable::named(name).is_none() => call.is_defined(name, assignments),
+                _ => context.variable(name, variables)?.is_some(),
+            };
+            Value::Bool(defined)
         }
         "and" => Value::Bool(boolean(first()?)? && boolean(second()?)?),
         "or" => Value::Bool(boolean(first()?)? || boolean(second()?)?),
@@ -98,6 +140,7 @@ pub(crate) fn evaluate(
             }
 
             let ordering = match (left, right) {
+                (Value::Int(a), Value::Int(b)) if instruction.literal => Some((*a as u32).cmp(&(*b as u32))),
                 (Value::Int(a), Value::Int(b)) => a.partial_cmp(b),
                 (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
                 (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
@@ -121,16 +164,40 @@ pub(crate) fn evaluate(
 
             let setting = instruction.value.as_ref().map(integers).transpose()?.unwrap_or([0, 0, 0, 0]);
             let index = usize::try_from(setting[0]).map_err(|_| "negative image index")?;
-            let pixel = match context.images.get(index).and_then(Option::as_ref) {
-                Some(image) if setting[1] == 0 => {
-                    image.get((position[0] * image.width() as f32).floor() as i64, (position[1] * image.height() as f32).floor() as i64, context.tile)
+            let (bilinear, repeat) = match (context.scope, setting[1]) {
+                (super::FunctionScope::Node | super::FunctionScope::RandomSeed, mode) => (mode != 0, context.tile),
+                (_, 2) => (false, false),
+                (_, 3) => (true, false),
+                (_, mode) => (mode != 0, true),
+            };
+            let image = context.images.get(index).and_then(Option::as_ref);
+            let uniform_sampler = context.scope == super::FunctionScope::ValueProcessor || context.scope.is_pattern();
+            let pixel = match image {
+                Some(image) if uniform_sampler => {
+                    let format = context.image_formats.get(index).copied().unwrap_or(materialcraft_core::OutputFormat::F32);
+                    crate::texture_sampler::sample_uniform(image, [position[0], position[1]], format, bilinear, repeat)
+                }
+                Some(image) if context.scope == super::FunctionScope::PixelProcessor => {
+                    let format = context.image_formats.get(index).copied().unwrap_or(materialcraft_core::OutputFormat::F32);
+                    crate::texture_sampler::sample_pixel(image, [position[0], position[1]], format, bilinear, repeat)
+                }
+                Some(image) if !bilinear => {
+                    image.get((position[0] * image.width() as f32).floor() as i64, (position[1] * image.height() as f32).floor() as i64, repeat)
                 }
                 Some(image) => image.sample_stored(position[0], position[1], context.tile),
                 None => [0.0; 4],
             };
 
-            if op == "samplelum" { Value::Float(pixel[0]) } else { Value::Float4(pixel) }
+            if op == "samplecol" {
+                Value::Float4(pixel)
+            } else if (uniform_sampler || context.scope == super::FunctionScope::PixelProcessor)
+                && image.is_some_and(|texture| texture.kind() == craft_texture::Kind::Color)
+            {
+                Value::Float(((pixel[1] + pixel[2]) + pixel[0]) * (1.0 / 3.0))
+            } else {
+                Value::Float(pixel[0])
+            }
         }
-        _ => return super::arithmetic::evaluate(op, arguments, random, context.scope),
+        _ => return super::arithmetic::evaluate(instruction, arguments, random, context.scope),
     })
 }

@@ -20,7 +20,7 @@ pub use file::write_atomic;
 pub use file::{output_name, safe_file_name};
 pub use format_error::FormatError;
 pub(crate) use guard::guard;
-pub use image::{decode, encode};
+pub use image::{decode, decode_with_color_space, encode};
 
 pub type Result<T> = std::result::Result<T, FormatError>;
 pub(crate) const MAX_RESOURCE: u64 = 256 << 20;

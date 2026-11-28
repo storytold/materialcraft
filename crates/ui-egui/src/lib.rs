@@ -13,6 +13,7 @@ pub mod framework;
 pub mod function;
 pub mod graph;
 mod graph_drag_payload;
+use materialcraft_engine::graph_pixels;
 mod help_links;
 mod history;
 mod home_screen;

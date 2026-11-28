@@ -84,8 +84,8 @@ impl BaseParameter {
                 };
             }
             (Self::PixelSize, Value::Float2(size)) => {
-                if size.iter().any(|component| !component.is_finite() || *component <= 0.0 || *component > 8192.0) {
-                    return Err("Pixel size components must be finite and between 0 and 8192, excluding zero".into());
+                if size.iter().any(|component| !component.is_finite() || component.abs() > 8192.0) {
+                    return Err("Pixel size components must be finite and between -8192 and 8192".into());
                 }
 
                 base.pixel_size = *size;

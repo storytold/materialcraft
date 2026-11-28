@@ -6,7 +6,7 @@
 use super::{
     LayoutFrame, LayoutItem,
     filter_map::FILTERS,
-    xml::{child_element, child_value, children_named, parse_floats},
+    xml::{child_element, child_value, children_named, parse_floats, string_parameter},
 };
 use crate::{FormatError, Result};
 use roxmltree::Node as XmlNode;
@@ -187,16 +187,6 @@ fn function_item(node: XmlNode, dependencies: &HashMap<&str, String>) -> Option<
         .and_then(|value| child_value(value, "constantValueString"))?;
     let (graph, package) = reference(path, dependencies)?;
     Some(LayoutItem::FunctionInstance { package, graph })
-}
-
-/// Read a named static string parameter from an atomic filter.
-fn string_parameter<'a>(filter: XmlNode<'a, '_>, name: &str) -> Option<&'a str> {
-    child_element(filter, "parameters")
-        .into_iter()
-        .flat_map(|parameters| children_named(parameters, "parameter"))
-        .find(|parameter| child_value(*parameter, "name") == Some(name))
-        .and_then(|parameter| child_element(parameter, "paramValue"))
-        .and_then(|value| child_value(value, "constantValueString"))
 }
 
 #[cfg(test)]

@@ -65,7 +65,7 @@ fn real_library_previews_survive_relaunch() {
                 assert_eq!(phase, "cold", "warm launch must load {graph} without cooking");
 
                 materialcraft_engine::NodeLibrary::preview_cancellable(&library, package, graph, 72, &cancel)
-                    .map(|image| image.resize(72, 72, true).to_rgba8_display())
+                    .map(|image| crate::graph_pixels::rgba8(&image.resize(72, 72, true), true))
             });
 
             assert_eq!(image.unwrap().len(), 72 * 72 * 4);

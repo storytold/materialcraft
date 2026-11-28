@@ -46,6 +46,11 @@ impl PatternGraph {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        self.validated_depth().map(|_| ())
+    }
+
+    /// Validate every node and return the maximum quadrant depth connected to the root.
+    pub fn validated_depth(&self) -> Result<u32, String> {
         if self.nodes.len() > 4096 {
             return Err("pattern graph exceeds the 4096-node limit".into());
         }
@@ -59,11 +64,11 @@ impl PatternGraph {
         }
 
         let mut active = BTreeSet::new();
-        let mut finished = BTreeSet::new();
+        let mut depths = BTreeMap::<u32, u32>::new();
         for root in &self.nodes {
             let mut pending = vec![(root.id, false)];
             while let Some((id, visited)) = pending.pop() {
-                if finished.contains(&id) {
+                if depths.contains_key(&id) {
                     continue;
                 }
 
@@ -73,7 +78,10 @@ impl PatternGraph {
                 }
                 if visited {
                     active.remove(&id);
-                    finished.insert(id);
+                    // Children are complete. Only a quadrant subdivides the image on its way to a child.
+                    let step = u32::from(node.kind == PatternNodeKind::Quadrant);
+                    let depth = node.children.iter().flatten().filter_map(|child| depths.get(child)).max().map_or(0, |d| d + step);
+                    depths.insert(id, depth);
                     continue;
                 }
                 if !active.insert(id) {
@@ -84,7 +92,7 @@ impl PatternGraph {
                 pending.extend(node.children.iter().rev().flatten().map(|child| (*child, false)));
             }
         }
-        Ok(())
+        Ok(self.root.and_then(|id| depths.get(&id).copied()).unwrap_or(0))
     }
 }
 

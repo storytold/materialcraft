@@ -12,6 +12,9 @@ pub struct ExposedParameter {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub group: String,
     pub default: Value,
+    /// A standalone SBS function can explicitly declare a wireable argument.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub connectable: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 /// How many slider spans the hard limit extends past each end of a parameter's range
 const HARD_SPAN: f32 = 16.0;
 
-/// Native channel controls also accept a single grayscale value, broadcast by the evaluator.
+/// Native channel controls also accept a single grayscale function result.
 /// Other vector parameters keep their exact function output type.
 pub fn accepts_scalar_function(definition: &str, parameter: &str) -> bool {
     matches!((definition, parameter), ("levels", "in_low" | "in_mid" | "in_high" | "out_low" | "out_high") | ("fx_map", "background"))
@@ -17,6 +17,13 @@ fn clamp_finite(v: f32, lo: f32, hi: f32, fallback: f32) -> f32 {
 }
 
 pub fn clamp_params(definition: &NodeDefinition, params: &mut BTreeMap<String, Value>) {
+    if definition.id == "grayscale_conversion"
+        && let Some(Value::Float4(weights)) = params.get_mut("weights")
+    {
+        for (weight, fallback) in weights.iter_mut().zip([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0]) {
+            *weight = clamp_finite(*weight, -HARD_SPAN, 1.0 + HARD_SPAN, fallback);
+        }
+    }
     for parameter in &definition.params {
         let Some(value) = params.get_mut(parameter.id) else { continue };
         if let Value::Enum(index) = value {
@@ -34,15 +41,27 @@ pub fn clamp_params(definition: &NodeDefinition, params: &mut BTreeMap<String, V
             continue;
         }
 
+        // These colors supply image samples, including signed HDR values.
+        let image_color = matches!((definition.id, parameter.id), ("fx_map", "background") | ("uniform", "color"));
         if let Value::Color(components) = value {
+            let (lo, hi) = if image_color { (f32::MIN, f32::MAX) } else { (-HARD_SPAN, 1.0 + HARD_SPAN) };
             for component in components {
-                *component = clamp_finite(*component, -HARD_SPAN, 1.0 + HARD_SPAN, 0.0);
+                *component = clamp_finite(*component, lo, hi, 0.0);
             }
             continue;
         }
 
-        // An unconstrained Input Value accepts any number; reject only nonnumeric values
-        let ranged = parameter.min < parameter.max;
+        // These numeric controls can exceed the slider range without increasing allocations.
+        let unbounded = matches!(
+            (definition.id, parameter.id),
+            ("levels", "in_low" | "in_high" | "out_low" | "out_high")
+                | ("transformation", "matrix" | "offset")
+                | ("directional_warp", "intensity")
+                | ("directional_blur", "angle")
+                // The pattern renderer bounds copy count and pixel work using the resolved region.
+                | ("fx_map", "roughness" | "opacity" | "tiling_region")
+        );
+        let ranged = parameter.min < parameter.max && !unbounded && (definition.id, parameter.id) != ("uniform", "color");
         let span = parameter.max - parameter.min;
         let (lo, hi) = if ranged { (parameter.min - HARD_SPAN * span, parameter.max + HARD_SPAN * span) } else { (f32::MIN, f32::MAX) };
 
@@ -79,6 +98,11 @@ pub fn resolve_params(def: &NodeDefinition, overrides: &BTreeMap<String, Value>)
         {
             m.insert(k.clone(), v.clone());
         }
+    }
+    if def.id == "grayscale_conversion"
+        && let Some(Value::Float4(weights)) = overrides.get("weights")
+    {
+        m.insert("weights".into(), Value::Float4(*weights));
     }
     clamp_params(def, &mut m);
     m

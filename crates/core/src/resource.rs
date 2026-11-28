@@ -1,4 +1,4 @@
-use crate::ResourceBytes;
+use crate::{OutputFormat, ResourceBytes};
 use serde::{Deserialize, Serialize};
 
 /// An asset retained in memory until the package is saved: a bitmap or an SVG.
@@ -31,4 +31,29 @@ impl Resource {
 
 fn default_folder() -> String {
     "Resources".into()
+}
+
+/// Original normalized channel precision of a grayscale or truecolor PNG resource.
+/// The decoded float values alone cannot distinguish a byte from the equivalent repeated-byte word.
+pub fn png_sample_format(bytes: &[u8]) -> Option<OutputFormat> {
+    png_raster_info(bytes).map(|info| info.format)
+}
+
+/// Raster properties declared in the header of a normalized grayscale or truecolor PNG.
+pub struct PngRasterInfo {
+    pub size: [u32; 2],
+    pub format: OutputFormat,
+    pub grayscale: bool,
+}
+
+pub fn png_raster_info(bytes: &[u8]) -> Option<PngRasterInfo> {
+    let header = bytes.strip_prefix(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR")?;
+    let format = match header.get(8..10)? {
+        [8, 0 | 2 | 4 | 6] => OutputFormat::U8,
+        [16, 0 | 2 | 4 | 6] => OutputFormat::U16,
+        _ => return None,
+    };
+    let width = u32::from_be_bytes(*header.first_chunk()?);
+    let height = u32::from_be_bytes(*header.get(4..)?.first_chunk()?);
+    Some(PngRasterInfo { size: [width, height], format, grayscale: matches!(header.get(9), Some(0 | 4)) })
 }

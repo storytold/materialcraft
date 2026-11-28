@@ -1,6 +1,8 @@
 use super::ATOMIC;
+use super::input_resize::{InputResize, resized_input};
 use crate::{CookContext, CookResult, NodeDefinition, node};
-use craft_texture::Kind;
+use craft_texture::{Image, Kind};
+use materialcraft_core::{OutputFormat, Value};
 
 pub(super) fn definition() -> NodeDefinition {
     node("levels", "Levels", ATOMIC)
@@ -12,40 +14,83 @@ pub(super) fn definition() -> NodeDefinition {
         .float4("in_high", "Level in high", [1.0; 4], 0.0, 1.0)
         .float4("out_low", "Level out low", [0.0; 4], 0.0, 1.0)
         .float4("out_high", "Level out high", [1.0; 4], 0.0, 1.0)
+        .boolean("clamp_intermediate", "Clamp intermediate values", true)
         .any_out()
         .cook(levels)
 }
 
 fn levels(context: &CookContext) -> CookResult {
-    let image = context.any_or(0, Kind::Gray, [0.0; 4]);
-    let low = context.v4("in_low");
-    let mid = context.v4("in_mid");
-    let high = context.v4("in_high");
-    let output_low = context.v4("out_low");
-    let output_high = context.v4("out_high");
+    let image = resized_input(context, 0, InputResize::Levels).unwrap_or_else(|| Image::filled(context.w, context.h, Kind::Gray, [0.0; 4]));
+    let control = |name| {
+        if image.is_gray()
+            && let Some(Value::Float(level)) = context.value(name)
+        {
+            return [*level; 4];
+        }
+        let rgba = context.v4(name);
+        if image.is_gray() { [(rgba[0] + rgba[1] + rgba[2]) / 3.0; 4] } else { rgba }
+    };
+    let endpoint = |name| {
+        let values = control(name);
+        match context.format {
+            OutputFormat::U8 | OutputFormat::U16 | OutputFormat::Inherit => values.map(|v| v.clamp(0.0, 1.0)),
+            OutputFormat::F16 | OutputFormat::F32 => values,
+        }
+    };
+    let low = endpoint("in_low");
+    let mid = control("in_mid");
+    let high = endpoint("in_high");
+    let output_low = endpoint("out_low");
+    let output_high = endpoint("out_high");
+    let clamp = context.b("clamp_intermediate");
 
-    Ok(vec![image.map(image.kind(), |pixel| {
-        std::array::from_fn(|channel| levels_fn(pixel[channel], low[channel], mid[channel], high[channel], output_low[channel], output_high[channel]))
-    })])
+    let ranges: [_; 4] = std::array::from_fn(|c| ChannelRange::new(low[c], mid[c], high[c], output_low[c], output_high[c]));
+    Ok(vec![image.map(image.kind(), |pixel| std::array::from_fn(|c| ranges[c].map(pixel[c], clamp)))])
 }
 
 pub fn levels_fn(v: f32, in_low: f32, in_mid: f32, in_high: f32, out_low: f32, out_high: f32) -> f32 {
-    let span = in_high - in_low;
-    let t = if span.abs() < 1e-6 { if v >= in_high { 1.0 } else { 0.0 } } else { ((v - in_low) / span).clamp(0.0, 1.0) };
+    ChannelRange::new(in_low, in_mid, in_high, out_low, out_high).map(v, true)
+}
 
-    // NaN (from an input or a hostile parameter) would otherwise spread through the graph
-    let t = if t.is_finite() { t } else { 0.0 };
-    let mid = if in_mid.is_finite() { in_mid.clamp(0.0, 1.0) } else { 0.5 };
+struct ChannelRange {
+    in_low: f32,
+    scale: f32,
+    gamma: f32,
+    out_low: f32,
+    out_span: f32,
+}
 
-    // The midpoint slider controls reciprocal gamma below neutral and gamma above it
-    // Treating it as an input value that maps to 0.5 changes authored levels curves
-    let g = if mid <= 0.5 { 1.0 / (9.0 - 16.0 * mid) } else { 16.0 * mid - 7.0 };
-    out_low + t.powf(g) * (out_high - out_low)
+impl ChannelRange {
+    fn new(in_low: f32, in_mid: f32, in_high: f32, out_low: f32, out_high: f32) -> Self {
+        let span = in_high - in_low;
+        // Coincident endpoints use the slope of a 0.0001-wide interval. Narrow nonzero spans retain their own slope.
+        let scale = if span == 0.0 { 10_000.0 } else { span.recip() };
+        // The texture evaluator flushes a subnormal slope before it multiplies the input.
+        let scale = if scale.is_subnormal() { 0.0_f32.copysign(scale) } else { scale };
+        let mid = if in_mid.is_finite() { in_mid.clamp(0.0, 1.0) } else { 0.5 };
+        let gamma = if mid <= 0.5 { (9.0 - 16.0 * mid).recip() } else { 16.0 * mid - 7.0 };
+        Self { in_low, scale, gamma, out_low, out_span: out_high - out_low }
+    }
+
+    fn map(&self, value: f32, clamp: bool) -> f32 {
+        let t = (value - self.in_low) * self.scale;
+        // A nonfinite input or range must not spread NaN through the graph.
+        let t = if t.is_finite() { t } else { 0.0 };
+        let t = if clamp { t.clamp(0.0, 1.0) } else { t };
+        let curved = if t == 0.0 || t == 1.0 { t } else { crate::function::signed_pixel_power(t, self.gamma) };
+        curved.mul_add(self.out_span, self.out_low)
+    }
 }
 
 #[cfg(test)]
 mod levels_tests {
     use super::levels_fn;
+
+    #[test]
+    fn enormous_ranges_flush_the_reciprocal_before_scaling_the_pixel() {
+        assert!(levels_fn(3.0, 0.0, 0.5, 2.0_f32.powi(125), 0.0, 1.0) > f32::MIN_POSITIVE);
+        assert_eq!(levels_fn(3.0, 0.0, 0.5, 2.0_f32.powi(127), 0.0, 1.0).to_bits(), 0);
+    }
 
     #[test]
     fn levels_remaps_the_input_range_midtones_and_output_range() {
@@ -69,9 +114,10 @@ mod levels_tests {
         assert!(close(levels_fn(0.5, 0.0, 0.5, 1.0, 0.2, 0.6), 0.4));
         assert!(close(levels_fn(0.0, 0.0, 0.5, 1.0, 1.0, 0.0), 1.0));
 
-        // A collapsed input range is a threshold; NaN never escapes
+        // At coincident endpoints the low output begins a steep finite ramp.
         assert_eq!(levels_fn(0.49, 0.5, 0.5, 0.5, 0.0, 1.0), 0.0);
-        assert_eq!(levels_fn(0.5, 0.5, 0.5, 0.5, 0.0, 1.0), 1.0);
+        assert_eq!(levels_fn(0.5, 0.5, 0.5, 0.5, 0.0, 1.0), 0.0);
+        assert_eq!(levels_fn(0.51, 0.5, 0.5, 0.5, 0.0, 1.0), 1.0);
         assert!(levels_fn(f32::NAN, 0.0, 0.5, 1.0, 0.0, 1.0).is_finite());
         assert!(levels_fn(0.5, f32::NAN, 0.5, f32::NAN, 0.0, 1.0).is_finite());
     }

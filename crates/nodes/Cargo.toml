@@ -10,5 +10,12 @@ workspace = true
 
 [dependencies]
 materialcraft-core = { workspace = true }
+craft-font-catalog = { workspace = true }
 craft-texture = { workspace = true }
+harfrust = { workspace = true }
+read-fonts = { workspace = true }
+unicode-bidi = { workspace = true }
+vello_common = { workspace = true }
+half = { workspace = true }
 rayon = { workspace = true }
+serde_json = { workspace = true }

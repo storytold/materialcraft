@@ -79,9 +79,9 @@ pub use pattern_node::PatternNode;
 pub use pattern_node_kind::PatternNodeKind;
 pub use pin::Pin;
 pub use preset::Preset;
-pub use resource::Resource;
+pub use resource::{PngRasterInfo, Resource, png_raster_info, png_sample_format};
 pub use resource_bytes::ResourceBytes;
-pub use size_mode::SizeMode;
+pub use size_mode::{GraphSizeOffset, SizeMode, offset_dimensions};
 pub use value::Value;
 pub use value_type::ValueType;
 

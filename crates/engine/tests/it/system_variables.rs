@@ -51,18 +51,18 @@ fn standalone_get_suggestions_match_each_type_and_order() {
 }
 
 #[test]
-fn pixel_processor_suggestions_add_position_without_fx_variables() {
-    let mut graph = Graph::new("Pixels");
-    let owner = graph.add_node("pixel_processor", [0.0; 2]);
-    graph.node_mut(owner).unwrap().params.insert("function".into(), Value::Function(Box::new(getter("get_float2", ""))));
-    let mut package = Package::new("Pixels");
-    package.graphs.push(graph);
-    let session = Session::new(package);
-    let target = FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
-
-    let variables = target.variables(&session, 1).unwrap();
-
-    assert_eq!(variables.iter().map(|variable| variable.name.as_str()).collect::<Vec<_>>(), ["$size", "$sizelog2", "$pos"]);
+fn pixel_and_value_processor_suggestions_include_position() {
+    for processor in ["pixel_processor", "value_processor"] {
+        let mut graph = Graph::new("Position");
+        let owner = graph.add_node(processor, [0.0; 2]);
+        graph.node_mut(owner).unwrap().params.insert("function".into(), Value::Function(Box::new(getter("get_float2", ""))));
+        let mut package = Package::new("Position");
+        package.graphs.push(graph);
+        let session = Session::new(package);
+        let target = FunctionGraphTarget::Parameter { node: owner, parameter: "function".into() };
+        let variables = target.variables(&session, 1).unwrap();
+        assert_eq!(variables.iter().map(|variable| variable.name.as_str()).collect::<Vec<_>>(), ["$size", "$sizelog2", "$pos"]);
+    }
 }
 
 #[test]
@@ -78,6 +78,14 @@ fn graph_metadata_and_host_values_cook_and_round_trip_as_native_get_nodes() {
         ("get_float3", "$physicalsize", Value::Float3([20.0, 10.0, 0.5])),
         ("get_float2", "$size", Value::Float2([32.0, 16.0])),
         ("get_float2", "$sizelog2", Value::Float2([5.0, 4.0])),
+        ("get_float2", "$pos", Value::Float2([0.0; 2])),
+        ("get_float1", "$depth", Value::Float(0.0)),
+        ("get_float1", "$depthpow2", Value::Float(0.0)),
+        ("get_float1", "$number", Value::Float(0.0)),
+        ("isdefined", "$pos", Value::Bool(true)),
+        ("isdefined", "$depthpow2", Value::Bool(true)),
+        ("isdefined", "$absent", Value::Bool(false)),
+        ("get_integer3", "$absent", Value::Int3([0; 3])),
     ];
     let ids: Vec<_> = cases.iter().map(|(operation, name, _)| processor(&mut graph, operation, name)).collect();
     let mut package = Package::new("Context");
@@ -135,7 +143,7 @@ fn pixel_ratio_and_tiling_inherit_and_preserve_native_relative_modes() {
     let mut session = Session::new(package);
     session.selection = vec![pixel];
 
-    for (mode, expected) in [("relativeToInput", 2.0), ("relativeToParent", 3.0), ("absolute", 0.0)] {
+    for (mode, expected) in [("relativeToInput", 2.0), ("relativeToParent", 4.0), ("absolute", 0.0)] {
         execute(&mut session, "graph.node.base", &json!({"pixelRatio": 0, "tiling": false, "pixelRatioMode": mode, "tilingMode": mode})).unwrap();
         let bytes = write_sbs(&session.pkg).unwrap();
         let read = read_sbs(&bytes, "inheritance.sbs", &|_| None).unwrap();
@@ -279,7 +287,8 @@ fn nested_function_instances_use_the_processing_callers_variable_scope() {
         let cooked = session.cook();
 
         assert_eq!(cooked.nodes[&pixel].error, None);
-        assert!(cooked.nodes[&value].error.as_deref().unwrap().contains("undefined variable `$pos`"));
+        assert_eq!(cooked.nodes[&value].error, None);
+        assert_eq!(cooked.nodes[&value].outputs[0].as_value(), Some(&Value::Float2([0.0; 2])));
 
         let image = cooked.image(pixel, 0).unwrap();
 

@@ -1,4 +1,4 @@
-use materialcraft_core::{PatternGraph, PatternNode, PatternNodeKind, Value};
+use materialcraft_core::{FunctionGraph, PatternGraph, PatternNode, PatternNodeKind, Value};
 use roxmltree::Node as XmlNode;
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -87,6 +87,13 @@ pub(super) fn write(graph: &PatternGraph, writer: &mut SbsWriter) -> Result<Stri
         let definition = materialcraft_nodes::pattern::definition(node.kind).ok_or("missing pattern definition")?;
         let mut parameters: BTreeMap<_, _> = definition.params.iter().map(|parameter| (parameter.id.to_string(), parameter.default.clone())).collect();
         parameters.extend(node.parameters.clone());
+        if node.kind == PatternNodeKind::Quadrant
+            && let Some(luminosity @ Value::Float(_)) = parameters.get_mut("opacity")
+        {
+            // The literal swatch has four components. A scalar expression preserves the
+            // luminosity in both grayscale and color patterns when the package is reopened.
+            *luminosity = Value::Function(Box::new(FunctionGraph::constant(luminosity.clone())));
+        }
         for (name, value) in &parameters {
             if let Value::Function(function) = value {
                 let function = function_graph::write(function, writer)?;
@@ -121,4 +128,33 @@ pub(super) fn write(graph: &PatternGraph, writer: &mut SbsWriter) -> Result<Stri
     }
     output.push_str("</paramsGraph></paramsGraphs>");
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quadrant_scalar_luminosity_uses_a_scalar_function_on_save() {
+        let mut graph = PatternGraph::with_root(PatternNodeKind::Quadrant);
+        let original_swatch = Value::Float4([0.25, 0.5, 0.75, 0.875]);
+        let child = graph.add(PatternNodeKind::Quadrant).unwrap();
+        graph.nodes[0].children[1] = Some(child);
+        graph.nodes[0].parameters.insert("opacity".into(), Value::Float(-0.3125));
+        graph.nodes[1].parameters.insert("opacity".into(), original_swatch.clone());
+        let mut writer = SbsWriter { last_uid: 10, external_packages: BTreeMap::new() };
+        let xml = write(&graph, &mut writer).unwrap();
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let stored = read(document.root_element().first_element_child().unwrap()).unwrap();
+
+        // A literal swatch accepts four components. A one-component function keeps scalar
+        // luminosity semantics in both color modes, including values outside the unit range.
+        let Value::Function(function) = &stored.nodes[0].parameters["opacity"] else { panic!("expected a scalar function") };
+        let scalar = function.node(function.output.unwrap()).unwrap();
+        assert_eq!(scalar.op, "const_float1");
+        assert_eq!(scalar.type_code, 256);
+        assert_eq!(scalar.value, Some(Value::Float(-0.3125)));
+        assert_eq!(function.nodes.len(), 1);
+        assert_eq!(stored.nodes[1].parameters["opacity"], original_swatch);
+    }
 }

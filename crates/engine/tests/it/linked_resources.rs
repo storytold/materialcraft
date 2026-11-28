@@ -71,14 +71,18 @@ fn resource_package(source: &str) -> Package {
 
 #[test]
 fn library_resources_resolve_next_to_their_package() {
+    with_library_files("library_resources_resolve_next_to_their_package", verify_library_resources);
+}
+
+fn with_library_files(test: &str, verify: fn(&std::path::Path)) {
     const CHILD_ROOT: &str = "MC_LINKED_RESOURCES_TEST_ROOT";
     if let Ok(root) = std::env::var(CHILD_ROOT) {
-        verify_library_resources(std::path::Path::new(&root));
+        verify(std::path::Path::new(&root));
         return;
     }
 
     // A child process isolates the library root without mutating the test runner's environment
-    let root = std::env::temp_dir().join(format!("materialcraft-linked-resources-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("materialcraft-linked-resources-{}-{test}", std::process::id()));
     std::fs::create_dir_all(root.join("assets/sbs/resources")).unwrap();
     std::fs::create_dir_all(root.join("assets/sbs/nested/resources")).unwrap();
     std::fs::write(root.join("assets/sbs/resources/tile.svg"), TILE).unwrap();
@@ -98,7 +102,7 @@ fn library_resources_resolve_next_to_their_package() {
     .unwrap();
 
     let status = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "linked_resources::library_resources_resolve_next_to_their_package", "--nocapture"])
+        .args(["--exact", &format!("linked_resources::{test}"), "--nocapture"])
         .env(CHILD_ROOT, &root)
         .env("MATERIALCRAFT_SBS_DIR", root.join("assets/sbs"))
         .status()
@@ -106,6 +110,38 @@ fn library_resources_resolve_next_to_their_package() {
     std::fs::remove_dir_all(root).unwrap();
 
     assert!(status.success());
+}
+
+#[test]
+fn saving_a_catalog_source_updates_open_callers() {
+    with_library_files("saving_a_catalog_source_updates_open_callers", |root| {
+        use materialcraft_engine::NodeLibrary;
+        use std::sync::Arc;
+
+        let alias = "sbs://nested/source.sbs";
+        let source = root.join("assets/sbs/nested/source.sbs");
+        let caller = root.join("caller.sbs");
+        let original = std::fs::read_to_string(root.join("assets/sbs/nested/caller.sbs")).unwrap();
+        std::fs::write(&caller, original.replace("source.sbs", alias)).unwrap();
+        let check = |project, library, edited, expected| {
+            let mut session = Session::with_library(project, library);
+            file_cmds::open_file(&mut session, caller.to_str().unwrap()).unwrap();
+            let document = session.document_id;
+            file_cmds::open_file(&mut session, source.to_str().unwrap()).unwrap();
+            let body = FunctionGraph::constant(Value::Float(edited));
+            execute(&mut session, "graph.function.set", &json!({"function": body})).unwrap();
+            execute(&mut session, "file.save", &json!({})).unwrap();
+            session.activate_document(document).unwrap();
+            let linked = &session.pkg.dependencies[alias].graphs[0];
+            assert_eq!(linked.function.as_ref().unwrap().nodes[0].value, Some(Value::Float(expected)));
+            assert_eq!(session.graph().unwrap().instances().next().unwrap().package, alias);
+        };
+        check(Package::new("Installed"), NodeLibrary::shared(), 0.375, 0.375);
+        check(Package::new("Loaded by caller"), Arc::default(), 0.625, 0.625);
+        let mut project = Package::new("Explicit override");
+        project.dependencies.insert(alias.into(), Arc::new(resource_package("resources/tile.svg")));
+        check(project, NodeLibrary::shared(), 0.75, 0.5);
+    });
 }
 
 fn verify_library_resources(root: &std::path::Path) {

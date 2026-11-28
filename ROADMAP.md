@@ -1,6 +1,14 @@
 # MaterialCraft roadmap
 
-**Current focus (2026-11-16):** node behavior, regression coverage and interoperable save/load.
+**Current focus (2026-11-28):** ship the measured root-graph improvements and validated save/load fixes; carry the remaining parity work into the next release.
+
+The root inventory records **494 exact cases out of 546 measured roots**, not complete
+numerical compatibility. The other 52 remain deferred: [reference variability and remaining
+root differences (#336)](https://github.com/storytold/materialcraft/issues/336) and
+[two older linked-dependency cases (#337)](https://github.com/storytold/materialcraft/issues/337).
+[Review edge cases and older-document rendering compatibility (#338)](https://github.com/storytold/materialcraft/issues/338)
+also need investigation. Corrected SBS conventions can change renders of documents authored
+against earlier MaterialCraft behavior; keep original files when comparing versions.
 
 The old Rust procedural library has been removed. The main catalog has 29 entries: 25 native
 primitives and four graph input/output items. Functions have 85 operations; pattern graphs have

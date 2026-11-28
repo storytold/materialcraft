@@ -2,12 +2,40 @@ use craft_texture::{Image, Kind};
 use materialcraft_core::{Curve, FunctionGraph, Gradient, Value};
 use std::collections::BTreeMap;
 
+/// Graph inputs available to a cook, including any fixed by its enclosing instance.
+pub trait GraphVariables: Sync {
+    fn graph_values(&self) -> &BTreeMap<String, Value>;
+    fn literal_inputs(&self) -> &[String] {
+        &[]
+    }
+    /// Integer variables written by an image-node property before the pattern runs.
+    fn assigned_integers(&self) -> &[String] {
+        &[]
+    }
+}
+
+impl GraphVariables for BTreeMap<String, Value> {
+    fn graph_values(&self) -> &BTreeMap<String, Value> {
+        self
+    }
+}
+
+impl std::ops::Deref for dyn GraphVariables + '_ {
+    type Target = BTreeMap<String, Value>;
+
+    fn deref(&self) -> &Self::Target {
+        self.graph_values()
+    }
+}
+
 /// Where a cook runs: output size, seed, tiling, inputs and resolved parameters
 pub struct CookContext<'a> {
     pub w: u32,
     pub h: u32,
     pub seed: u32,
     pub format: materialcraft_core::OutputFormat,
+    /// Storage precision of each image input, in the same order as inputs.
+    pub input_formats: &'a [materialcraft_core::OutputFormat],
     pub tile: bool,
     /// By input port order; `None` = not connected
     pub inputs: &'a [Option<Image>],
@@ -15,10 +43,21 @@ pub struct CookContext<'a> {
     /// The package's bitmap resources, decoded on demand
     pub resource: &'a (dyn Fn(&str) -> Option<Image> + Sync),
     /// Exposed graph inputs (for `get_*` nodes in function graphs)
-    pub vars: &'a BTreeMap<String, Value>,
+    pub vars: &'a dyn GraphVariables,
 }
 
 impl CookContext<'_> {
+    pub fn bitmap_color_space(&self) -> crate::BitmapColorSpace {
+        crate::BitmapColorSpace::from_index(self.i("colour_space"))
+    }
+
+    /// A decoder that only accepts the two original request types can still supply the stored channels.
+    pub fn bitmap_resource(&self, name: &str) -> Option<Image> {
+        let space = self.bitmap_color_space();
+        let image = (self.resource)(&space.resource_key(name));
+        if image.is_none() && space == crate::BitmapColorSpace::FromFile { (self.resource)(&craft_texture::resource_key(name, true)) } else { image }
+    }
+
     pub fn tiling_axes(&self) -> [bool; 2] {
         self.vars.get("$tiling").and_then(Value::as_i32).map_or([self.tile; 2], |mask| [mask & 1 != 0, mask & 2 != 0])
     }

@@ -9,6 +9,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+craft-mime = { workspace = true }
 craft-xml = { workspace = true }
 craft-sbs = { workspace = true }
 craft-zip = { workspace = true }

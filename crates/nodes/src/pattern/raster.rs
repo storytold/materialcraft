@@ -1,42 +1,115 @@
 use craft_texture::{Image, Kind, Limits};
+use materialcraft_core::OutputFormat;
 use std::sync::Arc;
 
-use super::{pattern_stamp::PatternStamp, region::Region, shape};
+use super::{
+    bitmap, blend,
+    coordinates::PixelPlanes,
+    footprint::Footprint,
+    pattern_stamp::{DrawRun, PatternStamp},
+    region::Region,
+    shape,
+};
 use crate::CookContext;
+use crate::atomic::input_resize::{InputResize, resized_input};
+use crate::function::flush_subnormal;
 
 const MAX_SAMPLES: u64 = 256_000_000;
 const MAX_STAMP_COPIES: u64 = 1_048_576;
-const MIN_STAMP_SIZE: f32 = 1e-8;
+pub(super) const MIN_STAMP_SIZE: f32 = 1e-8;
 
-pub(super) fn render(context: &CookContext, stamps: &[PatternStamp], max_depth: u32) -> Result<Image, String> {
+pub(super) struct RasterWork {
+    pub background: Option<Image>,
+    pub streaming: bool,
+    samples_left: u64,
+    copies_left: u64,
+    mipmaps: bitmap::Mipmaps,
+}
+
+impl RasterWork {
+    pub fn new() -> Self {
+        Self { background: None, streaming: false, samples_left: MAX_SAMPLES, copies_left: MAX_STAMP_COPIES, mipmaps: bitmap::Mipmaps::new() }
+    }
+}
+
+pub(super) fn render(
+    context: &CookContext,
+    groups: &[DrawRun<'_>],
+    opacities: &Result<Vec<f32>, String>,
+    nonfinite_gray_opacity: bool,
+    base_level_only: &[bool],
+    runtime_image_selector: bool,
+    work: &mut RasterWork,
+) -> Result<Image, String> {
     let (width, height) = craft_texture::clamp_size(context.w, context.h);
     let kind = if context.b("color_mode") { Kind::Color } else { Kind::Gray };
-    let mut background =
-        context.input(0).map(|image| image.resize(width, height, context.tile)).unwrap_or_else(|| Image::filled(width, height, kind, context.v4("background")));
-    background = if kind == Kind::Gray { background.to_gray() } else { background.to_color() };
-    if stamps.is_empty() {
+    let background = if let Some(previous) = work.background.take() {
+        previous
+    } else if context.input(0).is_some_and(|image| image.kind() != kind) {
+        Image::filled(width, height, kind, [0.0; 4])
+    } else {
+        resized_input(context, 0, InputResize::PatternBackground).unwrap_or_else(|| {
+            let mut color = context.v4("background");
+            if kind == Kind::Gray {
+                color[0] = (color[0] + color[1] + color[2]) / 3.0;
+            }
+            Image::filled(width, height, kind, color.map(flush_subnormal))
+        })
+    };
+    if groups.iter().all(DrawRun::is_empty) {
         return Ok(background);
     }
 
     let channels = kind.channels();
-    let opacity = context.f("opacity").max(0.0);
-    let weights = depth_weights(context.f("roughness"), max_depth)?;
+    let opacities = opacities.as_ref().map_err(Clone::clone)?;
     let integer_sampling = background.integer_sampling();
     let mut data = Arc::clone(background.shared_data());
     drop(background);
 
     let pixels = Arc::make_mut(&mut data);
-    let mut budget = MAX_SAMPLES;
-    let mut copies_left = MAX_STAMP_COPIES;
     let render_region = Region::new(context.v4("render_region"))?;
-    let period = if context.tile { Region::new(context.v4("tiling_region"))?.period() } else { [1.0; 2] };
+    let span = render_region.period();
+    let pixel_size = [span[0] / width as f32, span[1] / height as f32];
+    let axes = context.tiling_axes();
+    let cull_outside = context.b("cull_outside");
+    let tile_region = Region::tiling(context.v4("tiling_region"), axes, cull_outside)?;
 
-    for stamp in stamps {
-        if !stamp.center.iter().chain(&stamp.size).chain(&stamp.color).chain([&stamp.rotation, &stamp.variation]).all(|value| value.is_finite()) {
+    let mut traversal = groups.iter().flat_map(DrawRun::draws);
+    let mut ordered = Vec::new();
+    // A runtime image selector reserves the wired slots in port order. Fixed slots acquire their ranks on first use.
+    let mut bitmap_ranks = if runtime_image_selector { std::array::from_fn(|index| 256 + index as i32) } else { [0; crate::MAX_IMAGE_INPUTS] };
+    let mut next_rank = 256;
+    let mut draw_order = |stamp: &PatternStamp| {
+        let mut rank = stamp.pattern;
+        let mut filtering = 0;
+        if rank >= 256
+            && let Some(slot) = bitmap_ranks.get_mut((rank - 256) as usize)
+        {
+            if *slot == 0 {
+                *slot = next_rank;
+                next_rank += 1;
+            }
+            rank = *slot;
+            filtering = stamp.filtering;
+        }
+        (rank, filtering, stamp.blend != 0)
+    };
+    if !traversal.clone().map(|(stamp, _)| draw_order(stamp)).is_sorted() {
+        // Assign the remaining ranks in traversal order before the sort compares stamps.
+        for draw in traversal.by_ref() {
+            draw_order(draw.0);
+            ordered.push(draw);
+        }
+        // Each shape or bitmap slot draws by filter, then additive before the other blend modes.
+        ordered.sort_by_key(|(stamp, _)| draw_order(stamp));
+    }
+    for (stamp, selection) in traversal.chain(ordered) {
+        if !stamp.center.iter().chain(&stamp.size).chain([&stamp.rotation, &stamp.variation]).all(|value| value.is_finite()) {
             return Err("pattern parameters must be finite".into());
         }
 
-        if stamp.size.iter().any(|size| size.abs() < MIN_STAMP_SIZE) {
+        // Check the original center before wrapping can move it back inside the tiling region.
+        if (cull_outside && !tile_region.contains(stamp.center)) || stamp.size.iter().any(|size| size.abs() < MIN_STAMP_SIZE) {
             continue;
         }
 
@@ -48,76 +121,128 @@ pub(super) fn render(context: &CookContext, stamps: &[PatternStamp], max_depth: 
             return Err(format!("unsupported pattern {}", stamp.pattern));
         }
 
-        let opacity = opacity * weights.get(stamp.depth as usize).copied().ok_or("invalid pattern depth")?;
-        if !opacity.is_finite() {
+        let opacity = opacities.get(stamp.depth as usize).copied().ok_or("invalid pattern depth")?;
+        if !opacity.is_finite() && !nonfinite_gray_opacity {
             return Err("pattern roughness overflowed its depth opacity".into());
         }
 
-        // Scalar luminosity weights both RGB and alpha, unlike straight RGBA tint
-        let source_alpha = if stamp.scalar_color { stamp.color[0] } else { stamp.color[3] };
+        let [red, green, blue, authored_alpha] = stamp.color.map(flush_subnormal);
+        // Flush the stored alpha before a large tint could amplify a subnormal product.
+        let alpha = flush_subnormal(authored_alpha * flush_subnormal(opacity));
+        let channel_tint = [red * alpha, green * alpha, blue * alpha, alpha].map(flush_subnormal);
+        let tinted_offset = matches!(stamp.pattern, 17 | 18);
+        let sample_shape = shape::prepare(stamp.pattern, stamp.variation);
 
-        let (sine, cosine) = (stamp.rotation * std::f32::consts::TAU).sin_cos();
-        let radius = [
-            (stamp.size[0] * cosine).abs() * 0.5 + (stamp.size[1] * sine).abs() * 0.5,
-            (stamp.size[0] * sine).abs() * 0.5 + (stamp.size[1] * cosine).abs() * 0.5,
-        ];
-        let center = if context.tile { std::array::from_fn(|axis| stamp.center[axis].rem_euclid(period[axis])) } else { stamp.center };
-        let repeats = if context.tile { render_region.repeats(center, radius, period)? } else { [[0, 0]; 2] };
-        let count = |axis: usize| (i64::from(repeats[axis][1]) - i64::from(repeats[axis][0]) + 1).max(0) as u64;
-        let copies = count(0).checked_mul(count(1)).ok_or("pattern repetition exceeds its budget")?;
-        copies_left = copies_left.checked_sub(copies).ok_or("pattern repetition exceeds its budget")?;
-        for repeat_y in repeats[1][0]..=repeats[1][1] {
-            for repeat_x in repeats[0][0]..=repeats[0][1] {
-                let center = [center[0] + repeat_x as f32 * period[0], center[1] + repeat_y as f32 * period[1]];
-                let [[left, right], [top, bottom]] = render_region.bounds(center, radius, [width, height]);
+        let frame = Footprint::new(stamp)?;
+        // The horizontal offset ramp still blends its variation at zero or undefined opacity.
+        // Image stamps can affect the blend at zero opacity, and skip it at undefined opacity.
+        if stamp.pattern != 17 && (authored_alpha.is_nan() || (authored_alpha == 0.0 && stamp.pattern < 256)) {
+            continue;
+        }
+        let mut texture = if stamp.pattern >= 256 {
+            let index = (stamp.pattern - 256) as usize + 1;
+            let Some(input) = context.input(index).filter(|image| image.kind() == kind) else { continue };
+            let format = context.input_formats.get(index).copied().unwrap_or(if input.integer_sampling() { OutputFormat::U16 } else { OutputFormat::F32 });
+            let gradients = [
+                [frame.cosine * pixel_size[0] / stamp.size[0], -frame.sine * pixel_size[0] / stamp.size[1]],
+                [frame.sine * pixel_size[1] / stamp.size[0], frame.cosine * pixel_size[1] / stamp.size[1]],
+            ];
+            // An automatic read on a texture with only its base level uses bilinear filtering.
+            // The original filter selection still determines the order in which the stamps draw.
+            let filtering = if stamp.filtering == 0 && base_level_only.get(index) == Some(&true) { 1 } else { stamp.filtering };
+            Some(bitmap::Sampler::new(input, index, format, filtering, gradients))
+        } else {
+            None
+        };
+        let radius = frame.radius;
+        let center = tile_region.copy_origin(stamp.center, axes);
+        let repeats = tile_region.repeats(&render_region, center, radius, axes)?;
+        let copies = repeats[0].count.checked_mul(repeats[1].count).ok_or("pattern repetition exceeds its budget")?;
+        let end = selection.end.min(copies);
+        let selected = end.saturating_sub(selection.start);
+        if selected == 0 {
+            continue;
+        }
+        // A streamed draw has already paid for its visit and is submitted exactly once.
+        // Additional tile copies debit the same allowance across every chunk.
+        let charged = if work.streaming { selected - 1 } else { selected };
+        work.copies_left = work.copies_left.checked_sub(charged).ok_or("pattern repetition exceeds its budget")?;
+        let columns = repeats[0].centers();
+        let mut copy = 0_u64;
+        'rows: for y_center in repeats[1].centers() {
+            for x_center in columns.clone() {
+                if copy == end {
+                    break 'rows;
+                }
+                copy += 1;
+                if copy <= selection.start {
+                    continue;
+                }
+                let center = [x_center, y_center];
+                let bounds = render_region.bounds(center, radius, [width, height]);
+                let [[left, right], [top, bottom]] = bounds;
                 let samples = u64::from(right.saturating_sub(left)) * u64::from(bottom.saturating_sub(top));
-                budget = budget.checked_sub(samples).ok_or("pattern rendering exceeded its pixel budget")?;
+                if samples == 0 {
+                    continue;
+                }
+                work.samples_left = work.samples_left.checked_sub(samples).ok_or("pattern rendering exceeded its pixel budget")?;
+                let planes = PixelPlanes::new(&frame, &render_region, center, stamp.size, [width, height]);
+                if let Some(sampler) = &mut texture {
+                    sampler.start_copy();
+                }
+                let [[left, right], [top, bottom]] = planes.as_ref().map_or(bounds, |p| p.clip(bounds));
                 for y in top..bottom {
+                    let row = planes.as_ref().map(|planes| planes.row(y));
                     for x in left..right {
-                        let point = render_region.point([x, y], [width, height]);
-                        let delta = [point[0] - center[0], point[1] - center[1]];
-                        let local = [(delta[0] * cosine + delta[1] * sine) * 2.0 / stamp.size[0], (-delta[0] * sine + delta[1] * cosine) * 2.0 / stamp.size[1]];
+                        let local = if let Some(row) = &row {
+                            row(x)
+                        } else {
+                            let point = render_region.point([x, y], [width, height]);
+                            frame.local(point, center, stamp.size)
+                        };
+                        let Some(local) = local else { continue };
 
-                        // The preceding quadrant owns shared edges, including subpixel ones
-                        // Counting both sides can stamp a pixel four extra times
-                        if local.iter().any(|coordinate| *coordinate <= -1.0 || *coordinate > 1.0) {
-                            continue;
-                        }
-
-                        let pattern = if stamp.pattern >= 256 {
-                            let index = (stamp.pattern - 256) as usize + 1;
-                            match context.input(index) {
-                                Some(input) => {
-                                    let uv = local.map(|coordinate| coordinate * 0.5 + 0.5);
-                                    if stamp.filtering == 0 {
-                                        input.get((uv[0] * input.width() as f32) as i64, (uv[1] * input.height() as f32) as i64, false)
-                                    } else {
-                                        input.sample(uv[0], uv[1], false)
-                                    }
-                                }
-                                None => [0.0; 4],
+                        let (foreground, stamp_alpha) = if let Some(sampler) = &mut texture {
+                            let sample = sampler.sample(local, [x, y], planes.as_ref(), &mut work.mipmaps)?.map(flush_subnormal);
+                            if kind == Kind::Gray {
+                                // Store coverage before tinting. Its zero then takes the sign of the opacity.
+                                let coverage = (sample[0] - 1.0) + 1.0;
+                                ([coverage * alpha; 4], 1.0)
+                            } else {
+                                let coverage = sample[3] * alpha;
+                                let image_alpha = if stamp.premultiplied { 1.0 } else { 1.0 - (1.0 - sample[3]) };
+                                let mut color = std::array::from_fn(|i| flush_subnormal(sample[i] * image_alpha) * channel_tint[i]);
+                                color[3] = coverage;
+                                (color, coverage)
                             }
                         } else {
-                            let coverage = shape::coverage(stamp.pattern, local[0], local[1], stamp.variation)?;
-                            [coverage, coverage, coverage, coverage]
+                            let Some((coverage, offset)) = sample_shape(local[0], local[1])? else { continue };
+                            let coverage = flush_subnormal(coverage);
+                            let offset = flush_subnormal(offset);
+                            let color = channel_tint.map(|tint| if tinted_offset { coverage.mul_add(tint, offset) } else { coverage * tint });
+                            (color, color[3])
                         };
 
                         let pixel = (y as usize * width as usize + x as usize) * channels;
                         let target = pixels.get_mut(pixel..pixel + channels).ok_or("invalid pattern pixel")?;
+                        let stamp_alpha = flush_subnormal(stamp_alpha);
                         for (channel, target) in target.iter_mut().enumerate() {
-                            let image_alpha = if stamp.pattern >= 256 && !stamp.premultiplied && channel < 3 { pattern[3] } else { 1.0 };
-                            let alpha = image_alpha * if kind == Kind::Color && channel < 3 { stamp.color[3] } else { 1.0 };
-                            let tint = if channel == 3 { source_alpha } else { stamp.color[channel] };
-                            let value = pattern[channel] * tint * alpha * opacity;
-                            *target = match stamp.blend {
-                                // Grayscale legacy maximum blends have no alpha channel to composite
-                                1 if kind == Kind::Gray => target.max(value),
-                                1 => value + *target * (1.0 - (pattern[3] * source_alpha * opacity).clamp(0.0, 1.0)),
-                                2 => target.max(value),
-                                _ => *target + value,
-                            };
+                            let value = flush_subnormal(foreground[channel]);
+                            let background = flush_subnormal(*target);
+                            *target = flush_subnormal(match (kind, stamp.blend) {
+                                (Kind::Color, _) => blend::color(background, value, stamp_alpha, stamp.blend, channel),
+                                (Kind::Gray, 1 | 2) => background.max(value),
+                                (Kind::Gray, _) if value == 0.0 => background,
+                                (Kind::Gray, _) => background + value,
+                            });
                             if !target.is_finite() {
-                                return Err("pattern accumulation overflowed".into());
+                                let undefined_channel = target.is_nan()
+                                    && (authored_alpha.is_nan() || background.is_nan() || (kind == Kind::Color && stamp.color[channel].is_nan()));
+                                if !nonfinite_gray_opacity && !undefined_channel {
+                                    return Err("pattern accumulation overflowed".into());
+                                }
+                                // Each stamp reads the preceding stored result. Only the completed blend saturates.
+                                *target = if target.is_nan() { f32::from_bits(0x7fff_ffff) } else { target.clamp(f32::MIN, f32::MAX) };
                             }
                         }
                     }
@@ -129,35 +254,26 @@ pub(super) fn render(context: &CookContext, stamps: &[PatternStamp], max_depth: 
     Image::from_data(width, height, kind, data, &Limits::default()).map(|image| image.with_integer_sampling(integer_sampling)).map_err(|e| e.to_string())
 }
 
-fn depth_weights(roughness: f32, max_depth: u32) -> Result<Vec<f32>, String> {
+pub(super) fn depth_opacities(roughness: f32, max_depth: u32, opacity: f32) -> Result<Vec<f32>, String> {
     // Match the depth allocation cap to the 4096-node acyclic traversal limit
     if max_depth >= 4096 || !roughness.is_finite() || roughness < 0.0 {
         return Err("pattern roughness must be finite and nonnegative, with depth below 4096".into());
     }
 
-    let mut weights = vec![1.0_f64; max_depth as usize + 1];
-
-    // Zero is the native no-attenuation mode, not the limit of the normalized geometric weights
+    let count = max_depth + 1;
+    // A zero roughness gives every visited depth the full opacity.
     if roughness == 0.0 {
-        return Ok(weights.into_iter().map(|value| value as f32).collect());
+        return Ok(vec![opacity; count as usize]);
     }
 
-    // Normalize depth weights across drawing and non-drawing ancestors
-    // Start at the largest weight to avoid overflow
-    let mut weight = 1.0;
-    let ratio = f64::from(roughness);
-    if roughness <= 1.0 {
-        for value in &mut weights {
-            *value = weight;
-            weight *= ratio;
-        }
+    // Round the geometric endpoint before subtracting it, particularly near unit roughness.
+    let first_weight = if roughness == 1.0 {
+        1.0 / count as f32
     } else {
-        for value in weights.iter_mut().rev() {
-            *value = weight;
-            weight /= ratio;
-        }
-    }
+        let endpoint = roughness.powf(count as f32);
+        (1.0 - roughness) / (1.0 - endpoint)
+    };
 
-    let sum: f64 = weights.iter().sum();
-    Ok(weights.into_iter().map(|value| (value / sum) as f32).collect())
+    // Each child inherits its parent's stored opacity, including the global multiplier.
+    Ok(std::iter::successors(Some(first_weight * opacity), |parent| Some(parent * roughness)).take(count as usize).collect())
 }

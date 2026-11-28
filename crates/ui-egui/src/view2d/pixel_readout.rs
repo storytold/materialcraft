@@ -1,6 +1,8 @@
 use egui::Color32;
 use materialcraft_engine::View2d;
-use materialcraft_engine::image::{Image, linear_to_srgb};
+use materialcraft_engine::image::Image;
+
+use crate::graph_pixels::{display_byte, stored_byte};
 
 /// The hue is listed in degrees around the color wheel
 const HUE_DEGREES: f32 = 360.0;
@@ -39,14 +41,10 @@ impl PixelReadout {
 
     /// The opaque sample with the view's display encoding and channel choice
     pub(super) fn swatch(&self, view: &View2d) -> Color32 {
-        let level = |value: f32| (value.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-        let shown = |value: f32| if self.gray { level(value) } else { level(linear_to_srgb(value)) };
-        let mut rgb = [shown(self.color[0]), shown(self.color[1]), shown(self.color[2])];
-        if !view.srgb {
-            rgb = rgb.map(|value| level(linear_to_srgb(f32::from(value) / 255.0)));
-        }
+        let [r, g, b, a] = self.color;
+        let mut rgb = [r, g, b].map(|value| display_byte(value, view.srgb));
         if let Some(channel) = super::display::isolated_channel(&view.channel).filter(|_| !self.gray) {
-            let value = if channel == 3 { level(self.color[3]) } else { rgb[channel] };
+            let value = if channel == 3 { stored_byte(a) } else { rgb[channel] };
             rgb = [value; 3];
         }
         Color32::from_rgb(rgb[0], rgb[1], rgb[2])
@@ -135,7 +133,7 @@ mod tests {
         assert_eq!(PixelReadout::at(&gray, [0, 0]).swatch(&View2d::default()), Color32::from_rgb(128, 128, 128));
 
         let color = Image::filled(1, 1, Kind::Color, [0.5, 0.0, 1.0, 1.0]);
-        assert_eq!(PixelReadout::at(&color, [0, 0]).swatch(&View2d::default()), Color32::from_rgb(188, 0, 255));
+        assert_eq!(PixelReadout::at(&color, [0, 0]).swatch(&View2d::default()), Color32::from_rgb(128, 0, 255));
     }
 
     #[test]

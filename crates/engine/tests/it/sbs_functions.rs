@@ -43,24 +43,28 @@ fn imported_expression_cooks_follows_inputs_and_survives_undo_and_save() {
         s.cooked.image(levels, 0).unwrap().mean()[0]
     };
 
-    assert!(mean(&mut s).abs() < 1e-5);
+    // The default swizzle places the scalar in red. Grayscale Levels averages RGB,
+    // so the lower endpoints are (0.75 - 0.25) / 3 and (0.5 - 0.25) / 3.
+    let original_mean = 2.0 / 5.0;
+    let changed_mean = 5.0 / 11.0;
+    assert!((mean(&mut s) - original_mean).abs() < 1e-5);
 
     execute(&mut s, "graph.exposed.set", &json!({"id": "amount", "value": 0.5})).unwrap();
 
-    assert!((mean(&mut s) - 1.0 / 3.0).abs() < 1e-5);
+    assert!((mean(&mut s) - changed_mean).abs() < 1e-5);
 
     execute(&mut s, "edit.undo", &json!({})).unwrap();
 
-    assert!(mean(&mut s).abs() < 1e-5);
+    assert!((mean(&mut s) - original_mean).abs() < 1e-5);
 
     execute(&mut s, "edit.redo", &json!({})).unwrap();
 
-    assert!((mean(&mut s) - 1.0 / 3.0).abs() < 1e-5);
+    assert!((mean(&mut s) - changed_mean).abs() < 1e-5);
 
     let saved = sbs::write_sbs(&s.pkg).unwrap();
     s.pkg = sbs::read_sbs(&saved, "saved.sbs", &|_| None).unwrap().pkg;
     s.cache.lock().unwrap().clear();
 
-    assert!((mean(&mut s) - 1.0 / 3.0).abs() < 1e-5);
+    assert!((mean(&mut s) - changed_mean).abs() < 1e-5);
     assert!(s.graph().unwrap().nodes.iter().find(|node| node.def == "levels").unwrap().functions.contains_key("in_low"));
 }

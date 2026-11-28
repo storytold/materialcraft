@@ -16,6 +16,7 @@ pub(crate) fn node(id: &'static str, label: &'static str, category: &'static str
         description: "",
         inputs: Vec::new(),
         primary_input: None,
+        bypass_input: None,
         outputs: Vec::new(),
         params: Vec::new(),
         generator: false,
@@ -46,6 +47,11 @@ impl NodeDefinitionBuilder {
     }
 
     pub fn primary_input(mut self, identifier: &'static str) -> Self {
+        self.0.bypass_input = Some(identifier);
+        self.inherit_from(identifier)
+    }
+
+    pub fn inherit_from(mut self, identifier: &'static str) -> Self {
         self.0.primary_input = Some(identifier);
         self
     }

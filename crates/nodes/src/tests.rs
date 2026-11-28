@@ -10,6 +10,7 @@ fn cook(def: &NodeDefinition, inputs: &[Option<Image>], size: u32) -> CookResult
     let no_res = |_: &str| None;
     let vars = BTreeMap::new();
     let ctx = CookContext {
+        input_formats: &[],
         format: materialcraft_core::OutputFormat::F32,
         w: size,
         h: size,
@@ -25,6 +26,161 @@ fn cook(def: &NodeDefinition, inputs: &[Option<Image>], size: u32) -> CookResult
 }
 
 #[test]
+fn pixel_processor_stores_undefined_channels_at_output_precision() {
+    use materialcraft_core::{FunctionGraph, OutputFormat};
+
+    let definition = find("pixel_processor").unwrap();
+    let mut graph = FunctionGraph::default();
+    let pos = graph.add("get_float2", &[], Some(Value::Text("$pos".into())));
+    let input = graph.add("samplecol", &[pos], Some(Value::Int2([0, 0])));
+    let divisor = graph.add_constant(Value::Float4([0.0, 0.0, 0.0, 2.0]));
+    graph.output = Some(graph.add("div", &[input, divisor], None));
+    let params = resolve_params(definition, &BTreeMap::from([("function".into(), Value::Function(Box::new(graph)))]));
+    let inputs = [Some(Image::filled(2, 2, Kind::Color, [0.0, 1.0, -1.0, 0.5]))];
+    let vars = BTreeMap::new();
+    for (format, expected) in [
+        (OutputFormat::F32, [0x7fff_ffff, 0x7f80_0000, 0xff80_0000, 0x3e80_0000]),
+        (OutputFormat::F16, [half::f16::from_bits(0x7fff).to_f32().to_bits(), 0x7f80_0000, 0xff80_0000, 0x3e80_0000]),
+        (OutputFormat::U16, [0, 1.0_f32.to_bits(), 0, (16384.0_f32 / 65535.0).to_bits()]),
+        (OutputFormat::U8, [0, 1.0_f32.to_bits(), 0, (64.0_f32 / 255.0).to_bits()]),
+    ] {
+        let context = CookContext {
+            w: 2,
+            h: 2,
+            inputs: &inputs,
+            input_formats: &[OutputFormat::F32],
+            seed: 0,
+            tile: true,
+            params: &params,
+            vars: &vars,
+            resource: &|_| None,
+            format,
+        };
+        let image = (definition.cook)(&context).unwrap().remove(0);
+        let stored = output_precision::apply(image, format);
+        assert_eq!(stored.get(0, 0, false).map(f32::to_bits), expected, "{format:?}");
+    }
+}
+
+#[test]
+fn bilinear_transform_selects_and_stores_the_requested_mip_level() {
+    let definition = find("transformation").unwrap();
+    let inputs = [Some(Image::gray(16, 16, |x, y| if x % 4 == 0 && y % 4 == 0 { 1.0 } else { 0.0 }).with_integer_sampling(true))];
+    let variables = BTreeMap::new();
+    let filtered = 4096.0 / 65535.0;
+
+    for (size, mode, level, first, second) in [(4, 0, 0, filtered, filtered), (4, 1, 0, 0.0, 0.0), (16, 0, 0, 1.0, 0.0), (16, 1, 2, filtered, filtered)] {
+        let params = resolve_params(definition, &BTreeMap::from([("mip_mode".into(), Value::Enum(mode)), ("mip_level".into(), Value::Int(level))]));
+        let context = CookContext {
+            input_formats: &[],
+            format: materialcraft_core::OutputFormat::U16,
+            w: size,
+            h: size,
+            seed: 0,
+            tile: true,
+            inputs: &inputs,
+            params: &params,
+            resource: &|_| None,
+            vars: &variables,
+        };
+        let result = (definition.cook)(&context).unwrap();
+        assert_eq!([result[0].get_gray(0, 0, false), result[0].get_gray(1, 0, false)], [first, second], "size {size}, mode {mode}, level {level}");
+    }
+}
+
+#[test]
+fn grayscale_bitmap_halving_stores_each_level_before_the_next_filter() {
+    use materialcraft_core::OutputFormat;
+
+    let definition = find("bitmap").unwrap();
+    let params = resolve_params(definition, &BTreeMap::from([("color_mode".into(), Value::Bool(false)), ("resource".into(), Value::Text("field".into()))]));
+    let source = Image::gray(2, 4, |x, y| {
+        let level = 1000 * x + u32::from(y == 3);
+        level as f32 / 65535.0
+    })
+    .with_integer_sampling(true);
+    let vars = BTreeMap::new();
+    let context = CookContext {
+        input_formats: &[],
+        format: OutputFormat::U16,
+        w: 2,
+        h: 1,
+        seed: 0,
+        tile: false,
+        inputs: &[],
+        params: &params,
+        resource: &|_| Some(source.clone()),
+        vars: &vars,
+    };
+    let result = (definition.cook)(&context).unwrap();
+    let stored = crate::output_precision::apply(result[0].clone(), context.format);
+    assert_eq!(stored.gray_data().unwrap(), [1.0 / 65535.0, 1001.0 / 65535.0]);
+}
+
+#[test]
+fn linear_color_bitmap_filters_each_channel_at_stored_precision() {
+    use materialcraft_core::OutputFormat;
+
+    let definition = find("bitmap").unwrap();
+    let params = resolve_params(definition, &BTreeMap::from([("colour_space".into(), Value::Enum(1)), ("resource".into(), Value::Text("field".into()))]));
+    let level = |x, y| ((31 * x + 13 * y + 97 * x * y + 19) % 256) as f32 / 255.0;
+    let source = Image::generate(64, 32, Kind::Color, |x, y| [level(x, y), level(x, (y + 27) % 32), level((x + 55) % 64, y), level((x + 47) % 64, y)])
+        .with_integer_sampling(true);
+    let context = CookContext {
+        input_formats: &[],
+        format: OutputFormat::U16,
+        w: 64,
+        h: 16,
+        seed: 497109,
+        tile: true,
+        inputs: &[],
+        params: &params,
+        resource: &|_| Some(source.clone()),
+        vars: &BTreeMap::new(),
+    };
+    let result = (definition.cook)(&context).unwrap();
+    let stored = crate::output_precision::apply(result[0].clone(), context.format);
+    let levels = [(0, 0), (7, 3), (63, 15)].map(|(x, y)| stored.get(x, y, false).map(|v| (v * 65535.0).round() as u16));
+    assert_eq!(levels, [[6554, 30969, 44718, 45746], [32382, 31354, 40221, 28913], [21074, 46774, 47417, 19661]]);
+}
+
+#[test]
+fn bitmap_converts_normalized_rgb_to_gray_on_the_first_filter_pass() {
+    use materialcraft_core::OutputFormat;
+
+    let definition = find("bitmap").unwrap();
+    let params = resolve_params(
+        definition,
+        &BTreeMap::from([("colour_space".into(), Value::Enum(1)), ("color_mode".into(), Value::Bool(false)), ("resource".into(), Value::Text("field".into()))]),
+    );
+    let source = Image::generate(32, 64, Kind::Color, |x, y| {
+        [(583, 191, 371, 3229), (47, 313, 59, 4511), (31, 693, 41, 8943), (997, 811, 97, 9043)]
+            .map(|(a, b, c, d)| ((a * x + b * y + c * x * y + d) % 65536) as f32 / 65535.0)
+    })
+    .with_integer_sampling(true);
+    for (format, size, positions, expected) in [
+        (OutputFormat::U16, [16, 16], [(0, 0), (3, 7), (15, 15)], [6388, 27024, 28209].map(|v| v as f32 / 65535.0)),
+        (OutputFormat::F32, [32, 64], [(0, 0), (3, 7), (31, 63)], [0x3dadc8af, 0x3e4060c0, 0x3e80ab2c].map(f32::from_bits)),
+    ] {
+        let context = CookContext {
+            input_formats: &[],
+            format,
+            w: size[0],
+            h: size[1],
+            seed: 520885,
+            tile: true,
+            inputs: &[],
+            params: &params,
+            resource: &|_| Some(source.clone()),
+            vars: &BTreeMap::new(),
+        };
+        let result = (definition.cook)(&context).unwrap();
+        let stored = crate::output_precision::apply(result[0].clone(), format);
+        assert_eq!(positions.map(|(x, y)| stored.get_gray(x, y, false)), expected);
+    }
+}
+
+#[test]
 fn nearest_transform_mip_keeps_the_last_column_of_an_odd_width_input() {
     let definition = find("transformation").unwrap();
     let mut params = resolve_params(definition, &BTreeMap::new());
@@ -33,6 +189,7 @@ fn nearest_transform_mip_keeps_the_last_column_of_an_odd_width_input() {
     let vars = BTreeMap::new();
     let resource = |_: &str| None;
     let context = CookContext {
+        input_formats: &[],
         format: materialcraft_core::OutputFormat::F32,
         w: 2,
         h: 2,
@@ -115,6 +272,7 @@ fn every_node_survives_hostile_params() {
                 let no_res = |_: &str| None;
                 let vars = BTreeMap::new();
                 let ctx = CookContext {
+                    input_formats: &[],
                     format: materialcraft_core::OutputFormat::F32,
                     w: 16,
                     h: 16,
@@ -158,6 +316,7 @@ fn blend_and_levels_math() {
     let vars = BTreeMap::new();
     let inputs = [Some(fg), Some(bg), None];
     let ctx = CookContext {
+        input_formats: &[],
         format: materialcraft_core::OutputFormat::F32,
         w: 4,
         h: 4,
@@ -193,7 +352,18 @@ fn dynamic_gradient_preserves_the_gradient_image_type() {
 fn cook_sized(def: &NodeDefinition, inputs: &[Option<Image>], w: u32, h: u32, resource: &(dyn Fn(&str) -> Option<Image> + Sync)) -> CookResult {
     let params = resolve_params(def, &BTreeMap::new());
     let vars = BTreeMap::new();
-    let ctx = CookContext { format: materialcraft_core::OutputFormat::F32, w, h, seed: 7, tile: false, inputs, params: &params, resource, vars: &vars };
+    let ctx = CookContext {
+        input_formats: &[],
+        format: materialcraft_core::OutputFormat::F32,
+        w,
+        h,
+        seed: 7,
+        tile: false,
+        inputs,
+        params: &params,
+        resource,
+        vars: &vars,
+    };
     (def.cook)(&ctx)
 }
 
@@ -230,6 +400,7 @@ fn nearest_transformation_mips_preserve_finite_hdr_constants() {
     for kind in [Kind::Gray, Kind::Color] {
         let inputs = [Some(Image::filled(16, 16, kind, [value; 4]))];
         let context = CookContext {
+            input_formats: &[],
             format: materialcraft_core::OutputFormat::F32,
             w: 4,
             h: 4,
@@ -260,6 +431,212 @@ fn directional_warp_repeats_a_far_offset_with_its_phase() {
 
     for x in 0..3 {
         assert_eq!(out[0].get_gray(x, 1, false), 2.0, "pixel {x}");
+    }
+}
+
+fn warp_byte_inputs(source: [u32; 2], map: [u32; 2]) -> [Option<Image>; 2] {
+    let level = |n: i32, denominator: f32| (n as f32 * 255.0 / denominator).round_ties_even() / 255.0;
+    let field = Image::gray(source[0], source[1], |x, y| level(((41 * x + 53 * y + 7 * x * y + 29) % 1021) as i32, 1020.0)).with_integer_sampling(true);
+    let mask = Image::gray(map[0], map[1], |x, y| {
+        let (x, y) = (x as i32, y as i32);
+        level((11 * x - 17 * y + 3 * x * y + 401).rem_euclid(509), 508.0)
+    })
+    .with_integer_sampling(true);
+    [Some(field), Some(mask)]
+}
+
+#[test]
+fn directional_warp_samples_stored_texels_along_positive_image_angles() {
+    use materialcraft_core::OutputFormat;
+
+    let inputs = warp_byte_inputs([64; 2], [64; 2]);
+    let definition = find("directional_warp").unwrap();
+    for (angle, intensity, tiling, interior, corner) in [
+        (0.0, 7.0, 3, 0x3f1e109e, 0x3e741cf4),
+        (0.25, 11.0, 3, 0x3f1eaa9f, 0x3ee6a8e7),
+        (0.125, 17.0, 3, 0x3f2346a3, 0x3d6d90ee),
+        (0.1875, 25.0, 0, 0x3f258da6, 0x3d20a0a1),
+        (-0.3125, 21.5, 1, 0x3f134293, 0x3efbecfc),
+    ] {
+        let params = resolve_params(definition, &BTreeMap::from([("intensity".into(), Value::Float(intensity)), ("angle".into(), Value::Float(angle))]));
+        let vars = BTreeMap::from([("$tiling".into(), Value::Int(tiling))]);
+        let context = CookContext {
+            w: 64,
+            h: 64,
+            seed: 751,
+            tile: tiling != 0,
+            format: OutputFormat::F32,
+            input_formats: &[OutputFormat::U8; 2],
+            inputs: &inputs,
+            params: &params,
+            vars: &vars,
+            resource: &|_| None,
+        };
+        let image = (definition.cook)(&context).unwrap().remove(0);
+        assert_eq!(image.get_gray(7, 13, false).to_bits(), interior, "angle {angle}");
+        assert_eq!(image.get_gray(63, 63, false).to_bits(), corner, "tiling {tiling}");
+    }
+}
+
+#[test]
+fn horizontal_warp_at_zero_turns_keeps_the_full_displacement() {
+    use materialcraft_core::OutputFormat;
+
+    let definition = find("directional_warp").unwrap();
+    let inputs = [Some(Image::gray(16, 16, |x, _| x as f32)), Some(Image::filled(16, 16, Kind::Gray, [1025.0 / 2048.0; 4]))];
+    for (angle, expected) in [(0.0, 2.0 + 1.0 / 256.0), (1.0, 2.0)] {
+        let params = resolve_params(definition, &BTreeMap::from([("intensity".into(), Value::Float(64.0)), ("angle".into(), Value::Float(angle))]));
+        let context = CookContext {
+            w: 16,
+            h: 16,
+            seed: 395191,
+            tile: true,
+            format: OutputFormat::F32,
+            input_formats: &[OutputFormat::F32; 2],
+            inputs: &inputs,
+            params: &params,
+            vars: &BTreeMap::new(),
+            resource: &|_| None,
+        };
+        let image = (definition.cook)(&context).unwrap().remove(0);
+        assert_eq!(image.get_gray(0, 0, false), expected, "angle {angle}");
+    }
+}
+
+#[test]
+fn directional_warp_filters_unequal_image_and_mask_sizes() {
+    use materialcraft_core::OutputFormat;
+
+    let definition = find("directional_warp").unwrap();
+    let params = resolve_params(definition, &BTreeMap::from([("intensity".into(), Value::Float(17.0)), ("angle".into(), Value::Float(0.125))]));
+    for (source, map, side, center, edge) in [
+        ([64; 2], Some([16, 32]), 64, 0x3deaa0eb, 0x3e5bb8dc),
+        ([64; 2], Some([16, 32]), 32, 0x3ed030d0, 0x3e91a092),
+        ([16; 2], Some([128; 2]), 32, 0x3f2f3cd9, 0x3d754e55),
+        ([8, 32], None, 128, 0x3e92e2d9, 0x3e18104b),
+        ([128, 16], None, 16, 0x3ef47d4d, 0x3efe4e5f),
+    ] {
+        let mut inputs = warp_byte_inputs(source, map.unwrap_or([1, 1]));
+        if map.is_none() {
+            inputs[1] = Some(Image::filled(side, side, Kind::Gray, [1.0; 4]).with_integer_sampling(true));
+        }
+        let context = CookContext {
+            w: side,
+            h: side,
+            seed: 863,
+            tile: true,
+            format: OutputFormat::F32,
+            input_formats: &[OutputFormat::U8; 2],
+            inputs: &inputs,
+            params: &params,
+            vars: &BTreeMap::new(),
+            resource: &|_| None,
+        };
+        let image = (definition.cook)(&context).unwrap().remove(0);
+        assert_eq!(image.get_gray(7, 13, false).to_bits(), center, "source {source:?}, map {map:?}, output {side}");
+        assert_eq!(image.get_gray(0, 0, false).to_bits(), edge);
+    }
+}
+
+#[test]
+fn directional_warp_preserves_the_wider_format_while_resizing_each_input() {
+    use materialcraft_core::OutputFormat::{F16, F32, U8, U16};
+
+    let definition = find("directional_warp").unwrap();
+    let params = resolve_params(definition, &BTreeMap::from([("intensity".into(), Value::Float(17.0)), ("angle".into(), Value::Float(0.125))]));
+    for (source_format, mask_format, output, expected) in [
+        (F32, F32, U8, [0, 172, 114, 0, 1]),
+        (F16, U16, U16, [0, 44159, 29248, 0, 250]),
+        (U16, U8, F16, [12326, 14539, 14209, 12653, 13043]),
+        (U8, F32, U16, [8408, 39305, 30722, 11126, 14133]),
+    ] {
+        let input_value = |v: f64, format| match format {
+            U8 => (v * 255.0).round_ties_even() as f32 / 255.0,
+            U16 => (v * 65535.0).round_ties_even() as f32 / 65535.0,
+            F16 => half::f16::from_f64(v).to_f32(),
+            _ => v as f32,
+        };
+        let image = Image::gray(16, 32, |x, y| {
+            let value = f64::from((41 * x + 53 * y + 7 * x * y + 29) % 1021) / 1020.0;
+            input_value(if matches!(source_format, F16 | F32) { value * 1.75 - 0.375 } else { value }, source_format)
+        })
+        .with_integer_sampling(matches!(source_format, U8 | U16));
+        let mask = Image::gray(32, 16, |x, y| {
+            let (x, y) = (x as i32, y as i32);
+            input_value(f64::from((11 * x - 17 * y + 3 * x * y + 401).rem_euclid(509)) / 508.0, mask_format)
+        })
+        .with_integer_sampling(matches!(mask_format, U8 | U16));
+        let context = CookContext {
+            w: 64,
+            h: 64,
+            seed: 1,
+            tile: true,
+            format: output,
+            input_formats: &[source_format, mask_format],
+            inputs: &[Some(image), Some(mask)],
+            params: &params,
+            vars: &BTreeMap::new(),
+            resource: &|_| None,
+        };
+        let result = crate::output_precision::apply((definition.cook)(&context).unwrap().remove(0), output);
+        let stored = [(0, 0), (7, 13), (14, 5), (32, 32), (63, 63)].map(|(x, y)| {
+            let v = result.get_gray(x, y, false);
+            if output == F16 { half::f16::from_f32(v).to_bits() } else { (v * if output == U8 { 255.0 } else { 65535.0 }).round() as u16 }
+        });
+        assert_eq!(stored, expected, "{source_format:?}/{mask_format:?} into {output:?}");
+    }
+}
+
+#[test]
+fn directional_warp_keeps_large_authored_displacements_and_their_direction() {
+    use materialcraft_core::OutputFormat;
+
+    let definition = find("directional_warp").unwrap();
+    let inputs = [Some(Image::generate(64, 64, Kind::Color, |x, y| [x as f32, y as f32, 0.0, 1.0])), Some(Image::filled(64, 64, Kind::Gray, [1.0; 4]))];
+    for (angle, expected) in [(0.125, [7.59375, 7.59375]), (0.5, [32.03125, 31.953125]), (0.625, [56.53125, 56.34375])] {
+        let params = resolve_params(definition, &BTreeMap::from([("intensity".into(), Value::Float(2_097_152.0)), ("angle".into(), Value::Float(angle))]));
+        assert_eq!(params["intensity"], Value::Float(2_097_152.0));
+        let context = CookContext {
+            w: 64,
+            h: 64,
+            seed: 887,
+            tile: true,
+            format: OutputFormat::F32,
+            input_formats: &[OutputFormat::F32; 2],
+            inputs: &inputs,
+            params: &params,
+            vars: &BTreeMap::new(),
+            resource: &|_| None,
+        };
+        let pixel = (definition.cook)(&context).unwrap().remove(0).get(32, 32, false);
+        assert_eq!(pixel[..2], expected, "angle {angle}");
+    }
+}
+
+#[test]
+fn rectangular_directional_warps_scale_both_offsets_by_the_shorter_side() {
+    let definition = find("directional_warp").unwrap();
+    let params = resolve_params(definition, &BTreeMap::from([("intensity".into(), Value::Float(16.0)), ("angle".into(), Value::Float(0.125))]));
+    for (width, height, shift) in [(32, 16, 0.70703125), (16, 32, 0.70703125), (128, 32, 1.4140625), (32, 128, 1.4140625)] {
+        let inputs = [
+            Some(Image::generate(width, height, Kind::Color, |x, y| [x as f32, y as f32, 0.0, 1.0])),
+            Some(Image::filled(width, height, Kind::Gray, [1.0; 4])),
+        ];
+        let context = CookContext {
+            w: width,
+            h: height,
+            seed: 887,
+            tile: true,
+            format: materialcraft_core::OutputFormat::F32,
+            input_formats: &[],
+            inputs: &inputs,
+            params: &params,
+            vars: &BTreeMap::new(),
+            resource: &|_| None,
+        };
+        let image = (definition.cook)(&context).unwrap().remove(0);
+        let (x, y) = (width / 2, height / 2);
+        assert_eq!(image.get(i64::from(x), i64::from(y), false), [x as f32 + shift, y as f32 + shift, 0.0, 1.0]);
     }
 }
 

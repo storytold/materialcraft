@@ -23,9 +23,10 @@ Agents drive MaterialCraft three ways, all dispatching the same engine commands:
    engine-command authority, including host file access.
    Set `MATERIALCRAFT_NO_PREFS=1` for scripted runs so the user's layout is left alone.
 
-The first SBS save sets `formatVersion` and `updaterVersion` to MaterialCraft's workspace release
-version. Later saves preserve the document's original `formatVersion` and refresh `updaterVersion`
-to the saving application's release version. Save As and archive packaging retain that baseline too.
+SBS saves, Save As and archive packaging use `formatVersion` to declare the file schema and
+`updaterVersion` to record MaterialCraft's workspace release. New files and earlier files with
+a three-part numeric release header use schema `1.1.0.202401`. Other imported format revisions
+carry through subsequent saves.
 
 ## Methods
 
@@ -89,7 +90,7 @@ Types: `move`, `down`, `up`, `click`, `doubleClick`, `drag`, `scroll`, `key` (eg
 | `graph.function.variables` | `{id, target?: FunctionGraphTarget}` returns ordered suggestions matching a Get node's type and caller scope; typed custom names remain supported |
 | `session.environment` | `{timeSeconds?, uvTile?: [int, int], normalFormat?: int}` updates host evaluation values without modifying the package; `{}` reads them; defaults are zero and the normal-format code is passed through |
 | `graph.context` | `{physicalSize?: [x, y, z], pixelRatio?: 0\|1, tiling?: [horizontal, vertical]}` edits material-graph metadata with undo; `{}` reads it; reusable functions receive their caller's context |
-| `file.new` | `{template?, name?, folder?, kind?, size?, height?, document?, newPackage?}`. Use `graph.templates` for the supported material templates. `size` is the width in pixels and `height` defaults to it (powers of two, 16 to 8192). `document` selects an open package. `newPackage: true` creates a new untitled package and cannot be combined with `document` or a nonempty `folder` |
+| `file.new` | `{template?, name?, folder?, kind?, size?, height?, document?, newPackage?}`. Use `graph.templates` for the supported material templates. `size` is the width in pixels and `height` defaults to it (powers of two, 1 to 8192). `document` selects an open package. `newPackage: true` creates a new untitled package and cannot be combined with `document` or a nonempty `folder` |
 | `graph.node.edit` | `{}` resolves the selected FX-Map, processor or graph instance to `{kind, node, parameter?, graph?, document?, path?}`; use `ui.menu.invoke` to open its reference in the graph panel |
 | `graph.node.info` | `{id}` returns `{text}` describing a main-graph node without changing the document or node clipboard |
 | `graph.instance.add` | `{document, graph, function?: FunctionGraphTarget, at?, snapToGrid?}` adds a linked graph instance from an open package; requires a source output and rejects dependency cycles |
@@ -364,7 +365,7 @@ materialcraft-cli export Oak.mcmat build/oak --profile materialx --size 2048 \
 
 The ZIP contains a version marker (`material.json` with `{"version":3}`), a DEFLATE-compressed `source.sbs`, and the source assets its graphs reference under `resources/`. The sole graph at the root of the SBS document is the entry. Reachable helper graphs and functions have local paths under `Dependencies/`. Republish v1 and v2 archives from the original authoring project.
 
-`info` reads the entry's path, dimensions, supported resolutions, typed defaults, saved values, presets, image inputs and output usages. A cook starts from the saved values, applies the named preset, then applies each explicit override. `--set` accepts numbers, booleans, JSON vectors, colors and typed values such as `{"t":"float","v":0.7}`. The size is the longer side in pixels. The graph retains its aspect ratio within the supported powers of two from 16 to 8192. Use `--size 1024x512` to choose both sides. An omitted size uses the authored dimensions. An explicit size also sets the final dimensions of outputs fed by fixed-size nodes.
+`info` reads the entry's path, dimensions, supported resolutions, typed defaults, saved values, presets, image inputs and output usages. A cook starts from the saved values, applies the named preset, then applies each explicit override. `--set` accepts numbers, booleans, JSON vectors, colors and typed values such as `{"t":"float","v":0.7}`. The size is the longer side in pixels. The graph retains its aspect ratio within the supported powers of two from 1 to 8192. Use `--size 1024x512` to choose both sides. An omitted size uses the authored dimensions. An explicit size also sets the final dimensions of outputs fed by fixed-size nodes.
 
 TextureCraft requests `--profile maps` at its texture set's resolution and supplies mesh maps through repeated `--input identifier=path`. Common identifiers include `ambientOcclusion`, `curvature`, `thickness`, `position`, `worldNormal`, `normal`, `height`, `id`, `bentNormal`, `opacity`, `colorMap` and `worldDirection`. An image override uses the published preview binding’s color space when present. Otherwise the input’s declared usage determines the transfer, with the identifier as a fallback for untagged inputs. The JSON report lists each map's identifier, usage, filename, color space and actual dimensions.
 
@@ -413,10 +414,11 @@ pass `merge: true` to continue one gesture; an ordinary request ends that merge.
 still coalesce until release. `material_export` uses the headless write-root capability and does not
 expose unrestricted engine file paths.
 
-Bitmap Color space selects sRGB or Linear. `graph.input.bind` accepts `linear: true` for normal,
-height and other data maps. Input preview bindings persist in native SBS graph options with the
-`materialcraft.previewImage.` and `materialcraft.previewLinear.` prefixes; these options describe
-MaterialCraft editor previews and do not establish external application interoperability.
+SBS image inputs store the package resource URL in the input bridge's `bitmapresourcepath`.
+Both imported bindings and newly bound images use the resource file's color interpretation by default.
+`graph.input.bind` accepts `linear: true` to keep the original levels of normal, height and other
+data maps, or `linear: false` for sRGB color. MaterialCraft preserves its explicit preview
+interpretations in graph options and reads bindings from older files that use those options.
 
 ### Shared graph items and classification metadata
 

@@ -1,13 +1,19 @@
-use crate::NodeOutput;
+use crate::{NodeOutput, ResolvedBaseParameters};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 const DEFAULT_LIMIT_BYTES: usize = 256 << 20;
 const MAX_ENTRIES: usize = 8192;
 
+#[derive(Clone)]
+pub(crate) struct CachedOutputs {
+    pub values: Arc<Vec<NodeOutput>>,
+    pub bases: Option<Arc<[ResolvedBaseParameters]>>,
+}
+
 /// LRU cache of node outputs, bounded by bytes
 pub struct Cache {
-    entries: HashMap<u64, (Arc<Vec<NodeOutput>>, usize, u64)>,
+    entries: HashMap<u64, (CachedOutputs, usize, u64)>,
     bytes: usize,
     cap: usize,
     tick: u64,
@@ -48,7 +54,7 @@ impl Cache {
         self.bytes = 0;
     }
 
-    pub(crate) fn get(&mut self, key: u64) -> Option<Arc<Vec<NodeOutput>>> {
+    pub(crate) fn get(&mut self, key: u64) -> Option<CachedOutputs> {
         self.tick = self.tick.saturating_add(1);
         let tick = self.tick;
         self.entries.get_mut(&key).map(|entry| {
@@ -57,15 +63,16 @@ impl Cache {
         })
     }
 
-    pub(crate) fn put(&mut self, key: u64, outputs: Arc<Vec<NodeOutput>>) {
-        let size = outputs.iter().fold(0_usize, |total, output| total.saturating_add(output.memory_bytes()));
+    pub(crate) fn put(&mut self, key: u64, outputs: Arc<Vec<NodeOutput>>, bases: Option<Arc<[ResolvedBaseParameters]>>) {
+        let metadata = bases.as_deref().map_or(0, std::mem::size_of_val);
+        let size = outputs.iter().fold(metadata, |total, output| total.saturating_add(output.memory_bytes()));
         if let Some(old) = self.entries.remove(&key) {
             self.bytes = self.bytes.saturating_sub(old.1);
         }
 
         // Oversized results remain owned by their cooks
         // Empty results would permit unbounded zero-byte cache metadata
-        if size == 0 || size > self.cap {
+        if outputs.is_empty() || size == 0 || size > self.cap {
             return;
         }
 
@@ -77,7 +84,7 @@ impl Cache {
         }
 
         self.tick = self.tick.saturating_add(1);
-        self.entries.insert(key, (outputs, size, self.tick));
+        self.entries.insert(key, (CachedOutputs { values: outputs, bases }, size, self.tick));
         self.bytes += size;
     }
 }

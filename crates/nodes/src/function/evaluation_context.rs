@@ -8,6 +8,8 @@ pub struct EvaluationContext<'a> {
     pub position: [f32; 2],
     pub size: [f32; 2],
     pub images: &'a [Option<Image>],
+    /// Stored formats of image slots supplied by the caller.
+    pub image_formats: &'a [materialcraft_core::OutputFormat],
     pub tile: bool,
     pub variables: &'a BTreeMap<String, Value>,
 }

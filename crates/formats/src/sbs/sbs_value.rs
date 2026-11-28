@@ -85,7 +85,16 @@ pub(super) fn exposed_type_code(value: &Value) -> i64 {
     materialcraft_core::ValueType::of(value).map_or(type_code::FLOAT1, |kind| i64::from(kind as u32))
 }
 
+pub(super) fn input_default_xml(value: &Value) -> Option<String> {
+    // Graph input declarations use the one-lane tag to expose a scalar integer default.
+    constant_with_integer_tag(value, "constantValueInt1")
+}
+
 pub(super) fn constant_xml(value: &Value) -> Option<String> {
+    constant_with_integer_tag(value, "constantValueInt32")
+}
+
+fn constant_with_integer_tag(value: &Value, integer_tag: &str) -> Option<String> {
     let join = |xs: &[f32]| xs.iter().map(|x| format_float(*x)).collect::<Vec<_>>().join(" ");
     let (tag, text) = match value {
         Value::Float(x) => ("constantValueFloat1", format_float(*x)),
@@ -93,11 +102,11 @@ pub(super) fn constant_xml(value: &Value) -> Option<String> {
         Value::Float3(x) => ("constantValueFloat3", join(x)),
         Value::Float4(x) => ("constantValueFloat4", join(x)),
         Value::Color(c) => ("constantValueFloat4", join(c)),
-        Value::Int(i) => ("constantValueInt32", i.to_string()),
+        Value::Int(i) => (integer_tag, i.to_string()),
         Value::Int2(i) => ("constantValueInt2", format!("{} {}", i[0], i[1])),
         Value::Int3(i) => ("constantValueInt3", format!("{} {} {}", i[0], i[1], i[2])),
         Value::Int4(i) => ("constantValueInt4", format!("{} {} {} {}", i[0], i[1], i[2], i[3])),
-        Value::Enum(e) => ("constantValueInt32", e.to_string()),
+        Value::Enum(e) => (integer_tag, e.to_string()),
         Value::Bool(b) => ("constantValueBool", u8::from(*b).to_string()),
         Value::Text(s) => ("constantValueString", s.clone()),
         Value::Curve(_) | Value::Gradient(_) | Value::Function(_) | Value::PatternGraph(_) => return None,

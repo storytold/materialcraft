@@ -98,10 +98,11 @@ pub fn package(text: &str, name: &str, identities: &BTreeMap<String, String>) ->
 
     let before = semantics(&document);
     let mut edits = Vec::new();
-    for tag in ["formatVersion", "updaterVersion"] {
+    let format_version = materialcraft_formats::sbs::output_format_version(xml::value(root, "formatVersion"));
+    for (tag, version) in [("formatVersion", format_version), ("updaterVersion", env!("CARGO_PKG_VERSION"))] {
         if xml::child(root, tag).is_none() {
             let offset = root.first_element_child().ok_or("package has no content")?.range().start;
-            edits.push(XmlEdit { range: offset..offset, replacement: xml::leaf(tag, env!("CARGO_PKG_VERSION")) });
+            edits.push(XmlEdit { range: offset..offset, replacement: xml::leaf(tag, version) });
         }
     }
 
@@ -137,7 +138,10 @@ pub fn package(text: &str, name: &str, identities: &BTreeMap<String, String>) ->
             "fileUID" if node.parent().is_some_and(|p| p.has_tag_name("package")) => {
                 xml::set(&mut edits, node, identities.get(name).ok_or("missing package identity")?);
             }
-            "formatVersion" | "updaterVersion" if node.parent().is_some_and(|p| p.has_tag_name("package")) => {
+            "formatVersion" if node.parent().is_some_and(|p| p.has_tag_name("package")) => {
+                xml::set(&mut edits, node, format_version);
+            }
+            "updaterVersion" if node.parent().is_some_and(|p| p.has_tag_name("package")) => {
                 xml::set(&mut edits, node, env!("CARGO_PKG_VERSION"));
             }
             "dependency" => {

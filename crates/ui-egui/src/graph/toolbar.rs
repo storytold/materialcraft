@@ -2,6 +2,7 @@ use super::navigation::{add_node_near_selection, view_center};
 use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
 use egui::Ui;
 use egui_phosphor::regular as icon;
+use materialcraft_engine::core::{MAX_SIZE_LOG2, MIN_SIZE_LOG2};
 use serde_json::json;
 
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
@@ -195,8 +196,8 @@ fn parent_size(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let mut nw = w;
     let mut nh = h;
     let combo = |ui: &mut Ui, id: &str, v: &mut u32| {
-        let r = egui::ComboBox::from_id_salt(id).width(64.0).selected_text(format!("{}", 1u32 << *v)).show_ui(ui, |ui| {
-            for l in 4..=13u32 {
+        let r = egui::ComboBox::from_id_salt(id).width(64.0).selected_text(format!("{}", 1u32 << (*v).min(MAX_SIZE_LOG2))).show_ui(ui, |ui| {
+            for l in MIN_SIZE_LOG2..=MAX_SIZE_LOG2 {
                 ui.selectable_value(v, l, format!("{}", 1u32 << l));
             }
         });

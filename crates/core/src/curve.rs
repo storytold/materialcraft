@@ -71,8 +71,8 @@ impl Curve {
             }
         }
 
-        let left_handle = left.right.unwrap_or([left.x + span / 3.0, left.y + slopes[0] * span / 3.0]);
-        let right_handle = right.left.unwrap_or([right.x - span / 3.0, right.y - slopes[1] * span / 3.0]);
+        let left_handle = if left.right_broken { [left.x, left.y] } else { left.right.unwrap_or([left.x + span / 3.0, left.y + slopes[0] * span / 3.0]) };
+        let right_handle = if right.left_broken { [right.x, right.y] } else { right.left.unwrap_or([right.x - span / 3.0, right.y - slopes[1] * span / 3.0]) };
         Some([[left.x, left.y], left_handle, right_handle, [right.x, right.y]])
     }
 }

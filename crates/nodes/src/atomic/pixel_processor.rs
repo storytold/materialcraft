@@ -5,6 +5,7 @@ pub(super) fn definition() -> NodeDefinition {
     node("pixel_processor", "Pixel processor", ATOMIC)
         .desc("Computes every pixel with a function graph ($pos, $size; sample the inputs).")
         .atomic()
+        .generator()
         .any_in("input0", "Input image 0")
         .function("function", "Per pixel function", materialcraft_core::FunctionGraph::default())
         .boolean("color_mode", "Color output", true)

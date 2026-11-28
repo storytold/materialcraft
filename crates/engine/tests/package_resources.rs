@@ -4,6 +4,20 @@ use serde_json::json;
 const SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>"#;
 
 #[test]
+fn saving_a_recovered_package_keeps_its_missing_resource_link_relative() {
+    let bytes = br#"<package><content><resource><identifier v="mask"/><format v="png"/><filepath v="maps/original.png"/></resource></content></package>"#;
+    let mut session = Session::new(Package::new("Empty"));
+    file_cmds::open_bytes_linked(&mut session, bytes, Some("materials/example.sbs".into()), &|_| None).unwrap();
+    assert!(session.path.is_none());
+    assert!(!session.load_warnings.is_empty());
+    let first = session.document_id;
+    file_cmds::open_bytes_linked(&mut session, bytes, Some("other/example.sbs".into()), &|_| None).unwrap();
+    execute(&mut session, "package.activate", &json!({"document": first})).unwrap();
+    let saved = String::from_utf8(file_cmds::save_bytes(&session).unwrap()).unwrap();
+    assert!(saved.contains(r#"<filename v="maps/original.png"/>"#));
+}
+
+#[test]
 fn byte_only_sbs_import_resolves_library_resource_substitutes() {
     let xml = br#"<package><content>
         <resource><identifier v="noise"/><format v="surface"/><filepath v="old/bluenoise_256_c.surface"/></resource>

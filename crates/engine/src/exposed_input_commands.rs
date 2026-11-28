@@ -152,6 +152,7 @@ fn prepare_input(session: &Session, parameters: &J) -> Result<(ExposedParameter,
     };
     let input = ExposedParameter {
         id: identifier.clone(),
+        connectable: false,
         label: strp(parameters, "label").unwrap_or_else(|| descriptor.as_ref().map_or(identifier.as_str(), |descriptor| descriptor.label.as_str())).into(),
         group: strp(parameters, "group").unwrap_or("").into(),
         description: strp(parameters, "description")

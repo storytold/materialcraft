@@ -2,7 +2,7 @@
 
 use serde_json::{Value as J, json};
 
-use materialcraft_core::{Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, NodeId, OutputFormat, Value};
+use materialcraft_core::{Graph, MAX_SIZE_LOG2, NodeId, OutputFormat, Value};
 
 use crate::commands::{CommandSpec, always, bad, boolp, has_graph, has_selection, i64p, ids_param, strp, u64p};
 use crate::{Result, Session, cmd};
@@ -12,15 +12,16 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
         cmd!("graph.open", "Open graph", [], None, "{graph: index or name}", always, open),
         cmd!("graph.delete", "Delete graph", [], None, "{graph?}", has_graph, delete),
         cmd!("graph.duplicate", "Duplicate graph", [], None, "{graph?}", has_graph, duplicate),
-        cmd!("graph.size", "Graph size", [], None, "{graph?, document?, width, height} in pixels (powers of two, 16..8192) or {log2: [w, h]}", always, size),
-        cmd!("graph.seed", "Random seed", [], None, "{seed, graph?, document?}", always, |s, p| {
-            let seed = i64p(p, "seed").ok_or_else(|| bad("graph.seed", "`seed` is required"))?.clamp(0, i32::MAX as i64) as i32;
-            let target = crate::GraphTarget::resolve(s, p)?;
-            target.edit_merged(s, &format!("graph.seed:{}:{}", target.document, target.graph), "Random seed", |package| {
-                package.graph_mut(target.graph)?.seed = seed;
-                Ok(J::Null)
-            })
-        }),
+        cmd!(
+            "graph.size",
+            "Graph size",
+            [],
+            None,
+            "{graph?, document?, width, height} in pixels (rounded up to powers of two, 1..8192) or {log2: [w, h]}",
+            always,
+            size
+        ),
+        cmd!("graph.seed", "Random seed", [], None, "{seed?, inheritance?: absolute|relativeToParent|relativeToInput, graph?, document?}", always, seed),
         cmd!("graph.format", "Output format", [], None, "{format: u8|u16|f16|f32, graph?, document?}", always, format),
         cmd!(
             "graph.cook",
@@ -73,6 +74,33 @@ pub(crate) fn graph_index(s: &Session, p: &J) -> Result<usize> {
     }
 }
 
+fn seed(session: &mut Session, parameters: &J) -> Result<J> {
+    let command = "graph.seed";
+    let seed = parameters
+        .get("seed")
+        .map(|_| i64p(parameters, "seed").map(|n| n.clamp(0, i64::from(i32::MAX)) as i32).ok_or_else(|| bad(command, "expected an integer seed")))
+        .transpose()?;
+    let mode = parameters
+        .get("inheritance")
+        .map(|v| serde_json::from_value(v.clone()).map_err(|error| bad(command, format!("invalid inheritance: {error}"))))
+        .transpose()?;
+    if seed.is_none() && mode.is_none() {
+        return Err(bad(command, "a seed or inheritance mode is required"));
+    }
+    let target = crate::GraphTarget::resolve(session, parameters)?;
+    target.edit_merged(session, &format!("graph.seed:{}:{}", target.document, target.graph), "Random seed", |package| {
+        let graph = package.graph_mut(target.graph)?;
+        if let Some(seed) = seed {
+            graph.seed = seed;
+            graph.seed_function = None;
+        }
+        if let Some(mode) = mode {
+            graph.seed_mode = mode;
+        }
+        Ok(J::Null)
+    })
+}
+
 fn open(s: &mut Session, p: &J) -> Result<J> {
     let i = graph_index(s, p)?;
     s.graph = i;
@@ -120,15 +148,14 @@ fn duplicate(s: &mut Session, p: &J) -> Result<J> {
 
 fn size(s: &mut Session, p: &J) -> Result<J> {
     let target = crate::GraphTarget::resolve(s, p)?;
-    let log = |px: u64| 63 - px.clamp(1, 1 << 20).leading_zeros();
     let (w, h) = if let Some(a) = p.get("log2").and_then(J::as_array) {
-        (a.first().and_then(J::as_u64).unwrap_or(10) as u32, a.get(1).and_then(J::as_u64).unwrap_or(10) as u32)
+        let exponent = |axis: usize| a.get(axis).and_then(J::as_u64).unwrap_or(10).min(u64::from(MAX_SIZE_LOG2)) as u32;
+        (exponent(0), exponent(1))
     } else {
         let w = u64p(p, "width").ok_or_else(|| bad("graph.size", "`width` is required"))?;
-        (log(w), log(u64p(p, "height").unwrap_or(w)))
+        (Graph::parent_size_log2(w), Graph::parent_size_log2(u64p(p, "height").unwrap_or(w)))
     };
 
-    let (w, h) = (w.clamp(MIN_SIZE_LOG2, MAX_SIZE_LOG2), h.clamp(MIN_SIZE_LOG2, MAX_SIZE_LOG2));
     target.edit(s, "Graph size", |package| {
         package.graph_mut(target.graph)?.size = [w, h];
         Ok(json!({"width": 1u32 << w, "height": 1u32 << h}))
@@ -294,6 +321,7 @@ fn from_selection(s: &mut Session, p: &J) -> Result<J> {
         let mut sub = materialcraft_core::Graph::new(&name);
         sub.size = src.size;
         sub.seed = src.seed;
+        sub.format = OutputFormat::Inherit;
         sub.next_id = src.next_id;
         sub.nodes = src.nodes.iter().filter(|n| ids.contains(&n.id)).cloned().collect();
         sub.connections = src.connections.iter().filter(|c| ids.contains(&c.from) && ids.contains(&c.to)).cloned().collect();
@@ -328,7 +356,11 @@ fn from_selection(s: &mut Session, p: &J) -> Result<J> {
         let g = s.graph_mut()?;
         g.remove_nodes(&ids);
         let inst = g.add_node("graph_instance", [rect[0], rect[1]]);
-        g.node_mut(inst)?.params.insert("graph".into(), Value::Text(name.clone()));
+        let instance = g.node_mut(inst)?;
+        // The extracted graph keeps the source seed for a standalone preview. Cancel
+        // that offset here so later parent seed edits still reach its original nodes.
+        instance.base.seed = src.seed.wrapping_neg();
+        instance.params.insert("graph".into(), Value::Text(name.clone()));
         for (from, port, ident) in inputs {
             g.connect(from, &port, inst, &ident)?;
         }

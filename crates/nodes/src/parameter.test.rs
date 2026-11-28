@@ -19,9 +19,13 @@ fn resolve_params_clamps_to_hard_limits() {
     assert_eq!(p["opacity"], Value::Float(-16.0));
     let p = resolve_params(def, &over("opacity", Value::Float(f32::NAN)));
     assert_eq!(p["opacity"], def.param("opacity").unwrap().default);
+}
+
+#[test]
+fn levels_preserves_finite_float_endpoints_beyond_the_slider() {
     let levels = find("levels").unwrap();
-    let p = resolve_params(levels, &over("in_low", Value::Float4([1e9, -1e9, 0.0, 1.0])));
-    assert_eq!(p["in_low"], Value::Float4([17.0, -16.0, 0.0, 1.0]));
+    let p = resolve_params(levels, &over("in_low", Value::Float4([1024.0, -1e12, 0.0, f32::NAN])));
+    assert_eq!(p["in_low"], Value::Float4([1024.0, -1e12, 0.0, 0.0]));
 }
 
 #[test]

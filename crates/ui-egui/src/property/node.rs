@@ -99,6 +99,7 @@ fn base_params(app: &mut MaterialCraftApp, ui: &mut Ui, node: &materialcraft_eng
 
                 let value = if descriptor.options.is_empty() { value } else { Value::Enum(value.as_i32().unwrap_or(0).max(0) as u32) };
                 let input = ExposedParameter {
+                    connectable: false,
                     description: String::new(),
                     editor: None,
                     clamp: false,

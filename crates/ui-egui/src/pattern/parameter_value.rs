@@ -25,7 +25,7 @@ pub(super) fn show(ui: &mut Ui, name: &str, value: &mut Value) -> bool {
             (18, "Offset gradation"),
         ],
         "blendingmode" => &[(0, "Add"), (1, "Blend"), (2, "Max")],
-        "imagefiltering" => &[(0, "Nearest"), (1, "Bilinear")],
+        "imagefiltering" => &[(0, "Bilinear with mipmaps"), (1, "Bilinear"), (2, "Nearest")],
         _ => return crate::value_editor::show(ui, value),
     };
 

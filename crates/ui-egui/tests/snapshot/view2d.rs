@@ -25,6 +25,21 @@ fn save(harness: &mut Harness<'static, MaterialCraftApp>, name: &str) {
 
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
+fn the_2d_view_displays_stored_graph_colors() {
+    let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    app.session.preview_size = Some(64);
+    let color = app.run("graph.node.add", json!({"def": "uniform", "params": {"color": [0.2, 0.4, 0.8, 1.0]}})).unwrap()["id"].as_u64().unwrap();
+    app.run("view.2d", json!({"node": color})).unwrap();
+    app.session.cook();
+    let mut harness = view(app);
+    harness.run_steps(4);
+    let image = harness.render().unwrap();
+    assert_eq!(image.get_pixel(image.width() / 2, image.height() / 2).0, [51, 102, 204, 255]);
+    save(&mut harness, "view2d-encoded-color");
+}
+
+#[test]
+#[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn the_2d_view_shows_its_settings() {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     let blur = app.session.graph().unwrap().nodes.iter().find(|node| node.def == "blur").unwrap().id;

@@ -2,7 +2,7 @@ use super::{input::input_editor, section};
 use crate::{MaterialCraftApp, i18n::tr, theme::Tokens};
 use egui::{RichText, Ui};
 use egui_phosphor::regular as icon;
-use materialcraft_engine::core::{Graph, OutputFormat, Resource, Value};
+use materialcraft_engine::core::{Graph, MAX_SIZE_LOG2, MIN_SIZE_LOG2, OutputFormat, Resource, Value};
 use serde_json::{Value as JsonValue, json};
 
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_engine::GraphTarget) {
@@ -29,8 +29,10 @@ fn show_target(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_en
 
     section(ui, "graph-base", tr("Base parameters"), |ui| {
         for (axis, label) in [(0usize, "Width"), (1, "Height")] {
-            let mut value = graph.size[axis] as f32;
-            if crate::widgets::slider(ui, &format!("{}  {} px", tr(label), 1u32 << graph.size[axis]), &mut value, 4.0..=13.0, 0).changed() {
+            let exponent = graph.size[axis].min(MAX_SIZE_LOG2);
+            let mut value = exponent as f32;
+            let range = MIN_SIZE_LOG2 as f32..=MAX_SIZE_LOG2 as f32;
+            if crate::widgets::slider(ui, &format!("{}  {} px", tr(label), 1u32 << exponent), &mut value, range, 0).changed() {
                 let mut edited = graph.size;
                 edited[axis] = value.round() as u32;
                 emit("graph.size", json!({"log2": edited}));
@@ -43,10 +45,17 @@ fn show_target(app: &mut MaterialCraftApp, ui: &mut Ui, target: materialcraft_en
                 }
             }
         });
-        let mut seed = graph.seed as f32;
-        if crate::widgets::slider(ui, tr("Random seed"), &mut seed, 0.0..=1000.0, 0).changed() {
-            emit("graph.seed", json!({"seed": seed.round() as i64}));
-        }
+        ui.horizontal(|ui| {
+            if let Some(mode) = super::parameter_control::inheritance_menu(ui, tr("Random seed"), graph.seed_mode) {
+                emit("graph.seed", json!({"inheritance": mode}));
+            }
+            ui.vertical(|ui| {
+                let mut seed = graph.seed as f32;
+                if crate::widgets::slider(ui, tr("Random seed"), &mut seed, 0.0..=1000.0, 0).changed() {
+                    emit("graph.seed", json!({"seed": seed.round() as i64}));
+                }
+            });
+        });
     });
     if target != materialcraft_engine::GraphTarget::active(&app.session) {
         for (id, parameters) in commands {

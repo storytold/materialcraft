@@ -133,7 +133,12 @@ fn edit(app: &mut MaterialCraftApp, node: &Node, descriptor: &ParameterDescripto
 }
 
 fn inheritance(app: &mut MaterialCraftApp, ui: &mut Ui, node: &Node, parameter: BaseParameter) {
-    let current = parameter.inheritance(&node.base);
+    if let Some(mode) = inheritance_menu(ui, parameter.label(), parameter.inheritance(&node.base)) {
+        app.run("graph.node.base", json!({"id": node.id, "param": parameter.identifier(), "inheritance": mode}));
+    }
+}
+
+pub(super) fn inheritance_menu(ui: &mut Ui, parameter_label: &str, current: ParameterInheritance) -> Option<ParameterInheritance> {
     let modes = [
         (ParameterInheritance::RelativeToInput, "Relative to input"),
         (ParameterInheritance::RelativeToParent, "Relative to parent"),
@@ -145,14 +150,16 @@ fn inheritance(app: &mut MaterialCraftApp, ui: &mut Ui, node: &Node, parameter: 
         ParameterInheritance::RelativeToParent => icon::TREE_STRUCTURE,
         ParameterInheritance::Absolute => icon::EQUALS,
     };
+    let mut selected = None;
     let menu = ui.menu_button(symbol, |ui| {
         for (mode, label) in modes {
             if ui.selectable_label(mode == current, tr(label)).clicked() {
-                app.run("graph.node.base", json!({"id": node.id, "param": parameter.identifier(), "inheritance": mode}));
+                selected = Some(mode);
                 ui.close();
             }
         }
     });
-    crate::widgets::name(&menu.response, egui::Role::Button, &format!("{} inheritance: {label}", parameter.label()));
+    crate::widgets::name(&menu.response, egui::Role::Button, &format!("{parameter_label} inheritance: {label}"));
     menu.response.on_hover_text(tr(label));
+    selected
 }

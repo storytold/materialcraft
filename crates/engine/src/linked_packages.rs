@@ -29,7 +29,7 @@ fn reaches(package: &Package, changed: &BTreeSet<String>, sources: &BTreeMap<Str
     false
 }
 
-fn interfaces(package: &mut Package, sources: &BTreeMap<String, Arc<Package>>) -> bool {
+pub(crate) fn interfaces(package: &mut Package, sources: &BTreeMap<String, Arc<Package>>) -> bool {
     let updates: Vec<_> = package
         .graphs
         .iter()

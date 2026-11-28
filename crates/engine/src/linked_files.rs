@@ -1,5 +1,6 @@
 use crate::document_path;
 use materialcraft_core::Package;
+use std::{collections::BTreeSet, sync::Arc};
 
 pub(crate) fn normalize_references(package: &mut Package, path: &str) {
     for resource in &mut package.resources {
@@ -16,6 +17,60 @@ pub(crate) fn normalize_references(package: &mut Package, path: &str) {
 }
 
 impl crate::Session {
+    pub(crate) fn load_file_links(&mut self, package: &mut Package) -> Vec<String> {
+        for (path, source) in &self.pkg.dependencies {
+            package.dependencies.entry(path.clone()).or_insert_with(|| source.clone());
+        }
+        let pending = references(package);
+        self.load_sources(package, pending)
+    }
+
+    fn load_sources(&mut self, package: &mut Package, pending: Vec<String>) -> Vec<String> {
+        read_references(package, pending, |uri, source| {
+            // Only aliases actually read from the catalog are owned by it. A caller can supply its own snapshot.
+            self.library_sources.insert(uri.to_owned(), Arc::clone(source));
+        })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn refresh_saved_links(&mut self, path: &str) {
+        use materialcraft_formats::sbs::library;
+        use std::path::Path;
+
+        let file = Path::new(path);
+        let mut changed = BTreeSet::new();
+        if let Ok(root) = library::root().canonicalize()
+            && file.starts_with(&root)
+        {
+            // The saved path is canonical. The same file may also be reached through a library symlink.
+            let aliases: Vec<_> = self
+                .library_sources
+                .iter()
+                .filter_map(|(uri, owned)| {
+                    let relative = library::relative_path(uri).ok()?;
+                    (self.linked_sources.get(uri).is_some_and(|source| Arc::ptr_eq(source, owned))
+                        && root.join(relative).canonicalize().ok()?.as_path() == file)
+                        .then(|| uri.clone())
+                })
+                .collect();
+            if !aliases.is_empty() {
+                let mut registry = Package { dependencies: self.linked_sources.clone(), ..Default::default() };
+                for uri in &aliases {
+                    registry.dependencies.remove(uri);
+                }
+                // Read the saved bytes in each alias's own directory so nested links and resources keep their base.
+                for warning in self.load_sources(&mut registry, aliases.clone()) {
+                    self.warn(warning);
+                }
+                changed.extend(
+                    aliases.into_iter().filter(|uri| registry.dependencies.get(uri).is_some_and(|source| self.linked_sources.get(uri) != Some(source))),
+                );
+                self.linked_sources.extend(registry.dependencies);
+            }
+        }
+        self.refresh_links_from(changed);
+    }
+
     pub(crate) fn discard_source_changes(&mut self, path: &str) {
         self.linked_sources.remove(path);
         self.pkg.dependencies.remove(path);
@@ -30,19 +85,16 @@ impl crate::Session {
             // Include inactive dependents so closing a source also refreshes their references
             package.graphs.extend(self.documents.values().flat_map(|document| document.pkg.graphs.iter().cloned()));
             package.dependencies = self.linked_sources.clone();
-            for warning in load(&mut package) {
+            let pending = references(&package);
+            for warning in self.load_sources(&mut package, pending) {
                 self.warn(warning);
             }
 
             self.linked_sources.extend(package.dependencies);
         }
 
-        self.refresh_links_from(std::collections::BTreeSet::from([path.to_string()]));
+        self.refresh_links_from(BTreeSet::from([path.to_string()]));
     }
-}
-
-pub(crate) fn load(package: &mut Package) -> Vec<String> {
-    load_references(package, references(package))
 }
 
 fn references(package: &Package) -> Vec<String> {
@@ -81,9 +133,20 @@ fn load_file(path: &str) -> Result<materialcraft_formats::sbs::SbsRead, String> 
 
 const MAX_DEPENDENCY_READS: usize = 4096;
 
-fn resolve(package: &mut Package, mut pending: Vec<String>, read: &dyn Fn(&str) -> Result<materialcraft_formats::sbs::SbsRead, String>) -> Vec<String> {
-    use std::{collections::BTreeSet, sync::Arc};
+fn resolve(package: &mut Package, pending: Vec<String>, read: &dyn Fn(&str) -> Result<materialcraft_formats::sbs::SbsRead, String>) -> Vec<String> {
+    resolve_with_catalog(package, pending, read, |_, _| {})
+}
 
+fn read_references(package: &mut Package, pending: Vec<String>, catalog_read: impl FnMut(&str, &Arc<Package>)) -> Vec<String> {
+    resolve_with_catalog(package, pending, &load_file, catalog_read)
+}
+
+fn resolve_with_catalog(
+    package: &mut Package,
+    mut pending: Vec<String>,
+    read: &dyn Fn(&str) -> Result<materialcraft_formats::sbs::SbsRead, String>,
+    mut catalog_read: impl FnMut(&str, &Arc<Package>),
+) -> Vec<String> {
     let mut visited = BTreeSet::new();
     let mut warnings = Vec::new();
     let mut read_attempts = 0;
@@ -112,7 +175,11 @@ fn resolve(package: &mut Package, mut pending: Vec<String>, read: &dyn Fn(&str) 
                     package.dependencies.entry(name.clone()).or_insert_with(|| dependency.clone());
                 }
                 pending.extend(references(&source));
-                package.dependencies.insert(path, Arc::new(source));
+                let source = Arc::new(source);
+                if path.starts_with("sbs://") {
+                    catalog_read(&path, &source);
+                }
+                package.dependencies.insert(path, source);
             }
             Err(error) => warnings.push(format!("Could not resolve {path}: {error}")),
         }

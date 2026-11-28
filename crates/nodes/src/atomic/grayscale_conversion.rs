@@ -19,14 +19,17 @@ pub(super) fn definition() -> NodeDefinition {
 
 fn grayscale_conversion(context: &CookContext) -> CookResult {
     let image = context.any_or(0, Kind::Color, [0.0, 0.0, 0.0, 1.0]).to_color();
-    let weights = [context.f("red"), context.f("green"), context.f("blue"), context.f("alpha")];
+    let weights = context
+        .value("weights")
+        .and_then(materialcraft_core::Value::as_vec4)
+        .unwrap_or_else(|| [context.f("red"), context.f("green"), context.f("blue"), context.f("alpha")]);
     let flatten = context.b("flatten_alpha");
     let matte = context.f("matte");
     Ok(vec![image.map(Kind::Gray, |pixel| {
         // Preserve the fused, ordered dot product through float image storage
-        let mut value = pixel[3].mul_add(weights[3], pixel[2].mul_add(weights[2], pixel[1].mul_add(weights[1], pixel[0] * weights[0])));
+        let mut value = pixel.into_iter().zip(weights).fold(0.0, |sum, (channel, weight)| channel.mul_add(weight, sum));
         if flatten {
-            value = value * pixel[3] + matte * (1.0 - pixel[3]);
+            value = (matte - value).mul_add(1.0 - pixel[3], value);
         }
         [value, 0.0, 0.0, 0.0]
     })])

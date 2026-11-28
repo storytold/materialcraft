@@ -9,10 +9,17 @@ pub struct CurvePoint {
     pub left: Option<[f32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub right: Option<[f32; 2]>,
+    /// A broken handle retains its authored position and contributes no tangent.
+    #[serde(default)]
+    pub left_broken: bool,
+    #[serde(default)]
+    pub right_broken: bool,
+    #[serde(default)]
+    pub locked: bool,
 }
 
 impl CurvePoint {
     pub fn new(x: f32, y: f32) -> Self {
-        Self { x, y, left: None, right: None }
+        Self { x, y, left: None, right: None, left_broken: false, right_broken: false, locked: false }
     }
 }

@@ -1,6 +1,7 @@
 use super::ATOMIC;
+use super::input_resize::sampled_input;
 use crate::{CookContext, CookResult, NodeDefinition, node};
-use craft_texture::{Image, Kind};
+use craft_texture::Image;
 
 pub(super) fn definition() -> NodeDefinition {
     node("sharpen", "Sharpen", ATOMIC)
@@ -13,38 +14,42 @@ pub(super) fn definition() -> NodeDefinition {
 }
 
 fn sharpen(context: &CookContext) -> CookResult {
-    let input = context.any_or(0, Kind::Gray, [0.0; 4]);
+    let (input, format) = sampled_input(context, 0);
+    let (width, height) = craft_texture::clamp_size(context.w, context.h);
+    let same_size = (width, height) == (input.width(), input.height());
     let intensity = context.f("intensity");
     let tile = context.tiling_axes();
     let short_side = context.w.min(context.h) as f32;
     let horizontal = intensity * short_side / context.w.max(1) as f32;
     let vertical = intensity * short_side / context.h.max(1) as f32;
+    let center_weight = 1.0 + 2.0 * (horizontal + vertical);
 
     Ok(vec![Image::generate(context.w, context.h, input.kind(), |x, y| {
-        let (x, y) = (i64::from(x), i64::from(y));
-        let center = input.get(x, y, false);
-        let left = input.get_axes(x - 1, y, tile);
-        let right = input.get_axes(x + 1, y, tile);
-        let top = input.get_axes(x, y - 1, tile);
-        let bottom = input.get_axes(x, y + 1, tile);
+        let offsets = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)];
+        let [center, left, right, top, bottom] = if same_size {
+            offsets.map(|(dx, dy)| input.get_axes(i64::from(x) + dx, i64::from(y) + dy, tile))
+        } else {
+            let u = (x as f32 + 0.5) / width as f32;
+            let v = (y as f32 + 0.5) / height as f32;
+            offsets.map(|(dx, dy)| {
+                let uv = [u + dx as f32 / input.width() as f32, v + dy as f32 / input.height() as f32];
+                crate::texture_sampler::sample(&input, uv, tile, format, None)
+            })
+        };
         std::array::from_fn(|channel| {
-            // Keep the axial differences separate to preserve Float32 cancellation order
-            let twice_center = 2.0 * center[channel];
-            let across = axial_difference(center[channel], twice_center, left[channel], right[channel]);
-            let down = axial_difference(center[channel], twice_center, top[channel], bottom[channel]);
-
-            // Float outputs retain HDR values but discard negative sharpening lobes
-            (center[channel] + (across * horizontal + down * vertical)).max(0.0)
+            let [center, left, right, top, bottom] = [center[channel], left[channel], right[channel], top[channel], bottom[channel]];
+            let sum = center.mul_add(center_weight, -horizontal * left);
+            let sum = right.mul_add(-horizontal, sum);
+            let sum = top.mul_add(-vertical, sum);
+            let result = bottom.mul_add(-vertical, sum);
+            if result.is_finite() || ![center, left, right, top, bottom].iter().all(|v| v.is_finite()) {
+                return result;
+            }
+            // A finite HDR plateau can overflow the weighted center before its neighbors cancel.
+            let center = f64::from(center);
+            let across = 2.0 * center - (f64::from(left) + f64::from(right));
+            let down = 2.0 * center - (f64::from(top) + f64::from(bottom));
+            (center + across * f64::from(horizontal) + down * f64::from(vertical)) as f32
         })
     })])
-}
-
-fn axial_difference(center: f32, twice_center: f32, first: f32, second: f32) -> f32 {
-    let difference = twice_center - (first + second);
-    if difference.is_finite() || ![center, first, second].iter().all(|value| value.is_finite()) {
-        return difference;
-    }
-
-    // Finite HDR inputs can overflow both Float32 sums and turn their difference into NaN
-    (2.0 * f64::from(center) - (f64::from(first) + f64::from(second))) as f32
 }

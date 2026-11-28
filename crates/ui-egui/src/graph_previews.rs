@@ -142,7 +142,7 @@ impl GraphPreviews {
                     GraphPreviewKey::Native(id) => super::render_native(id),
                     GraphPreviewKey::Graph(package, graph) => {
                         NodeLibrary::preview_cancellable(&thread_library, package, graph, LIBRARY_PREVIEW_SIZE, &thread_cancel)
-                            .map(|image| image.resize(LIBRARY_PREVIEW_SIZE, LIBRARY_PREVIEW_SIZE, true).to_rgba8_display())
+                            .map(|image| crate::graph_pixels::rgba8(&image.resize(LIBRARY_PREVIEW_SIZE, LIBRARY_PREVIEW_SIZE, true), true))
                     }
                 }
             };

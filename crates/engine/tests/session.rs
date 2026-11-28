@@ -127,7 +127,31 @@ fn export_size_keeps_proportions_and_clamps() {
     s.pkg.graphs[0].size = [u32::MAX, u32::MAX];
 
     assert!(dims(&s, json!(32)).iter().all(|d| *d == (32, 32)));
-    assert!(dims(&s, json!([1, u64::MAX])).iter().all(|d| *d == (16, 8192)), "sides clamp to 16..8192");
+    assert!(dims(&s, json!([1, u64::MAX])).iter().all(|d| *d == (1, 8192)), "sides clamp to 1..8192");
+
+    s.pkg.graphs[0].absolute_output_size = Some([6, 5]);
+    assert!(dims(&s, json!(0)).iter().all(|d| *d == (64, 32)));
+    assert!(dims(&s, json!(32)).iter().all(|d| *d == (32, 16)));
+    assert_eq!(s.pkg.graphs[0].absolute_output_size, Some([6, 5]));
+
+    s.pkg.graphs[0].absolute_output_size = None;
+    s.pkg.graphs[0].size = [7, 6];
+    let shift = materialcraft_engine::core::GraphSizeOffset::Parent([-1, 1]);
+    s.pkg.graphs[0].relative_output_size = Some(shift);
+    assert!(dims(&s, json!(0)).iter().all(|d| *d == (64, 128)));
+    assert!(dims(&s, json!(32)).iter().all(|d| *d == (16, 32)));
+    assert_eq!(s.pkg.graphs[0].relative_output_size, Some(shift));
+
+    use materialcraft_engine::core::{FunctionGraph, Value as GraphValue};
+    let function = FunctionGraph::constant(GraphValue::Int2([0, 2]));
+    s.pkg.graphs[0].output_size_function = Some(function.clone());
+    assert!(dims(&s, json!(0)).iter().all(|d| *d == (128, 256)));
+    assert!(dims(&s, json!(64)).iter().all(|d| *d == (32, 64)));
+    assert!(dims(&s, json!([32, 16])).iter().all(|d| *d == (32, 16)));
+    assert_eq!(s.pkg.graphs[0].output_size_function.as_ref(), Some(&function));
+    let info = execute(&mut s, "session.inspect", &json!({})).unwrap();
+    assert_eq!(info["graph"]["size"], json!([128, 256]));
+    assert_eq!(info["graph"]["outputSizeMode"], "relativeToParent");
 }
 
 /// A scratch folder for one test, removed when dropped
@@ -163,6 +187,149 @@ fn native_sbs_is_the_default_save_format() {
     let opened = run(&mut session, "file.open", json!({"path": saved}));
     assert_eq!(opened["warnings"], json!([]));
     assert_eq!(run(&mut session, "file.save", json!({}))["path"], json!(saved));
+}
+
+#[test]
+fn saving_a_library_graph_opened_from_disk_keeps_its_portable_function_links() {
+    let directory = TempDir::new("library-function-export");
+    let name = "waveform_01_v2.sbs";
+    let library = materialcraft_engine::formats::sbs::library::root();
+    let mut session = sample_session();
+    for (index, source) in [library.join(name).to_str().unwrap().to_string(), format!("sbs://{name}")].into_iter().enumerate() {
+        run(&mut session, "file.open", json!({ "path": source }));
+        let saved = directory.file(&format!("caller-{index}.sbs"));
+        run(&mut session, "file.saveAs", json!({ "path": saved }));
+        let xml = std::fs::read_to_string(&saved).unwrap();
+        for helper in ["functions.sbs", "functions_hash.sbs"] {
+            assert!(xml.contains(&format!(r#"<filename v="sbs://{helper}""#)), "{helper}");
+        }
+        let mut reopened = sample_session();
+        run(&mut reopened, "file.open", json!({ "path": saved }));
+        assert!(reopened.pkg.dependencies.contains_key("sbs://functions_hash.sbs"));
+    }
+}
+
+#[test]
+fn saving_a_library_graph_preserves_verified_dependency_trees() {
+    use materialcraft_engine::formats::sbs::library;
+
+    let directory = TempDir::new("library-graph-export");
+    let source = library::root().join("bevel.sbs");
+    let mut session = sample_session();
+    run(&mut session, "file.open", json!({ "path": source }));
+    let saved = directory.file("caller.sbs");
+    run(&mut session, "file.saveAs", json!({ "path": saved }));
+
+    let mut reopened = sample_session();
+    run(&mut reopened, "file.open", json!({ "path": saved }));
+    let links: std::collections::BTreeSet<_> =
+        reopened.pkg.graphs.iter().flat_map(|graph| graph.instances()).map(|instance| instance.package.as_str()).collect();
+    assert!(links.contains("sbs://blend_switch.sbs"));
+    let dependent = library::root().join("non_uniform_blur.sbs").canonicalize().unwrap();
+    assert!(links.contains("sbs://non_uniform_blur.sbs"));
+
+    // A local edit in a shared grandchild keeps the whole branch linked to its source.
+    let functions = library::root().join("functions.sbs").canonicalize().unwrap();
+    let source = library::root().join("bevel.sbs");
+    let mut edited = sample_session();
+    run(&mut edited, "file.open", json!({"path": source}));
+    let dependency = edited.pkg.dependencies.get_mut(functions.to_str().unwrap()).unwrap();
+    std::sync::Arc::make_mut(dependency).graphs[0].name.push_str("_edited");
+    let saved = directory.file("with_edits.sbs");
+    run(&mut edited, "file.saveCopyAs", json!({"path": saved}));
+    let mut reopened = sample_session();
+    run(&mut reopened, "file.open", json!({"path": saved}));
+    assert!(reopened.pkg.graphs.iter().flat_map(|graph| graph.instances()).any(|instance| instance.package == dependent.to_str().unwrap()));
+}
+
+#[test]
+fn saving_in_place_keeps_a_file_reference_to_a_bundled_graph() {
+    use materialcraft_engine::{
+        core::{Graph, GraphInstance, Package},
+        formats::sbs::{library, write_sbs},
+    };
+
+    let directory = TempDir::new("live-library-link");
+    let caller = directory.file("caller.sbs");
+    let source = library::root().join("blend_switch.sbs").canonicalize().unwrap();
+    let mut graph = Graph::new("Caller");
+    let instance = graph.add_node("graph_instance", [0.0; 2]);
+    graph.node_mut(instance).unwrap().instance = Some(GraphInstance {
+        package: source.to_str().unwrap().to_owned(),
+        graph: "switch_grayscale".into(),
+        label: String::new(),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        defaults: Default::default(),
+    });
+    let mut package = Package::new("Caller");
+    package.graphs.push(graph);
+    std::fs::write(&caller, write_sbs(&package).unwrap()).unwrap();
+
+    let mut session = sample_session();
+    run(&mut session, "file.open", json!({"path": caller}));
+    run(&mut session, "file.save", json!({}));
+    let mut reopened = sample_session();
+    run(&mut reopened, "file.open", json!({"path": caller}));
+    let saved = reopened.pkg.graphs[0].instances().next().unwrap();
+    assert_eq!(saved.package, source.to_str().unwrap());
+
+    let copy = directory.file("copy.sbs");
+    run(&mut reopened, "file.saveCopyAs", json!({"path": copy}));
+    let xml = std::fs::read_to_string(copy).unwrap();
+    assert!(xml.contains(r#"<filename v="sbs://blend_switch.sbs""#));
+}
+
+#[test]
+fn saving_inside_the_library_preserves_distinct_catalog_and_file_references() {
+    use materialcraft_engine::{
+        core::{Graph, GraphInstance, Package},
+        file_cmds::{open_bytes, save_files_at},
+        formats::sbs::{library, read_sbs, write_sbs},
+    };
+
+    let file = "blend_switch.sbs";
+    let catalog = "sbs://blend_switch.sbs";
+    let mut graph = Graph::new("Caller");
+    for reference in [catalog, file] {
+        let id = graph.add_node("graph_instance", [0.0; 2]);
+        graph.node_mut(id).unwrap().instance = Some(GraphInstance {
+            package: reference.into(),
+            graph: "switch_grayscale".into(),
+            label: String::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            defaults: Default::default(),
+        });
+    }
+    let mut package = Package::new("Caller");
+    package.graphs.push(graph);
+
+    // Exercise the in-library save path entirely in memory.
+    let caller = library::root().join("catalog-link-caller.sbs");
+    let path = caller.to_str().unwrap();
+    let mut session = sample_session();
+    open_bytes(&mut session, &write_sbs(&package).unwrap(), Some(path.into())).unwrap();
+    let saved = save_files_at(&session, session.path.as_deref().unwrap()).unwrap();
+    let parsed = read_sbs(saved.xml().unwrap(), path, &|_| None).unwrap();
+    let links: Vec<_> = parsed.pkg.graphs[0].instances().map(|instance| instance.package.as_str()).collect();
+    assert_eq!(links, [catalog, file]);
+}
+
+#[test]
+fn a_changed_or_detached_function_file_keeps_its_disk_identity() {
+    use materialcraft_engine::formats::sbs::library;
+    use std::path::Path;
+
+    let directory = TempDir::new("local-function-source");
+    let name = "functions_hash.sbs";
+    let path = directory.file(name);
+    let mut changed = library::read(&format!("sbs://{name}")).unwrap();
+    changed[0] = b' ';
+    std::fs::write(&path, changed).unwrap();
+    assert!(library::bundled_package_uri(&directory.0.canonicalize().unwrap(), Path::new(&path)).is_none());
+    std::fs::copy(library::root().join(name), &path).unwrap();
+    assert!(library::bundled_package_uri(&library::root().canonicalize().unwrap(), Path::new(&path)).is_none());
 }
 
 /// Saving an SBS file another program wrote must not overwrite it: MaterialCraft can't write back what it couldn't read

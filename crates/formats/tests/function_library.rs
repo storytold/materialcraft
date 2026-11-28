@@ -182,6 +182,43 @@ fn assert_same_body(source: &materialcraft_core::Graph, converted: &materialcraf
 }
 
 #[test]
+fn bundled_vector_equality_compares_each_lane() {
+    use materialcraft_core::Value;
+    use materialcraft_nodes::function::{EvaluationContext, EvaluationState, FunctionScope, compile, resolve_instances};
+    use std::collections::BTreeMap;
+
+    let bytes = materialcraft_formats::sbs::library::read("sbs://functions.sbs").unwrap();
+    let package = read_sbs(&bytes, "functions.sbs", &|_| None).unwrap().pkg;
+    for width in [3, 4] {
+        let name = format!("Equality_Float{width}");
+        let mut graph = package.graph_by_name(&name).unwrap().1.function.clone().unwrap();
+        resolve_instances(&mut graph, &package, &package.dependencies);
+        let program = compile(&graph, 0).unwrap();
+        let vector = |[r, g, b, a]: [f32; 4]| if width == 3 { Value::Float3([r, g, b]) } else { Value::Float4([r, g, b, a]) };
+        let original = [0.25, -0.375, 1.0, 2.0];
+        for mask in 0..1 << width {
+            let mut changed = original;
+            for (lane, value) in changed.iter_mut().take(width).enumerate() {
+                if mask & (1 << lane) != 0 {
+                    *value += 0.125;
+                }
+            }
+            let variables = BTreeMap::from([("A".into(), vector(original)), ("B".into(), vector(changed))]);
+            let context = EvaluationContext {
+                scope: FunctionScope::PixelProcessor,
+                variables: &variables,
+                position: [0.5; 2],
+                size: [1.0; 2],
+                images: &[],
+                image_formats: &[],
+                tile: true,
+            };
+            assert_eq!(program.evaluate(&context, &mut EvaluationState::default()).unwrap(), Value::Bool(mask == 0), "{name} mask {mask}");
+        }
+    }
+}
+
+#[test]
 fn bundled_library_has_complete_bodies_and_current_export_metadata() {
     let bytes = include_bytes!("../../../assets/sbs/functions.sbs");
     let read = read_sbs(bytes, "functions.sbs", &|_| None).unwrap();

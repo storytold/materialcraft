@@ -12,18 +12,23 @@ fn render(depth: usize, roughness: f32, stack: bool, color: Option<[f32; 4]>) ->
         node.parameters.insert("patterntype".into(), Value::Int(if stack || index == depth { 2 } else { 0 }));
         node.parameters.insert("opacity".into(), Value::Float4(color.unwrap_or([1.0; 4])));
     }
+    render_graph(graph, roughness, 0.125, color.is_some()).unwrap().remove(0)
+}
+
+fn render_graph(graph: PatternGraph, roughness: f32, opacity: f32, color: bool) -> materialcraft_nodes::CookResult {
     let definition = find("fx_map").unwrap();
     let params = resolve_params(
         definition,
         &BTreeMap::from([
             ("pattern".into(), Value::PatternGraph(Box::new(graph))),
             ("roughness".into(), Value::Float(roughness)),
-            ("opacity".into(), Value::Float(0.125)),
-            ("color_mode".into(), Value::Bool(color.is_some())),
+            ("opacity".into(), Value::Float(opacity)),
+            ("color_mode".into(), Value::Bool(color)),
             ("background".into(), Value::Color([0.0; 4])),
         ]),
     );
     let context = CookContext {
+        input_formats: &[],
         format: materialcraft_core::OutputFormat::F32,
         w: 64,
         h: 64,
@@ -35,7 +40,28 @@ fn render(depth: usize, roughness: f32, stack: bool, color: Option<[f32; 4]>) ->
         vars: &BTreeMap::new(),
     };
 
-    (definition.cook)(&context).unwrap().remove(0)
+    (definition.cook)(&context)
+}
+
+#[test]
+fn finite_amplified_stamps_between_samples_do_not_exhaust_the_visit_budget() {
+    let mut graph = PatternGraph::with_root(PatternNodeKind::Iterate);
+    let background = graph.add(PatternNodeKind::Quadrant).unwrap();
+    let tiny = graph.add(PatternNodeKind::Quadrant).unwrap();
+    graph.nodes[0].children = vec![Some(background), Some(tiny)];
+    graph.nodes[0].parameters.insert("numberadded".into(), Value::Int(1_048_580));
+    graph.nodes[1].parameters = BTreeMap::from([("patterntype".into(), Value::Int(2)), ("opacity".into(), Value::Float(0.25))]);
+    graph.nodes[2].parameters = BTreeMap::from([("patterntype".into(), Value::Int(2)), ("patternsize".into(), Value::Float2([1.0 / 256.0; 2]))]);
+    let image = render_graph(graph, 0.6, 2.0, false).unwrap().remove(0);
+    assert!(image.data().iter().all(|&pixel| pixel == 0.5));
+}
+
+#[test]
+fn a_missed_stamp_still_validates_its_depth_weight() {
+    let mut graph = PatternGraph::with_root(PatternNodeKind::Quadrant);
+    assert!(render_graph(graph.clone(), -1.0, 1.0, false).is_ok());
+    graph.nodes[0].parameters = BTreeMap::from([("patterntype".into(), Value::Int(2)), ("patternsize".into(), Value::Float2([1.0 / 256.0; 2]))]);
+    assert!(render_graph(graph, -1.0, 1.0, false).unwrap_err().contains("roughness must be finite"));
 }
 
 #[test]

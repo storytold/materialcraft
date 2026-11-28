@@ -35,6 +35,18 @@ impl ParameterDescriptor {
     }
 
     pub fn for_node(package: &Package, node: &Node, parameter: &str) -> Option<Self> {
+        if node.def == "grayscale_conversion" && parameter == "weights" {
+            // A single function can drive the four channel controls together.
+            return Some(Self {
+                id: parameter.into(),
+                label: "RGBA weights".into(),
+                default: Value::Float4([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0]),
+                min: 0.0,
+                max: 1.0,
+                options: Vec::new(),
+                supports_function: true,
+            });
+        }
         if node.def == "graph_instance" {
             let source = node
                 .instance
@@ -45,7 +57,8 @@ impl ParameterDescriptor {
                 Some(Value::Text(name)) => Some(name.as_str()),
                 _ => None,
             });
-            if let Some((_, graph)) = source.zip(name).and_then(|(source, name)| source.graph_by_name(name))
+            let graph = source.zip(name).and_then(|(source, name)| source.graph_by_name(name)).map(|(_, graph)| graph);
+            if let Some(graph) = graph
                 && let Some(input) = graph.exposed.iter().find(|input| input.id == parameter)
             {
                 return Some(Self {
@@ -59,7 +72,24 @@ impl ParameterDescriptor {
                 });
             }
 
-            let default = node.instance.as_ref()?.defaults.get(parameter)?.clone();
+            let bridge = graph.and_then(|graph| {
+                graph.nodes.iter().find(|bridge| {
+                    bridge.def == "input_value"
+                        && match bridge.params.get("identifier") {
+                            Some(Value::Text(name)) if !name.is_empty() => name == parameter,
+                            _ => parameter == "input",
+                        }
+                })
+            });
+            let default = if let Some(bridge) = bridge {
+                bridge.params.get("default").cloned().unwrap_or(Value::Float(0.0))
+            } else {
+                let interface = node.instance.as_ref()?;
+                interface.defaults.get(parameter).cloned().or_else(|| {
+                    let port = interface.inputs.iter().find(|port| port.identifier == parameter)?;
+                    Some(ValueType::from_code(port.type_code)?.default_value())
+                })?
+            };
             return Some(Self {
                 id: parameter.into(),
                 label: parameter.into(),

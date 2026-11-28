@@ -1,5 +1,13 @@
 # Gaps
 
+The current root inventory records 494 exact cases out of 546 measured roots. This is limited
+to those measurements, not arbitrary settings or complete SBS compatibility. The next release
+tracks [remaining root differences](https://github.com/storytold/materialcraft/issues/336),
+[older linked dependencies](https://github.com/storytold/materialcraft/issues/337), and
+[rendering review cases and migration of older MaterialCraft conventions](https://github.com/storytold/materialcraft/issues/338).
+The latter includes possible changes to old warp angles, omitted distance/gradient modes and
+pattern image selections. Keep original documents when comparing versions.
+
 The [catalog status](node-catalog-parity.md) records implemented corrections and untested
 behavior, including all 954 loaded package function bodies. The
 [atomic corrections](atomic-parity-improvements.md) cover filters, channel selection and

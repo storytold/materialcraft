@@ -1,7 +1,7 @@
 //! Original single-stroke font rendered as anti-aliased capsules
 
 use crate::atomic::ATOMIC;
-use crate::raster::{CapsuleRaster, CapsuleSegment, composite};
+use crate::raster::{CapsuleRaster, CapsuleSegment, composite_text};
 use crate::{CookContext, CookResult, NodeDefinition, node};
 
 /// The font: each glyph is strokes separated by spaces, each stroke a polyline of `xy` digit pairs on a grid 4 wide where y = 0 is the cap height, 2 the x-height, 6 the baseline and 8 the descender
@@ -108,11 +108,11 @@ fn strokes(s: &str) -> impl Iterator<Item = Vec<[f32; 2]>> + '_ {
 }
 
 /// Longest text drawn (an allocation cap)
-const MAX_CHARS: usize = 10_000;
+pub(super) const MAX_CHARS: usize = 10_000;
 
 pub(super) fn definition() -> NodeDefinition {
     node("text", "Text", ATOMIC)
-        .desc("Draws text with a built-in single-stroke font (A–Z, a–z, 0–9, punctuation). \\n starts a new line.")
+        .desc("Draws text with the selected package font or the built-in single-stroke font. \\n starts a new line.")
         .atomic()
         .generator()
         .any_in("background", "Background")
@@ -173,13 +173,13 @@ fn layout(context: &CookContext, text: &str) -> Vec<CapsuleSegment> {
 
 fn text(context: &CookContext) -> CookResult {
     if !context.text("fontdata").is_empty() {
-        return Err("external fonts are not supported yet; clear Font reference to use the built-in stroke font".into());
+        return Err(format!("font resource `{}` is unavailable", context.text("fontdata")));
     }
 
     let text: String = context.text("text").replace("\\n", "\n").chars().take(MAX_CHARS).collect();
     let radius = 0.7 * context.f("fontsize").max(0.0) * context.h as f32 / 16.0;
     let raster = CapsuleRaster::new(layout(context, &text), radius, context.w, context.h, context.tile);
-    Ok(vec![composite(context, |x, y| [1.0, 1.0, 1.0, raster.coverage(x as f32 + 0.5, y as f32 + 0.5)])])
+    Ok(vec![composite_text(context, |x, y| raster.coverage(x as f32 + 0.5, y as f32 + 0.5))])
 }
 
 #[cfg(test)]
@@ -209,6 +209,7 @@ mod tests {
         let no_res = |_: &str| None;
         let vars = BTreeMap::new();
         let context = CookContext {
+            input_formats: &[],
             format: materialcraft_core::OutputFormat::F32,
             w: 256,
             h: 256,

@@ -16,7 +16,18 @@ fn absent_textures_have_zero_pixels_and_expected_kinds() {
         let resource = |_: &str| None;
         let vars = BTreeMap::new();
         for (w, h) in [(16, 16), (32, 16), (3, 5)] {
-            let context = CookContext { w, h, seed: 0, format: OutputFormat::F32, tile: true, inputs: &[], params: &params, resource: &resource, vars: &vars };
+            let context = CookContext {
+                input_formats: &[],
+                w,
+                h,
+                seed: 0,
+                format: OutputFormat::F32,
+                tile: true,
+                inputs: &[],
+                params: &params,
+                resource: &resource,
+                vars: &vars,
+            };
 
             let outputs = (definition.cook)(&context).unwrap();
             let image = outputs.first().unwrap();

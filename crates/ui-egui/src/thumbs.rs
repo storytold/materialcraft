@@ -24,10 +24,10 @@ pub struct Thumbs {
     frame: u64,
 }
 
-/// An image as an egui texture image (sRGB display, `side` px)
+/// A cooked graph image as an egui thumbnail, in its stored display space.
 pub fn color_image(img: &Image, side: u32) -> ColorImage {
     let small = img.resize(side, side, true);
-    ColorImage::from_rgba_unmultiplied([side as usize, side as usize], &small.to_rgba8_display())
+    ColorImage::from_rgba_unmultiplied([side as usize, side as usize], &crate::graph_pixels::rgba8(&small, true))
 }
 
 #[path = "graph_previews.rs"]
@@ -157,6 +157,7 @@ fn render_native(id: &str) -> Option<Vec<u8>> {
 
     let params = resolve_params(def, &BTreeMap::new());
     let ctx = CookContext {
+        input_formats: &[],
         format: materialcraft_engine::core::OutputFormat::U16,
         w: LIBRARY_PREVIEW_SIZE,
         h: LIBRARY_PREVIEW_SIZE,
@@ -169,5 +170,5 @@ fn render_native(id: &str) -> Option<Vec<u8>> {
     };
 
     let images = (def.cook)(&ctx).ok()?;
-    Some(images.first()?.resize(LIBRARY_PREVIEW_SIZE, LIBRARY_PREVIEW_SIZE, true).to_rgba8_display())
+    Some(crate::graph_pixels::rgba8(&images.first()?.resize(LIBRARY_PREVIEW_SIZE, LIBRARY_PREVIEW_SIZE, true), true))
 }

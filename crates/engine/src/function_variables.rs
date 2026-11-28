@@ -8,10 +8,12 @@ use crate::{FunctionGraphTarget, FunctionVariable, Result, Session, commands::ba
 fn variable_scope(target: &FunctionGraphTarget, session: &Session) -> FunctionScope {
     match target {
         FunctionGraphTarget::Pattern { .. } => FunctionScope::FxMap,
-        FunctionGraphTarget::Parameter { node, parameter }
-            if parameter == "function" && session.graph().ok().and_then(|graph| graph.node(*node).ok()).is_some_and(|node| node.def == "pixel_processor") =>
-        {
-            FunctionScope::PixelProcessor
+        FunctionGraphTarget::Parameter { node, parameter } if parameter == "function" => {
+            match session.graph().ok().and_then(|graph| graph.node(*node).ok()).map(|node| node.def.as_str()) {
+                Some("pixel_processor") => FunctionScope::PixelProcessor,
+                Some("value_processor") => FunctionScope::ValueProcessor,
+                _ => FunctionScope::Node,
+            }
         }
         _ => FunctionScope::Node,
     }

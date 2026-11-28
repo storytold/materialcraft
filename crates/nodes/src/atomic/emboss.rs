@@ -1,7 +1,7 @@
-use super::{ATOMIC, direction};
-use crate::ops;
+use super::ATOMIC;
 use crate::{CookContext, CookResult, NodeDefinition, node};
 use craft_texture::{Image, Kind};
+use materialcraft_core::Value;
 
 pub(super) fn definition() -> NodeDefinition {
     node("emboss", "Emboss", ATOMIC)
@@ -18,19 +18,35 @@ pub(super) fn definition() -> NodeDefinition {
 }
 
 fn emboss(context: &CookContext) -> CookResult {
-    const INTENSITY_REFERENCE_WIDTH: f32 = 64.0;
     let input = context.any_or(0, Kind::Gray, [0.0; 4]);
     let height_map = context.gray_or(1, 0.0);
-    let (light_x, light_y) = direction(context.f("light_angle"));
-    let intensity = context.f("intensity") * context.w as f32 / INTENSITY_REFERENCE_WIDTH;
-    let (highlight, shadow) = (context.v4("highlight"), context.v4("shadow"));
+    let pixel_size = match context.vars.get("$pixelsize") {
+        Some(Value::Float2(size)) => *size,
+        _ => [1.0; 2],
+    };
+    let (sin, cos) = (context.f("light_angle") * std::f32::consts::TAU).sin_cos();
+    let intensity = context.f("intensity") * (input.width().min(input.height()) as f32 / 256.0);
+    let light_x = cos * pixel_size[0] * intensity;
+    let light_y = sin * pixel_size[1] * intensity;
+    let tint = |id: &str| {
+        let [r, g, b, _] = context.v4(id);
+        if input.is_gray() { [(r + g + b) / 3.0; 3] } else { [r, g, b] }
+    };
+    let highlight = tint("highlight");
+    let shadow = tint("shadow").map(|v| 1.0 - v);
+    let tiling = context.tiling_axes();
 
     Ok(vec![Image::generate(context.w, context.h, input.kind(), |x, y| {
-        let (gx, gy) = ops::slope(&height_map, x as i64, y as i64, context.tile);
-        let lighting = (-(gx * light_x + gy * light_y) * intensity).clamp(-1.0, 1.0);
-        let pixel = input.get(x as i64, y as i64, false);
-        let tint = if lighting >= 0.0 { highlight } else { shadow };
-        let blend = lighting.abs();
-        [pixel[0] + (tint[0] - pixel[0]) * blend, pixel[1] + (tint[1] - pixel[1]) * blend, pixel[2] + (tint[2] - pixel[2]) * blend, pixel[3]]
+        let (x, y) = (i64::from(x), i64::from(y));
+        let center = height_map.get_gray(x, y, false);
+        let dx = center - height_map.get_axes(x - 1, y, tiling)[0];
+        let dy = center - height_map.get_axes(x, y - 1, tiling)[0];
+        let light = light_y.mul_add(dy, light_x * dx);
+        let mut pixel = input.get(x, y, false);
+        let weights = if light >= 0.0 { highlight } else { shadow };
+        for (value, weight) in pixel.iter_mut().zip(weights) {
+            *value = light.mul_add(weight, *value);
+        }
+        pixel
     })])
 }

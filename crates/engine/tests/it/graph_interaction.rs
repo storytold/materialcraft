@@ -133,6 +133,9 @@ fn fx_map_starts_with_a_quadrant_and_grows_image_inputs_as_connected() {
     let source = add(&mut session, "uniform");
     execute(&mut session, "graph.node.param", &json!({"id": source.0, "param": "color", "value": [0.5, 0.5, 0.5, 1.0]})).unwrap();
     execute(&mut session, "graph.node.param", &json!({"id": source.0, "param": "color_mode", "value": false})).unwrap();
+    let sixth = add(&mut session, "uniform");
+    execute(&mut session, "graph.node.param", &json!({"id": sixth.0, "param": "color", "value": [0.75, 0.75, 0.75, 1.0]})).unwrap();
+    execute(&mut session, "graph.node.param", &json!({"id": sixth.0, "param": "color_mode", "value": false})).unwrap();
     let owner = add(&mut session, "fx_map");
     let Value::PatternGraph(pattern) = &session.graph().unwrap().node(owner).unwrap().params["pattern"] else { panic!("missing default pattern") };
 
@@ -153,8 +156,10 @@ fn fx_map_starts_with_a_quadrant_and_grows_image_inputs_as_connected() {
     assert_eq!(loaded_pattern.nodes[0].kind, PatternNodeKind::Quadrant);
     assert_eq!(loaded_pattern.root, Some(loaded_pattern.nodes[0].id));
 
+    execute(&mut session, "graph.node.param", &json!({"id": owner.0, "param": "color_mode", "value": false})).unwrap();
     for index in 0..6 {
-        execute(&mut session, "graph.connect", &json!({"from": source.0, "to": owner.0, "toPort": format!("pattern{index}")})).unwrap();
+        let input = if index == 5 { sixth } else { source };
+        execute(&mut session, "graph.connect", &json!({"from": input.0, "to": owner.0, "toPort": format!("pattern{index}")})).unwrap();
 
         assert_eq!(session.input_ports(owner).last(), Some(&format!("pattern{}", index + 1)));
     }
@@ -163,12 +168,12 @@ fn fx_map_starts_with_a_quadrant_and_grows_image_inputs_as_connected() {
 
     let mut pattern = (**pattern).clone();
     pattern.nodes[0].parameters.insert("patterntype".into(), Value::Int(1));
-    pattern.nodes[0].parameters.insert("imageindex".into(), Value::Int(6));
+    pattern.nodes[0].parameters.insert("imageindex".into(), Value::Int(5));
     execute(&mut session, "graph.pattern.set", &json!({"id": owner.0, "pattern": pattern})).unwrap();
     session.cook();
 
     assert!(session.cooked.nodes[&owner].error.is_none(), "{:?}", session.cooked.nodes[&owner].error);
-    assert!((session.cooked.image(owner, 0).unwrap().mean()[0] - 0.5).abs() < 1e-5);
+    assert!((session.cooked.image(owner, 0).unwrap().mean()[0] - 0.75).abs() < 1e-5);
 
     let bytes = write_sbs(&session.pkg).unwrap();
 
@@ -186,7 +191,7 @@ fn fx_map_starts_with_a_quadrant_and_grows_image_inputs_as_connected() {
 
     loaded.cook();
 
-    assert!((loaded.cooked.image(loaded_owner, 0).unwrap().mean()[0] - 0.5).abs() < 1e-5);
+    assert!((loaded.cooked.image(loaded_owner, 0).unwrap().mean()[0] - 0.75).abs() < 1e-5);
 
     execute(&mut session, "graph.disconnect", &json!({"to": owner.0, "toPort": "pattern5"})).unwrap();
 

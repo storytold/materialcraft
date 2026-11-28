@@ -1,13 +1,91 @@
 use craft_texture::{Image, Limits, MAX_SIDE};
+use materialcraft_core::OutputFormat;
 use rayon::prelude::*;
 
-pub(super) fn axis(input: &Image, radius: f32, horizontal: bool, tile: bool) -> Image {
-    if !radius.is_finite() || radius <= 0.5 {
+mod mip_window;
+
+/// Filter on a periodic sheared grid, accounting for the transverse shift at a seam.
+pub(super) fn sheared(input: &Image, reach: f32, horizontal: bool, slope: f32, source: OutputFormat, destination: OutputFormat) -> Option<Image> {
+    let (width, height) = (input.width(), input.height());
+    let (length, across) = if horizontal { (width, height) } else { (height, width) };
+    let radius = reach + 0.5;
+    if !length.is_power_of_two() || !across.is_power_of_two() || !radius.is_finite() || radius > length as f32 {
+        return None;
+    }
+    // Shearing and reduction accumulate before normalization. Use the bounded fallback for HDR overflow.
+    let limit = f32::MAX / (2.0 * radius + 2.0);
+    if !input.data().iter().all(|v| v.abs() <= limit) {
+        return None;
+    }
+    let intermediate = if destination == OutputFormat::Inherit { OutputFormat::U16 } else { destination };
+    // The slope is in texels. A full period along the line spans this many transverse UV periods.
+    let uv_slope = slope * (length as f32 / across as f32);
+    let shear = |image: &Image, forward: bool, format| {
+        let slope = if forward { uv_slope } else { -uv_slope };
+        let translation = slope * 0.5;
+        Image::generate_uv(width, height, image.kind(), |u, v| {
+            // The horizontal forward pass measures along the row from its far edge.
+            // Keep the transform columns in sample order before adding the translation.
+            let uv = match (horizontal, forward) {
+                (true, true) => [u, (-slope).mul_add(1.0 - u, v) + translation],
+                (true, false) => [u, (slope * u + v) - translation],
+                (false, _) => [slope.mul_add(v, u) - translation, v],
+            };
+            crate::texture_sampler::sample(image, uv, [true; 2], format, None)
+        })
+    };
+    let displaced = crate::output_precision::apply(shear(input, true, source), intermediate);
+    let filtered = mip_window::filter(&displaced, reach, horizontal, true, intermediate, intermediate, mip_window::Edges::Sheared(uv_slope));
+    let filtered = crate::output_precision::apply(filtered, intermediate);
+    Some(shear(&filtered, false, intermediate))
+}
+
+pub(super) fn short_line(input: &Image, reach: f32, step: [f32; 2], tile: [bool; 2], source_format: OutputFormat) -> Image {
+    let center_weight = 0.5 / (0.5 + reach);
+    let edge_weight = reach * center_weight;
+    // The two passes visit samples in different directions. Cancellation exposes their order.
+    let combine = |first: [f32; 4], center: [f32; 4], last: [f32; 4]| {
+        std::array::from_fn(|c| last[c].mul_add(edge_weight, center[c].mul_add(center_weight, first[c] * edge_weight)))
+    };
+    if reach > 1.0 || step.iter().any(|v| v.fract() != 0.0) {
+        // A fractional side tap filters at the source storage precision.
+        let offset = if reach > 1.0 { 2.0 - 1.0 / reach } else { 1.0 };
+        let du = step[0] * offset / input.width() as f32;
+        let dv = step[1] * offset / input.height() as f32;
+        return Image::generate(input.width(), input.height(), input.kind(), |x, y| {
+            let u = (x as f32 + 0.5) / input.width() as f32;
+            let v = (y as f32 + 0.5) / input.height() as f32;
+            let first = crate::texture_sampler::sample(input, [u - du, v - dv], tile, source_format, None);
+            let center = input.get(i64::from(x), i64::from(y), false);
+            let last = crate::texture_sampler::sample(input, [u + du, v + dv], tile, source_format, None);
+            combine(first, center, last)
+        });
+    }
+    let step = step.map(|v| v as i64);
+    Image::generate(input.width(), input.height(), input.kind(), |x, y| {
+        let (x, y) = (i64::from(x), i64::from(y));
+        let first = input.get_axes(x - step[0], y - step[1], tile);
+        let center = input.get_axes(x, y, tile);
+        let last = input.get_axes(x + step[0], y + step[1], tile);
+        combine(first, center, last)
+    })
+}
+
+pub(super) fn axis(input: &Image, reach: f32, horizontal: bool, tile: bool, source: OutputFormat, destination: OutputFormat) -> Image {
+    if !reach.is_finite() || reach <= 0.0 {
         return input.clone();
     }
 
     // Bound work for hostile strengths to the largest supported image dimension
-    let radius = radius.min(MAX_SIDE as f32);
+    let reach = reach.min(MAX_SIDE as f32 - 0.5);
+    let radius = 0.5 + reach;
+    let length = if horizontal { input.width() } else { input.height() };
+    // Wide windows sum before normalization. Keep the finite HDR and non-finite
+    // behavior of the extended-precision path when those intermediate sums can overflow.
+    let limit = f32::MAX / (2.0 * radius + 2.0);
+    if length.is_power_of_two() && radius <= length as f32 && input.data().iter().all(|v| v.abs() <= limit) {
+        return mip_window::filter(input, reach, horizontal, tile, source, destination, mip_window::Edges::Paired);
+    }
     let extent = (radius + 0.5).floor() as i64;
     let weight = 1.0 / (2.0 * f64::from(radius));
     let edge_weight = (0.5 - (extent as f64 - 0.5) * weight).max(0.0);

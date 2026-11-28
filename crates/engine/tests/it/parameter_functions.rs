@@ -237,6 +237,7 @@ fn instance_parameter_functions_work_without_stored_literals_and_use_instance_si
     source.node_mut(color).unwrap().params.insert("color_mode".into(), Value::Bool(false));
     source.node_mut(color).unwrap().functions.insert("color".into(), FunctionGraph::input("amount", ValueType::Float4));
     source.exposed.push(materialcraft_engine::core::ExposedParameter {
+        connectable: false,
         description: String::new(),
         editor: None,
         clamp: false,
@@ -341,7 +342,8 @@ fn native_channel_parameters_accept_scalar_functions_without_changing_their_bodi
 
             assert_eq!(result.error, None, "{definition}.{parameter}");
 
-            let expected = if definition == "fx_map" { Value::Color([0.25, 0.25, 0.25, 1.0]) } else { Value::Float4([0.25; 4]) };
+            let gray = [0.25, 0.25, 0.25, 1.0];
+            let expected = if definition == "fx_map" { Value::Color(gray) } else { Value::Float4(gray) };
 
             assert_eq!(result.parameters[*parameter], expected);
 

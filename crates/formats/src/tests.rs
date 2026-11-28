@@ -3,6 +3,17 @@ use craft_texture::{Image, Kind, srgb_to_linear};
 use std::io::Cursor;
 
 #[test]
+fn bound_image_decoding_marks_normalized_linear_channels() {
+    let mut gray = Cursor::new(Vec::new());
+    ::image::GrayImage::from_pixel(2, 2, ::image::Luma([128])).write_to(&mut gray, ::image::ImageFormat::Png).unwrap();
+    assert!(decode(gray.get_ref(), false).unwrap().integer_sampling());
+    let mut color = Cursor::new(Vec::new());
+    ::image::RgbImage::from_pixel(2, 2, ::image::Rgb([128, 64, 32])).write_to(&mut color, ::image::ImageFormat::Png).unwrap();
+    assert!(decode(color.get_ref(), true).unwrap().integer_sampling());
+    assert!(!decode(color.get_ref(), false).unwrap().integer_sampling());
+}
+
+#[test]
 fn export_every_format() {
     let img = Image::generate(8, 8, Kind::Color, |x, y| [x as f32 / 7.0, y as f32 / 7.0, 0.5, 1.0]);
     let gray = img.to_gray();
