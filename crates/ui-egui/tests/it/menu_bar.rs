@@ -8,6 +8,9 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState, menus};
 
 fn harness() -> Harness<'static, MaterialCraftApp> {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
+    // Menu behavior needs a real cook, but not a large material preview on a busy CI runner.
+    app.ui.prefs.preview_size = 16;
+    app.apply_prefs();
     app.ui.windows.home = false;
     let mut harness = Harness::builder()
         .with_context_setup(materialcraft_ui_egui::framework::install_headless)
