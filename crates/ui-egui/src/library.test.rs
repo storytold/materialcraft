@@ -74,6 +74,26 @@ fn categories_include_their_sub_categories_and_favorites_follow_the_star() {
     assert_eq!(labels(&app), ["Pi"]);
 }
 
+/// Fuzzy search matches subsequences across label, id, and category while preserving alphabetical order.
+#[test]
+fn library_search_matches_fuzzily_and_stays_alphabetical() {
+    let mut app = app();
+    app.ui.library_search = "dblur".into();
+    let found = labels(&app);
+    assert!(found.iter().any(|label| label == "Directional blur"), "{found:?}");
+
+    app.ui.library_search = "blur".into();
+    let blur_hits = labels(&app);
+    assert!(blur_hits.iter().any(|label| label == "Blur"), "{blur_hits:?}");
+    assert!(!blur_hits.iter().any(|label| label == "Ambient occlusion"), "URI subsequence noise leaked into blur search: {blur_hits:?}");
+
+    app.ui.library_search = "math pi".into();
+    let math_pi = labels(&app);
+    assert!(math_pi.iter().any(|label| label == "Pi"), "{math_pi:?}");
+    let keys: Vec<_> = math_pi.iter().map(|label| tr(label).to_lowercase()).collect();
+    assert!(keys.windows(2).all(|pair| pair[0] <= pair[1]), "{math_pi:?}");
+}
+
 /// Tiles and list rows stay alphabetical across categories, favorites and search.
 #[test]
 fn library_previews_are_alphabetical_in_every_view() {

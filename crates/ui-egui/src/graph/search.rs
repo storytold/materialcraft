@@ -25,21 +25,27 @@ pub(super) fn open_search_to(app: &mut MaterialCraftApp, ctx: &egui::Context, at
     }
 }
 
-/// Catalog entries matching `text` (label or id contains every word)
+/// Catalog entries matching `text` using fuzzy subsequence scoring
 pub(super) fn matches(text: &str) -> Vec<&'static materialcraft_engine::nodes::NodeDefinition> {
-    let words: Vec<String> = text.split_whitespace().map(str::to_ascii_lowercase).collect();
-    let mut v: Vec<_> = materialcraft_engine::nodes::catalog()
-        .iter()
-        .filter(|d| d.id != "graph_instance")
-        .filter(|d| {
-            let hay = format!("{} {} {}", d.label.to_ascii_lowercase(), d.id, d.category.to_ascii_lowercase());
-            words.iter().all(|w| hay.contains(w.as_str()))
+    let mut matcher = crate::fuzzy::FuzzyMatcher::new(text);
+    let catalog = materialcraft_engine::nodes::catalog().iter().filter(|d| d.id != "graph_instance");
+    if matcher.is_empty() {
+        return catalog.collect();
+    }
+
+    let mut scored: Vec<(i32, &'static materialcraft_engine::nodes::NodeDefinition)> = catalog
+        .filter_map(|d| {
+            matcher
+                .score_fields(&[
+                    crate::fuzzy::SearchField::fuzzy(d.label),
+                    crate::fuzzy::SearchField::fuzzy(d.id),
+                    crate::fuzzy::SearchField::substring_with_offset(d.category, -20),
+                ])
+                .map(|score| (score, d))
         })
         .collect();
-    if let Some(w) = words.first() {
-        v.sort_by_key(|d| !d.label.to_ascii_lowercase().starts_with(w.as_str()));
-    }
-    v
+    scored.sort_by(|(score_a, a), (score_b, b)| score_b.cmp(score_a).then_with(|| a.label.cmp(b.label)));
+    scored.into_iter().map(|(_, d)| d).collect()
 }
 
 pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
@@ -136,5 +142,33 @@ pub(super) fn show(app: &mut MaterialCraftApp, ui: &mut Ui, cam: &GraphCamera) {
         if close {
             crate::framework::focus_canvas(ui.ctx());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches;
+
+    #[test]
+    fn empty_query_preserves_catalog_order_and_hides_graph_instance() {
+        let all = matches("   ");
+        assert!(!all.is_empty());
+        assert!(!all.iter().any(|d| d.id == "graph_instance"));
+    }
+
+    #[test]
+    fn fuzzy_query_ranks_exact_and_tight_matches_first() {
+        let blur = matches("blur");
+        assert_eq!(blur.first().map(|d| d.id), Some("blur"));
+
+        let dblur = matches("dblur");
+        assert_eq!(dblur.first().map(|d| d.id), Some("directional_blur"));
+    }
+
+    #[test]
+    fn multi_word_query_matches_across_category_and_label() {
+        let found = matches("atomic blur");
+        assert!(found.iter().any(|d| d.id == "blur"));
+        assert!(found.iter().any(|d| d.id == "directional_blur"));
     }
 }

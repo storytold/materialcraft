@@ -11,6 +11,7 @@ pub mod export;
 pub mod fonts;
 pub mod framework;
 pub mod function;
+pub mod fuzzy;
 pub mod graph;
 mod graph_drag_payload;
 mod help_links;
