@@ -70,7 +70,7 @@ pub fn session(session: &Session, requested_graph: Option<usize>) -> J {
         "documents": session.inspect_documents(),
         "package": session.has_package().then(|| json!({"name": session.pkg.name, "path": session.path, "modified": session.modified, "folders": session.pkg.folder_paths(), "folderDescriptions": session.pkg.folder_descriptions, "warnings": session.load_warnings, "resources": session.pkg.resources.iter().map(|entry| json!({"name": entry.name, "folder": entry.folder, "file": entry.file, "missing": entry.bytes.is_empty(), "bytes": entry.bytes.len()})).collect::<Vec<_>>()})),
         "graphs": session.pkg.graphs.iter().enumerate().map(|(index, graph)| json!({"index": index, "name": graph.name, "path": graph.sbs_path(), "nodes": graph.nodes.len(), "kind": graph.kind()})).collect::<Vec<_>>(),
-        "openGraph": graph.map(|_| session.graph),
+        "openGraph": session.pkg.graphs.get(session.graph).map(|_| session.graph),
         "graph": graph_json,
         "annotationSelection": session.annotation_selection,
         "annotationTarget": session.annotation_target,

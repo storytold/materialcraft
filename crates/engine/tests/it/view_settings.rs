@@ -2,6 +2,23 @@ use materialcraft_engine::{execute, new_session};
 use serde_json::json;
 
 #[test]
+fn inspecting_a_missing_graph_keeps_the_open_graph() {
+    let mut session = new_session();
+    let current = execute(&mut session, "session.inspect", &json!({})).unwrap();
+    let open = current["openGraph"].as_u64().unwrap();
+    let missing = current["graphs"].as_array().unwrap().len();
+    let result = execute(&mut session, "session.inspect", &json!({"graph": missing})).unwrap();
+    assert!(result["graph"].is_null());
+    assert_eq!(result["openGraph"], open);
+
+    execute(&mut session, "package.close", &json!({"discard": true})).unwrap();
+    let closed = execute(&mut session, "session.inspect", &json!({})).unwrap();
+    assert!(closed["package"].is_null());
+    assert!(closed["graph"].is_null());
+    assert!(closed["openGraph"].is_null());
+}
+
+#[test]
 fn rejected_2d_settings_leave_the_view_unchanged() {
     let mut s = new_session();
     let a = execute(&mut s, "graph.node.add", &json!({"def": "channels_shuffle"})).unwrap()["id"].as_u64().unwrap();
