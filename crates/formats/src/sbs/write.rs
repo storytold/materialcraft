@@ -1,5 +1,5 @@
 use super::{
-    constant::{FIRST_UID, SELF_DEPENDENCY, UPDATER_VERSION},
+    constant::{SELF_DEPENDENCY, SELF_DEPENDENCY_UID, UPDATER_VERSION},
     sbs_writer::SbsWriter,
 };
 use crate::Result;
@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 pub fn write_sbs(pkg: &Package) -> Result<Vec<u8>> {
     let format_version = pkg.format_version.as_deref().filter(|version| !version.trim().is_empty()).unwrap_or(UPDATER_VERSION);
-    let mut writer = SbsWriter { last_uid: FIRST_UID, external_packages: BTreeMap::new() };
-    let self_uid = writer.next_uid();
+    let mut writer = SbsWriter { last_uid: SELF_DEPENDENCY_UID, external_packages: BTreeMap::new() };
+    let self_uid = SELF_DEPENDENCY_UID;
 
     let mut content = String::from("<content>");
     super::group_layout::write(&mut content, pkg, &mut writer, self_uid)?;

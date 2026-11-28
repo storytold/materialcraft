@@ -1,5 +1,7 @@
 pub use craft_sbs::SBS_EXT;
-pub(super) use craft_sbs::{FIRST_UID, MAX_XML_NODES, SELF_DEPENDENCY};
+pub(super) use craft_sbs::{MAX_XML_NODES, SELF_DEPENDENCY};
+
+pub(super) const SELF_DEPENDENCY_UID: u64 = craft_sbs::FIRST_UID + 1;
 
 pub(crate) const MAX_GRAPHS: usize = 4096;
 

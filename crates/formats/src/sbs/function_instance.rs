@@ -1,5 +1,5 @@
 use super::{
-    constant::SELF_DEPENDENCY,
+    constant::{SELF_DEPENDENCY, SELF_DEPENDENCY_UID},
     sbs_writer::SbsWriter,
     xml::{child_element, child_value, children_named, xml_escape},
 };
@@ -64,11 +64,9 @@ fn source_reference(element: XmlNode<'_, '_>, reference: &str) -> Result<(String
 }
 
 pub(super) fn write(instance: &GraphInstance, writer: &mut SbsWriter) -> String {
-    let reference = if instance.package.is_empty() {
-        format!("pkg:///{}", instance.graph)
-    } else {
-        format!("pkg:///{}?dependency={}", instance.graph, writer.external_package_uid(&instance.package))
-    };
+    // Another open package can contain a function with the same path.
+    let dependency = if instance.package.is_empty() { SELF_DEPENDENCY_UID } else { writer.external_package_uid(&instance.package) };
+    let reference = format!("pkg:///{}?dependency={dependency}", instance.graph);
     let mut xml = format!(
         "<funcDatas><funcData><name v=\"instance\"/><constantValue><constantValueString v=\"{}\"/></constantValue></funcData></funcDatas>",
         xml_escape(&reference)

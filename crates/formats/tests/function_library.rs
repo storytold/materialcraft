@@ -37,6 +37,31 @@ fn nested_function_paths_and_library_aliases_survive_save() {
 }
 
 #[test]
+fn local_function_calls_save_their_owning_package_dependency() {
+    let local = LIBRARY.replace("sbs://functions.sbs", "?himself");
+    for source in [local.replace("?dependency=9", ""), local] {
+        let package = read_sbs(source.as_bytes(), "source.sbs", &|_| None).unwrap().pkg;
+        let bytes = write_sbs(&package).unwrap();
+        let xml = roxmltree::Document::parse(std::str::from_utf8(&bytes).unwrap()).unwrap();
+        let owner = xml
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("dependency") && node.children().any(|child| child.has_tag_name("filename") && child.attribute("v") == Some("?himself"))
+            })
+            .unwrap();
+        let uid = owner.children().find(|child| child.has_tag_name("uid")).unwrap().attribute("v").unwrap();
+        let call = xml.descendants().find(|node| node.has_tag_name("constantValueString")).unwrap().attribute("v").unwrap();
+
+        assert_eq!(call, format!("pkg:///Functions/Math/Pi?dependency={uid}"));
+        let saved = read_sbs(&bytes, "saved.sbs", &|_| None).unwrap().pkg;
+        let caller = saved.graph_by_name("Caller").unwrap().1.function.as_ref().unwrap();
+        let instance = caller.nodes[0].instance.as_ref().unwrap();
+        assert!(instance.package.is_empty());
+        assert_eq!(instance.graph, "Functions/Math/Pi");
+    }
+}
+
+#[test]
 fn unknown_operations_keep_their_data_and_output() {
     let xml = LIBRARY.replace("const_float1", "future_operation");
     let read = read_sbs(xml.as_bytes(), "missing.sbs", &|_| None).unwrap();
