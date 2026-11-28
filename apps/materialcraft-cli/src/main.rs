@@ -122,7 +122,7 @@ fn parse(cmd: &str, raw: &[String]) -> Result<Args, String> {
     let mut it = raw.iter();
     while let Some(x) = it.next() {
         if valued.contains(&x.as_str()) {
-            let v = it.next().ok_or_else(|| format!("{x} needs a value"))?;
+            let v = it.next().filter(|v| !valued.contains(&v.as_str()) && !bare.contains(&v.as_str())).ok_or_else(|| format!("{x} needs a value"))?;
             let name = ALIASES.iter().find(|(alias, _)| alias == x).map_or(x.as_str(), |(_, flag)| flag);
             a.flags.push((name.to_string(), Some(v.clone())));
         } else if bare.contains(&x.as_str()) {
@@ -431,6 +431,18 @@ mod tests {
         assert_eq!(selected_graph(&a).unwrap(), Some(json!(1)));
         let a = parse("publish", &strings(&["--graph", "1", "--graph-path", "1"])).unwrap();
         assert!(selected_graph(&a).is_err());
+    }
+
+    #[test]
+    fn option_values_do_not_consume_the_next_known_flag() {
+        let valued = parse("new", &strings(&["atomic", "out.sbs", "--name", "--size"]));
+        assert_eq!(valued.err().as_deref(), Some("--name needs a value"));
+        let bare = parse("cook", &strings(&["sample", "--size", "--full"]));
+        assert_eq!(bare.err().as_deref(), Some("--size needs a value"));
+        let render = parse("render", &strings(&["sample", "--pitch", "-12.5"])).unwrap();
+        assert_eq!(render.get("--pitch"), Some("-12.5"));
+        let named = parse("new", &strings(&["atomic", "out.sbs", "--name", "--studio"])).unwrap();
+        assert_eq!(named.get("--name"), Some("--studio"));
     }
 
     #[test]
