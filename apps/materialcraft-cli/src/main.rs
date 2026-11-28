@@ -272,10 +272,11 @@ fn run(cmd: &str, a: &Args) -> Result<(), String> {
                 None => Value::Null,
             };
 
-            print(&h.command_run(id, params).map_err(|e| e.to_string())?);
+            let result = h.command_run(id, params).map_err(|e| e.to_string())?;
             if let Some(out) = a.get("-o") {
                 h.save(Some(out)).map_err(|e| e.to_string())?;
             }
+            print(&result);
         }
         "batch" => {
             let text = std::fs::read_to_string(a.pos(0, "<script.json>")?).map_err(|e| e.to_string())?;

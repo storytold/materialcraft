@@ -99,3 +99,18 @@ fn failed_materialx_reexport_preserves_the_last_complete_material() {
         assert_eq!(std::fs::read(material.join(name)).unwrap(), bytes, "{name}");
     }
 }
+
+#[test]
+fn run_does_not_print_a_result_when_the_requested_save_fails() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
+    let args = ["run", "sample", "library.list", "{}"];
+    run(dir, &[&args[..], &["-o", "saved.mcraft"]].concat());
+    assert!(dir.join("saved.mcraft").is_file());
+
+    std::fs::write(dir.join("blocked"), b"not a directory").unwrap();
+    let failed = Command::new(env!("CARGO_BIN_EXE_materialcraft-cli")).current_dir(dir).args(args).args(["-o", "blocked/result.mcraft"]).output().unwrap();
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty(), "{}", String::from_utf8_lossy(&failed.stdout));
+    assert!(!failed.stderr.is_empty());
+}
