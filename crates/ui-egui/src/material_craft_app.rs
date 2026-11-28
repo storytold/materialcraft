@@ -516,9 +516,14 @@ impl MaterialCraftApp {
         }
         self.last_time = now;
         let style = (self.ui.prefs.brightness, self.ui.prefs.accent);
-        if self.styled != Some(style) {
+        let restyled = self.styled != Some(style);
+        if restyled {
             theme::apply(ctx, style.0, style.1);
             self.styled = Some(style);
+        }
+        let rtl = crate::i18n::is_rtl();
+        if restyled || ctx.global_style().right_to_left != rtl {
+            ctx.all_styles_mut(|s| s.right_to_left = rtl);
         }
 
         let scale = self.ui.prefs.ui_scale.clamp(0.5, 3.0);
