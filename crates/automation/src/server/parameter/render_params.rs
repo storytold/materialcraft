@@ -22,7 +22,7 @@ pub struct RenderParams {
     /// 2D: the node to show (default: the 2D view's node, else the first output)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<u64>,
-    /// 2D: the output port index
+    /// 2D: output port index when `node` is specified (default 0).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<u32>,
     /// Cook at the full graph size instead of the preview size
