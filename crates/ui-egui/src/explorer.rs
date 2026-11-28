@@ -116,13 +116,28 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
 }
 
 /// Enter opens, F2 renames and Delete removes the selected graph or folder while the pointer is
-/// over the Explorer; elsewhere those keys keep their graph shortcuts. True when a key was used
+/// over the Explorer; elsewhere those keys keep their graph shortcuts. Ctrl+C and Ctrl+V copy and
+/// paste the selected item through the Explorer clipboard. True when an event was used
 pub(crate) fn shortcuts(app: &mut MaterialCraftApp, ctx: &egui::Context) -> bool {
     if !app.ui.dock.is_visible(crate::docking::Panel::Explorer) || !app.ui.explorer.hovered || app.ui.explorer.rename.is_some() {
         return false;
     }
 
     let Some(target) = app.ui.explorer.selected.clone() else { return false };
+
+    // The desktop turns Ctrl+C and Ctrl+V into clipboard events rather than key presses.
+    let (copy, paste) = ctx.input(|input| {
+        (input.events.iter().any(|event| matches!(event, egui::Event::Copy)), input.events.iter().any(|event| matches!(event, egui::Event::Paste(_))))
+    });
+    if copy || paste {
+        if copy && !matches!(target, ExplorerTarget::Package { .. } | ExplorerTarget::Folder { .. } | ExplorerTarget::Graph { .. }) {
+            return false;
+        }
+        ctx.input_mut(|input| input.events.retain(|event| !matches!(event, egui::Event::Copy | egui::Event::Paste(_))));
+        actions::invoke(app, ctx, target, if copy { "explorer.copy" } else { "explorer.paste" });
+        return true;
+    }
+
     let command = match &target {
         ExplorerTarget::Graph { .. } => [(egui::Key::Enter, "graph.open"), (egui::Key::F2, "graph.rename"), (egui::Key::Delete, "graph.delete")]
             .into_iter()
@@ -146,4 +161,51 @@ fn pressed(ctx: &egui::Context, key: egui::Key) -> bool {
 /// Draw the pending Explorer rename dialog.
 pub(crate) fn dialogs(app: &mut MaterialCraftApp, ctx: &egui::Context) {
     actions::rename_dialog(app, ctx);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_kittest::Harness;
+
+    fn harness() -> Harness<'static, crate::MaterialCraftApp> {
+        Harness::builder().with_size(egui::vec2(900.0, 700.0)).build_ui_state(
+            |ui, app: &mut crate::MaterialCraftApp| {
+                crate::menus::shortcuts(app, ui.ctx());
+            },
+            crate::MaterialCraftApp::headless(materialcraft_engine::sample_session(), crate::UiState::default()),
+        )
+    }
+
+    #[test]
+    fn copy_and_paste_use_the_explorer_selection() {
+        let mut harness = harness();
+        harness.run_steps(2);
+        let app = harness.state_mut();
+        app.ui.explorer.hovered = true;
+        app.ui.explorer.selected = Some(ExplorerTarget::Graph { document: 0, index: 0 });
+
+        harness.event(egui::Event::Copy);
+        harness.run_steps(2);
+        assert!(harness.state().session.explorer_clipboard.is_some(), "Ctrl+C must copy the selected graph");
+
+        harness.state_mut().ui.explorer.selected = Some(ExplorerTarget::Package { document: 0 });
+        let graphs = harness.state().session.pkg.graphs.len();
+        harness.event(egui::Event::Paste(String::new()));
+        harness.run_steps(3);
+        assert!(harness.state().session.pkg.graphs.len() > graphs, "Ctrl+V must paste into the selected package");
+    }
+
+    #[test]
+    fn copy_on_a_resource_leaves_the_clipboard_alone() {
+        let mut harness = harness();
+        harness.run_steps(2);
+        let app = harness.state_mut();
+        app.ui.explorer.hovered = true;
+        app.ui.explorer.selected = Some(ExplorerTarget::Resource { document: 0, name: "missing".into() });
+
+        harness.event(egui::Event::Copy);
+        harness.run_steps(2);
+        assert!(harness.state().session.explorer_clipboard.is_none(), "a resource has no Explorer copy");
+    }
 }
