@@ -108,7 +108,15 @@ pub fn execute(s: &mut Session, id: &str, params: &J) -> Result<J> {
         return result;
     }
 
-    (spec.enabled)(s).map_err(|why| EngineError::Disabled { cmd: id.to_string(), why })?;
+    // Selection-based edit commands also accept explicit `ids` (or `id`) in automation
+    // requests without requiring a prior `graph.select`.
+    let explicit_ids = matches!(id, "edit.delete" | "edit.deleteRelink" | "edit.copy" | "edit.cut" | "edit.duplicate" | "edit.duplicateWithoutLinks")
+        && (params.get("ids").and_then(J::as_array).is_some_and(|a| !a.is_empty()) || u64p(params, "id").is_some());
+    if explicit_ids {
+        has_graph(s).map_err(|why| EngineError::Disabled { cmd: id.to_string(), why })?;
+    } else {
+        (spec.enabled)(s).map_err(|why| EngineError::Disabled { cmd: id.to_string(), why })?;
+    }
     let result = (spec.run)(s, params)?;
     if !s.selection.is_empty() || s.annotation_selection.is_some_and(|selection| !s.annotation_target.items(s).is_ok_and(|items| selection.exists(&items))) {
         s.annotation_selection = None;

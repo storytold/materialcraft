@@ -7,7 +7,7 @@ use serde_json::{Value as J, json};
 use materialcraft_core::{Connection, NodeId};
 
 use crate::Clip;
-use crate::commands::{CommandSpec, always, bad, has_graph, has_selection, ids_param, point};
+use crate::commands::{CommandSpec, always, bad, has_graph, has_selection, ids_param, point, u64p};
 use crate::{Result, Session, cmd};
 
 pub(crate) fn specs() -> Vec<CommandSpec> {
@@ -188,7 +188,7 @@ fn delete_annotation(session: &mut Session) -> Result<J> {
 }
 
 fn delete(s: &mut Session, p: &J) -> Result<J> {
-    if s.annotation_selection.is_some() && p.get("ids").is_none() {
+    if s.annotation_selection.is_some() && p.get("ids").is_none() && u64p(p, "id").is_none() {
         return delete_annotation(s);
     }
 
@@ -204,7 +204,7 @@ fn delete(s: &mut Session, p: &J) -> Result<J> {
 }
 
 fn delete_relink(s: &mut Session, p: &J) -> Result<J> {
-    if s.annotation_selection.is_some() && p.get("ids").is_none() {
+    if s.annotation_selection.is_some() && p.get("ids").is_none() && u64p(p, "id").is_none() {
         return delete_annotation(s);
     }
 
@@ -226,4 +226,36 @@ fn delete_relink(s: &mut Session, p: &J) -> Result<J> {
         s.selection.retain(|i| !ids.contains(i));
         Ok(json!({"deleted": ids.len()}))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use crate::{AnnotationSelection, execute, sample_session};
+
+    #[test]
+    fn singular_id_deletes_node_instead_of_selected_annotation() {
+        let mut s = sample_session();
+        execute(&mut s, "file.new", &json!({"template": "empty", "name": "Mine"})).expect("new");
+        let n1 = execute(&mut s, "graph.node.add", &json!({"def": "blur"})).expect("add node")["id"].as_u64().expect("node id");
+        let n2 = execute(&mut s, "graph.node.add", &json!({"def": "blur"})).expect("add node 2")["id"].as_u64().expect("node id 2");
+        s.selection.clear();
+
+        let comment = execute(&mut s, "graph.comment.add", &json!({"text": "keep me", "at": [0.0, 0.0]})).expect("add comment");
+        let cid = comment["id"].as_u64().expect("comment id");
+        s.annotation_selection = Some(AnnotationSelection::Comment(cid));
+
+        execute(&mut s, "edit.cut", &json!({"id": n1})).expect("cut by singular id");
+        assert!(s.graph().expect("graph").node(materialcraft_core::NodeId(n1)).is_err(), "node 1 should be cut");
+        assert_eq!(s.annotation_target.items(&s).expect("items").comments.len(), 1, "selected comment must remain");
+
+        execute(&mut s, "edit.deleteRelink", &json!({"id": n2})).expect("deleteRelink by singular id");
+        assert!(s.graph().expect("graph").node(materialcraft_core::NodeId(n2)).is_err(), "node 2 should be deleted");
+        assert_eq!(s.annotation_target.items(&s).expect("items").comments.len(), 1, "selected comment must remain");
+
+        // Omitting both `id` and `ids` still deletes the selected annotation.
+        execute(&mut s, "edit.delete", &json!({})).expect("delete selected annotation");
+        assert!(s.annotation_target.items(&s).expect("items").comments.is_empty());
+    }
 }

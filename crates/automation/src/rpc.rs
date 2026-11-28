@@ -388,4 +388,14 @@ mod tests {
         assert_eq!(ok[1]["result"], "pong");
         assert_eq!(ok[1]["id"], 2);
     }
+
+    #[test]
+    fn edit_delete_accepts_explicit_ids_without_selection() {
+        let h = session();
+        let added = call(&h, "command.run", json!({"id": "graph.node.add", "params": {"def": "blur"}})).unwrap();
+        let id = added["id"].as_u64().unwrap();
+        call(&h, "command.run", json!({"id": "edit.selectNone"})).unwrap();
+        let deleted = call(&h, "command.run", json!({"id": "edit.delete", "params": {"ids": [id]}})).unwrap();
+        assert_eq!(deleted["deleted"], 1);
+    }
 }
