@@ -290,8 +290,50 @@ pub fn color_swatch(ui: &mut Ui, id: &str, linear: &mut [f32; 3], width: f32) ->
             *linear = lin;
             changed = true;
         }
+
+        // An exact colour can be typed instead of picked. The draft stays as typed while the
+        // field has focus, so a half-finished code is not rewritten; a valid code applies at once.
+        let draft_id = popup.with("hex-draft");
+        let mut draft = ui.data(|data| data.get_temp::<String>(draft_id)).unwrap_or_else(|| hex_rgb(linear));
+        ui.horizontal(|ui| {
+            ui.label(crate::i18n::tr("Hex"));
+            let response = ui.add(egui::TextEdit::singleline(&mut draft).char_limit(7).desired_width(78.0));
+            name(&response, egui::Role::TextInput, "Hex colour code");
+            if response.has_focus() {
+                ui.data_mut(|data| data.insert_temp(draft_id, draft.clone()));
+            }
+            if response.changed()
+                && let Some(lin) = parse_hex_rgb(&draft)
+            {
+                *linear = lin;
+                changed = true;
+            }
+            if response.lost_focus() {
+                ui.data_mut(|data| data.remove::<String>(draft_id));
+            }
+        });
     });
     changed
+}
+
+/// `#RRGGBB` for linear RGB, through the sRGB transfer curve (what the field shows).
+pub fn hex_rgb(linear: &[f32; 3]) -> String {
+    let q = |v: f32| (materialcraft_engine::image::linear_to_srgb(v.clamp(0.0, 1.0)) * 255.0 + 0.5) as u8;
+    format!("#{:02X}{:02X}{:02X}", q(linear[0]), q(linear[1]), q(linear[2]))
+}
+
+/// Linear RGB from `#RRGGBB` or `RRGGBB` (sRGB, as typed in the field). Hex digits only, so a
+/// sign or whitespace that string parsing might take is rejected.
+pub fn parse_hex_rgb(text: &str) -> Option<[f32; 3]> {
+    let hex = text.trim().strip_prefix('#').unwrap_or(text.trim());
+    if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let channel = |index: usize| {
+        let byte = u8::from_str_radix(hex.get(index..index + 2)?, 16).ok()?;
+        Some(materialcraft_engine::image::srgb_to_linear(f32::from(byte) / 255.0))
+    };
+    Some([channel(0)?, channel(2)?, channel(4)?])
 }
 
 /// Panel title row with optional trailing content.
@@ -301,4 +343,56 @@ pub fn panel_header(ui: &mut Ui, title: &str, trailing: impl FnOnce(&mut Ui)) {
         ui.label(crate::theme::caption(title));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), trailing);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hex_rgb, parse_hex_rgb};
+
+    #[test]
+    fn hex_codes_round_trip_through_the_srgb_curve() {
+        assert_eq!(hex_rgb(&[1.0, 0.0, 0.0]), "#FF0000");
+        assert_eq!(hex_rgb(&[0.0, 1.0, 0.0]), "#00FF00");
+        assert_eq!(hex_rgb(&[0.0, 0.0, 1.0]), "#0000FF");
+        assert_eq!(hex_rgb(&[0.0, 0.0, 0.0]), "#000000");
+        let parsed = parse_hex_rgb("#FF8000").unwrap();
+        assert!((parsed[0] - 1.0).abs() < 1e-6 && (parsed[1] - 0.215_86).abs() < 1e-3 && parsed[2] == 0.0, "{parsed:?}");
+        // With or without the hash; case does not matter.
+        assert_eq!(parse_hex_rgb("ff8000"), parse_hex_rgb("#FF8000"));
+        for linear in [[0.1, 0.4, 0.9], [0.0, 0.5, 1.0]] {
+            let round = parse_hex_rgb(&hex_rgb(&linear)).unwrap();
+            assert!(round.iter().zip(linear).all(|(a, b)| (a - b).abs() < 0.005), "{linear:?} -> {round:?}");
+        }
+    }
+
+    #[test]
+    fn invalid_hex_codes_are_rejected() {
+        for text in ["", "#", "FFF", "#FFF", "GGGGGG", "+FFFFF", "-FFFFF", "FFFFF ", " FFFFF", "0x1234", "#1234567", "##123456"] {
+            assert_eq!(parse_hex_rgb(text), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn typing_a_hex_code_sets_the_colour() {
+        use egui_kittest::{
+            Harness,
+            kittest::{By, Queryable},
+        };
+
+        let mut harness = Harness::builder().with_size(egui::vec2(360.0, 500.0)).build_ui_state(
+            |ui, linear: &mut [f32; 3]| {
+                super::color_swatch(ui, "hex-test", linear, 90.0);
+            },
+            [0.0; 3],
+        );
+        harness.run_steps(3);
+        harness.get(By::new().role(egui::Role::ColorWell).label("hex-test")).click_accesskit();
+        harness.run_steps(3);
+        let field = harness.get(By::new().role(egui::Role::TextInput).label("Hex colour code"));
+        field.set_text_value_accesskit("#FF8000");
+        harness.run_steps(3);
+
+        let linear = *harness.state();
+        assert!((linear[0] - 1.0).abs() < 1e-6 && (linear[1] - 0.215_86).abs() < 1e-3 && linear[2] == 0.0, "the field set {linear:?}");
+    }
 }
