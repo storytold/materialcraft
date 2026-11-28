@@ -65,7 +65,7 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let painter = ui.painter_at(rect);
 
     // Background and grid
-    painter.rect_filled(rect, 0.0, Color32::from_rgb(0x2b, 0x2d, 0x31));
+    painter.rect_filled(rect, 0.0, Color32::from_rgb(0x26, 0x26, 0x26));
     let mut camera = GraphCamera { origin: rect.min, pan: Vec2::from(app.ui.graph_camera.pan), zoom: app.ui.graph_camera.zoom };
     camera.zoom_from_input(ui, rect, app.ui.prefs.zoom_direction());
     app.ui.graph_camera = camera.state();

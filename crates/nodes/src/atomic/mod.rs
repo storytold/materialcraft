@@ -38,6 +38,7 @@ use direction::direction;
 pub const ATOMIC: &str = "Atomic nodes";
 pub const GRAPH_ITEMS: &str = "Graph items";
 
+pub use box_filter::axis as box_filter_axis;
 pub use levels::levels_fn;
 pub use normal::height_to_normal;
 pub use output::output_kind;

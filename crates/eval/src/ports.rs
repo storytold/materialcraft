@@ -80,7 +80,17 @@ pub fn ports_with_connections<'a>(
         })
         .collect();
     inputs.extend(definition.inputs.iter().map(catalog_port));
-    if let Some(prefix) = materialcraft_nodes::image_input_prefix(&node.def) {
+    if node.def == "tile_sampler" {
+        let pattern_number = node.params.get("pattern_input_number").and_then(Value::as_i32).unwrap_or(1).clamp(1, 6) as usize;
+        inputs.retain(|p| {
+            if let Some(num_str) = p.id.strip_prefix("pattern_input_")
+                && let Ok(num) = num_str.parse::<usize>()
+            {
+                return num <= pattern_number;
+            }
+            true
+        });
+    } else if let Some(prefix) = materialcraft_nodes::image_input_prefix(&node.def) {
         let count = incoming
             .into_iter()
             .filter_map(|connection| connection.to_port.strip_prefix(prefix)?.parse::<usize>().ok())

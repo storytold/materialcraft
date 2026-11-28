@@ -1,6 +1,6 @@
-//! Design tokens and egui styling: the Craft look shared with the sibling apps (cool slate greys in
-//! four brightness levels, flat faces with soft corners, panels as rounded cards and one accent
-//! colour). Our own palette and widgets; no third-party assets.
+//! Design tokens and egui styling: neutral dark charcoal and studio greys in four brightness
+//! levels, flat faces with soft corners, panels as rounded cards and one accent colour.
+//! Clean-room palette and widgets for the node-based procedural material workflow.
 
 use egui::{Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle, Visuals};
 use serde::{Deserialize, Serialize};
@@ -155,79 +155,79 @@ impl Default for Tokens {
 }
 
 impl Tokens {
-    /// The greys of brightness `b` (VectorCraft's values, mapped onto these names); the accent
+    /// The greys of brightness `b`: neutral dark charcoal and studio greys; the accent
     /// colours are placeholders until [`Tokens::with_accent`].
     pub fn for_brightness(b: Brightness) -> Self {
         let base = Tokens {
             dark: true,
-            chrome: hex(0x0b0d12),
-            panel: hex(0x181b22),
-            row: hex(0x13161c),
-            row_hover: hex(0x262b35),
-            row_selected: hex(0x3a2a2c),
-            separator: hex(0x232832),
-            text: hex(0xdfe4ec),
-            text_dim: hex(0x969faf),
+            chrome: hex(0x121212),
+            panel: hex(0x1c1c1c),
+            row: hex(0x171717),
+            row_hover: hex(0x272727),
+            row_selected: hex(0x322828),
+            separator: hex(0x282828),
+            text: hex(0xdedede),
+            text_dim: hex(0x9c9c9c),
             text_strong: hex(0xffffff),
             accent: hex(0x4cc6de),
             accent_strong: hex(0x168aa3),
             accent_dim: hex(0x5a3e30),
-            field: hex(0x0f1116),
-            field_border: hex(0x2c323e),
-            button: hex(0x282d37),
-            button_border: hex(0x4a5363),
-            tool_active: hex(0x2f3541),
+            field: hex(0x141414),
+            field_border: hex(0x2e2e2e),
+            button: hex(0x282828),
+            button_border: hex(0x4c4c4c),
+            tool_active: hex(0x323232),
             danger: hex(0xe0554a),
             warning: hex(0xe0b040),
-            viewport: hex(0x2a2a2a),
+            viewport: hex(0x282828),
             viewport_text: hex(0x969696),
             viewport_accent: hex(0x4cc6de),
             radius: 5,
         };
-        let light = Tokens { dark: false, text: hex(0x1b1f27), text_strong: hex(0x000000), danger: hex(0xc8372d), warning: hex(0x8f5f00), ..base };
+        let light = Tokens { dark: false, text: hex(0x1a1a1a), text_strong: hex(0x000000), danger: hex(0xc8372d), warning: hex(0x8f5f00), ..base };
         match b {
             Brightness::Dark => base,
             Brightness::MediumDark => Tokens {
-                chrome: hex(0x1b1f27),
-                panel: hex(0x272c36),
-                row: hex(0x21262f),
-                row_hover: hex(0x353c49),
-                separator: hex(0x323946),
-                text: hex(0xe4e9f1),
-                text_dim: hex(0x99a2b2),
-                field: hex(0x1a1e26),
-                field_border: hex(0x3a414e),
-                button: hex(0x39404d),
-                button_border: hex(0x5a6476),
-                tool_active: hex(0x3d4553),
+                chrome: hex(0x1c1c1c),
+                panel: hex(0x282828),
+                row: hex(0x222222),
+                row_hover: hex(0x343434),
+                separator: hex(0x323232),
+                text: hex(0xe6e6e6),
+                text_dim: hex(0xa4a4a4),
+                field: hex(0x1c1c1c),
+                field_border: hex(0x3c3c3c),
+                button: hex(0x363636),
+                button_border: hex(0x585858),
+                tool_active: hex(0x3e3e3e),
                 ..base
             },
             Brightness::MediumLight => Tokens {
-                chrome: hex(0xc4cad4),
-                panel: hex(0xd3d8e0),
-                row: hex(0xc9cfd8),
-                row_hover: hex(0xc5ccd6),
-                separator: hex(0xbcc3ce),
-                text_dim: hex(0x4a5160),
-                field: hex(0xe9ecf1),
-                field_border: hex(0x9aa2b0),
-                button: hex(0xc9d0da),
-                button_border: hex(0x8a93a2),
-                tool_active: hex(0xb6bec9),
+                chrome: hex(0xc8c8c8),
+                panel: hex(0xd5d5d5),
+                row: hex(0xcccccc),
+                row_hover: hex(0xc6c6c6),
+                separator: hex(0xbdbdbd),
+                text_dim: hex(0x4c4c4c),
+                field: hex(0xeeeeee),
+                field_border: hex(0x9a9a9a),
+                button: hex(0xcccccc),
+                button_border: hex(0x8c8c8c),
+                tool_active: hex(0xb8b8b8),
                 ..light
             },
             Brightness::Light => Tokens {
-                chrome: hex(0xe6e9ee),
-                panel: hex(0xf3f5f8),
-                row: hex(0xe9ecf1),
-                row_hover: hex(0xe3e7ed),
-                separator: hex(0xdde1e8),
-                text_dim: hex(0x58606e),
+                chrome: hex(0xe8e8e8),
+                panel: hex(0xf4f4f4),
+                row: hex(0xeaeaea),
+                row_hover: hex(0xe2e2e2),
+                separator: hex(0xdcdcdc),
+                text_dim: hex(0x565656),
                 field: hex(0xffffff),
-                field_border: hex(0xc3c9d3),
-                button: hex(0xe3e7ed),
-                button_border: hex(0xa4abb8),
-                tool_active: hex(0xd5dbe3),
+                field_border: hex(0xc4c4c4),
+                button: hex(0xe2e2e2),
+                button_border: hex(0xa4a4a4),
+                tool_active: hex(0xd4d4d4),
                 ..light
             },
         }

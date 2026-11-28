@@ -7,8 +7,8 @@ const PORT_GAP: f32 = 18.0;
 const DOT_RADIUS: f32 = 7.0;
 /// Smallest on-screen side of a dot's grab area, in points
 const DOT_MIN_GRAB: f32 = 16.0;
-const CARD_COLOR: Color32 = Color32::from_rgb(0x1e, 0x20, 0x24);
-const WELL_COLOR: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
+const CARD_COLOR: Color32 = Color32::from_rgb(0x20, 0x20, 0x20);
+const WELL_COLOR: Color32 = Color32::from_rgb(0x16, 0x16, 0x16);
 
 /// Body height of a node that shows no preview and has at most one port a side
 const BARE_BODY_HEIGHT: f32 = 26.0;

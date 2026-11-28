@@ -4,7 +4,22 @@ use std::sync::OnceLock;
 /// Every node definition, in library order
 pub fn catalog() -> &'static [NodeDefinition] {
     static CAT: OnceLock<Vec<NodeDefinition>> = OnceLock::new();
-    CAT.get_or_init(crate::atomic::defs)
+    CAT.get_or_init(|| {
+        let mut defs = crate::atomic::defs();
+        defs.extend(crate::adjustments::defs());
+        defs.extend(crate::blending::defs());
+        defs.extend(crate::blurs::defs());
+        defs.extend(crate::flood_fill::defs());
+        defs.extend(crate::material_filters::defs());
+        defs.extend(crate::morphology::defs());
+        defs.extend(crate::noises::defs());
+        defs.extend(crate::normals::defs());
+        defs.extend(crate::patterns::defs());
+        defs.extend(crate::transforms::defs());
+        defs.extend(crate::warps::defs());
+        defs.extend(crate::weathering::defs());
+        defs
+    })
 }
 
 pub fn find(id: &str) -> Option<&'static NodeDefinition> {

@@ -72,7 +72,7 @@ pub fn title(app: &MaterialCraftApp) -> String {
 }
 
 pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+    egui::ScrollArea::vertical().auto_shrink([false, false]).content_margin(egui::Margin { left: 8, right: 14, top: 8, bottom: 8 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
         if crate::view3d::properties::show(app, ui) {
             return;

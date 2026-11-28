@@ -1,7 +1,7 @@
 use craft_texture::{Image, Limits, MAX_SIDE};
 use rayon::prelude::*;
 
-pub(super) fn axis(input: &Image, radius: f32, horizontal: bool, tile: bool) -> Image {
+pub fn axis(input: &Image, radius: f32, horizontal: bool, tile: bool) -> Image {
     if !radius.is_finite() || radius <= 0.5 {
         return input.clone();
     }

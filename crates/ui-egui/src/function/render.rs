@@ -28,7 +28,7 @@ pub(super) fn paint(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui:
     let tokens = Tokens::get(ui.ctx());
     crate::widgets::name(&response, egui::Role::Canvas, "Function Graph");
     let painter = ui.painter_at(canvas_bounds);
-    painter.rect_filled(canvas_bounds, 4.0, Color32::from_rgb(0x26, 0x28, 0x2c));
+    painter.rect_filled(canvas_bounds, 4.0, Color32::from_rgb(0x24, 0x24, 0x24));
     let mut geometry = CanvasGeometry::default();
     let mut values = Vec::new();
     let mut nodes = Vec::new();

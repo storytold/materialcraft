@@ -1,12 +1,24 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod adjustments;
 pub mod atomic;
+pub mod blending;
+pub mod blurs;
 pub mod catalog;
+pub mod flood_fill;
 pub mod function;
+pub mod material_filters;
+pub mod morphology;
+pub mod noises;
+pub mod normals;
 pub mod ops;
 pub mod pattern;
+pub mod patterns;
 mod raster;
+pub mod transforms;
+pub mod warps;
+pub mod weathering;
 
 mod cook_context;
 pub mod graph_interface;

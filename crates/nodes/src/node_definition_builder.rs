@@ -71,8 +71,16 @@ impl NodeDefinitionBuilder {
         self.output("output", "Output", PortKind::Gray)
     }
 
+    pub fn named_gray_out(self, id: &'static str, label: &'static str) -> NodeDefinitionBuilder {
+        self.output(id, label, PortKind::Gray)
+    }
+
     pub fn color_out(self) -> NodeDefinitionBuilder {
         self.output("output", "Output", PortKind::Color)
+    }
+
+    pub fn named_color_out(self, id: &'static str, label: &'static str) -> NodeDefinitionBuilder {
+        self.output(id, label, PortKind::Color)
     }
 
     pub fn any_out(self) -> NodeDefinitionBuilder {

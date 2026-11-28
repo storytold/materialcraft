@@ -279,18 +279,22 @@ pub fn color_swatch(ui: &mut Ui, id: &str, linear: &mut [f32; 3], width: f32) ->
     name(&resp, egui::Role::ColorWell, id);
     ui.painter().rect(rect, 4.0, c, Stroke::new(1.0, tk.field_border), egui::StrokeKind::Inside);
     let popup = ui.make_persistent_id(id);
-    if resp.clicked() {
-        egui::Popup::toggle_id(ui.ctx(), popup);
-    }
     let mut changed = false;
-    // Open state lives in memory (`toggle_id` above); `from_response` alone shows it always.
-    egui::Popup::from_response(&resp).id(popup).open_memory(None).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-        if egui::color_picker::color_picker_color32(ui, &mut c, egui::color_picker::Alpha::Opaque) {
-            let lin = [c.r(), c.g(), c.b()].map(|v| materialcraft_engine::image::srgb_to_linear(v as f32 / 255.0));
-            *linear = lin;
-            changed = true;
-        }
-    });
+    egui::Popup::menu(&resp)
+        .id(popup)
+        .align(egui::RectAlign::TOP_END)
+        .align_alternatives(&[egui::RectAlign::BOTTOM_END])
+        .gap(8.0)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            ui.set_width(200.0);
+            ui.spacing_mut().slider_width = 192.0;
+            if crate::color_picker::color_picker_color32(ui, &mut c, crate::color_picker::Alpha::Opaque) {
+                let lin = [c.r(), c.g(), c.b()].map(|v| materialcraft_engine::image::srgb_to_linear(v as f32 / 255.0));
+                *linear = lin;
+                changed = true;
+            }
+        });
     changed
 }
 
