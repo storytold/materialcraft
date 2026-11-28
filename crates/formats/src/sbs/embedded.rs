@@ -1,80 +1,28 @@
 use super::embedded_error::EmbeddedError;
 use crate::{FormatError, Result};
-use base64::Engine as _;
-use std::{
-    cell::Cell,
-    io::{self, Read, Write},
-};
-
-pub(super) fn base64_engine() -> base64::engine::GeneralPurpose {
-    base64::engine::general_purpose::STANDARD
-}
+use std::cell::Cell;
 
 pub(super) fn decode_embedded(strdata: &str) -> std::result::Result<Vec<u8>, String> {
     decode_embedded_bounded(strdata, crate::MAX_RESOURCE, &Cell::new(crate::MAX_RESOURCE + 1)).map_err(|error| error.to_string())
 }
 
 pub(super) fn decode_embedded_bounded(strdata: &str, remaining_bytes: u64, inflation_work: &Cell<u64>) -> std::result::Result<Vec<u8>, EmbeddedError> {
-    let work_before = inflation_work.get();
-    if work_before == 0 {
-        return Err(EmbeddedError::WorkBudget);
-    }
-
-    let raw = match strdata.split_once(char::is_whitespace) {
-        Some((prefix, rest)) => base64_engine().decode(std::iter::once(prefix).chain(rest.split_whitespace()).collect::<String>()),
-        None => base64_engine().decode(strdata),
-    }
-    .map_err(|error| format!("bad base64: {error}"))?;
-    let (length, compressed) = raw.split_at_checked(4).ok_or("too short")?;
-    let declared_bytes = u64::from(u32::from_be_bytes([length[0], length[1], length[2], length[3]]));
-    if declared_bytes > crate::MAX_RESOURCE {
-        return Err("embedded resource exceeds the 256 MiB limit".into());
-    }
-
-    // Read one probe byte beyond the tighter bound to detect overruns
-    let probe_limit = declared_bytes.min(remaining_bytes) + 1;
-    let mut decoder = flate2::read::ZlibDecoder::new(compressed);
-    let mut limited = decoder.by_ref().take(probe_limit.min(work_before));
-    let mut output = Vec::new();
-    let result = if declared_bytes > remaining_bytes || declared_bytes >= work_before {
-        // Discard probe output that cannot become a retained asset
-        io::copy(&mut limited, &mut io::sink())
-    } else {
-        limited.read_to_end(&mut output).map(|bytes| bytes as u64)
-    };
-
-    // Charge every emitted byte, including output produced before a checksum error
-    inflation_work.set(work_before.saturating_sub(decoder.total_out()));
-    let actual_bytes = result.map_err(|error| format!("bad compressed data: {error}"))?;
-    if actual_bytes > declared_bytes {
-        return Err(format!("{actual_bytes} bytes where {declared_bytes} were declared").into());
-    }
-
-    if work_before < probe_limit && actual_bytes == work_before {
-        return Err(EmbeddedError::WorkBudget);
-    }
-
-    if actual_bytes > remaining_bytes {
-        return Err(EmbeddedError::Budget);
-    }
-
-    if actual_bytes != declared_bytes {
-        return Err(format!("{actual_bytes} bytes where {declared_bytes} were declared").into());
-    }
-
-    // ResourceBytes retains the vector and its capacity
-    output.shrink_to_fit();
-    Ok(output)
+    craft_sbs::embedded::decode_bounded(strdata, crate::MAX_RESOURCE, remaining_bytes, inflation_work)
 }
 
 pub(super) fn encode_embedded(bytes: &[u8]) -> Result<String> {
-    let length = u32::try_from(bytes.len()).map_err(|_| FormatError::Io("resource too large".into()))?;
-    let mut encoder = flate2::write::ZlibEncoder::new(length.to_be_bytes().to_vec(), flate2::Compression::default());
-    encoder.write_all(bytes).map_err(|e| FormatError::Io(e.to_string()))?;
-    let raw = encoder.finish().map_err(|e| FormatError::Io(e.to_string()))?;
-
-    Ok(craft_mime::transfer::base64(&raw))
+    craft_sbs::embedded::encode(bytes).map_err(FormatError::Io)
 }
+
+#[cfg(test)]
+pub(super) fn base64_engine() -> base64::engine::GeneralPurpose {
+    base64::engine::general_purpose::STANDARD
+}
+
+#[cfg(test)]
+use base64::Engine as _;
+#[cfg(test)]
+use std::io::Write;
 
 #[cfg(test)]
 mod tests {

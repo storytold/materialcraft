@@ -58,7 +58,7 @@ impl GraphCamera {
 
     pub(crate) fn frame_key(ui: &Ui, view: Rect) -> bool {
         ui.rect_contains_pointer(view)
-            && !ui.ctx().egui_wants_keyboard_input()
+            && !crate::framework::widget_has_keyboard(ui.ctx())
             && ui.input(|input| input.key_pressed(egui::Key::F) && input.modifiers.is_none())
     }
 }

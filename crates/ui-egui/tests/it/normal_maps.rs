@@ -51,7 +51,7 @@ fn toggle(h: &mut Harness<'static, MaterialCraftApp>) {
 
 #[test]
 fn display_toggle_updates_the_session_and_rerenders_the_normal_map() {
-    let mut h = Harness::builder().with_size(vec2(1400.0, 860.0)).build_ui_state(
+    let mut h = Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1400.0, 860.0)).build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
             app.step(&ui.ctx().clone());
             app.draw(ui);
@@ -78,13 +78,14 @@ fn display_toggle_updates_the_session_and_rerenders_the_normal_map() {
 #[test]
 #[ignore = "requires an offscreen GPU; run explicitly with --ignored"]
 fn normal_convention_snapshot() {
-    let mut harness = Harness::builder().with_size(vec2(1400.0, 860.0)).wgpu().build_ui_state(
-        |ui, app: &mut MaterialCraftApp| {
-            app.step(&ui.ctx().clone());
-            app.draw(ui);
-        },
-        app(),
-    );
+    let mut harness =
+        Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1400.0, 860.0)).wgpu().build_ui_state(
+            |ui, app: &mut MaterialCraftApp| {
+                app.step(&ui.ctx().clone());
+                app.draw(ui);
+            },
+            app(),
+        );
     settle(&mut harness, 0);
     let rendered = harness.state().view3d.renders;
     open_material_properties(&mut harness);

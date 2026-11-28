@@ -218,8 +218,17 @@ fn published(path: &str) -> bool {
     std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("mcmat"))
 }
 
+/// The Launcher's Nightly protocol belongs to the GUI only, and is refused before any parsing.
+fn nightly_protocol_argument(args: &[String]) -> Option<&str> {
+    args.iter().map(String::as_str).find(|arg| ["--launch-profile", "--profile-root"].iter().any(|flag| *arg == *flag || arg.starts_with(&format!("{flag}="))))
+}
+
 fn main() {
     let raw: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(argument) = nightly_protocol_argument(&raw) {
+        eprintln!("materialcraft-cli: {argument} is the MaterialCraft Nightly GUI's protocol; this tool has no such channel");
+        std::process::exit(2);
+    }
     let code = match raw.first().map(String::as_str) {
         None | Some("-h" | "--help" | "help") => {
             print!("{USAGE}");
@@ -446,5 +455,21 @@ mod tests {
     fn automation_root_flags_need_a_value_and_stay_unknown_elsewhere() {
         assert!(parse("mcp", &strings(&["--automation-read-root"])).is_err());
         assert!(parse("cook", &strings(&["--automation-read-root", "/r"])).is_err());
+    }
+
+    #[test]
+    fn the_launcher_nightly_protocol_is_refused_before_any_subcommand() {
+        let args = |values: &[&str]| values.iter().map(|value| value.to_string()).collect::<Vec<_>>();
+        for values in [
+            vec!["--launch-profile", "nightly-v1", "--profile-root", "/tmp/profile", "--version"],
+            vec!["--profile-root=/tmp/profile", "--version"],
+            vec!["--launch-profile=nightly-v1"],
+            vec!["info", "--launch-profile", "nightly-v1"],
+        ] {
+            assert!(nightly_protocol_argument(&args(&values)).is_some(), "{values:?}");
+        }
+        assert_eq!(nightly_protocol_argument(&args(&["info", "sample"])), None);
+        assert_eq!(nightly_protocol_argument(&args(&["--version"])), None);
+        assert_eq!(nightly_protocol_argument(&args(&["run", "--profile", "x"])), None, "only the exact protocol flags");
     }
 }

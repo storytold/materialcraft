@@ -6,7 +6,8 @@ use materialcraft_ui_egui::{MaterialCraftApp, UiState};
 
 fn harness() -> Harness<'static, MaterialCraftApp> {
     let app = MaterialCraftApp::headless(materialcraft_engine::new_session(), UiState::default());
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
+    let builder =
+        Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
     let builder = if std::env::var_os("MC_SNAPSHOT_DIR").is_some() { builder.wgpu() } else { builder };
     let mut h = builder.build_ui_state(
         |ui, app: &mut MaterialCraftApp| {

@@ -239,7 +239,7 @@ pub(super) fn handle(
     }
 
     let at = app.graph.menu_at;
-    canvas.context_menu(|ui| match app.graph.menu_wire.clone() {
+    super::canvas_focus::context_menu(canvas, |ui| match app.graph.menu_wire.clone() {
         Some(wire) => wire_menu(app, ui, wire, at),
         None => super::context_menu::show(app, ui, at, None),
     });
@@ -277,7 +277,7 @@ pub(super) fn handle(
         && app.graph.search.is_none()
         && !crate::shell::modality::Modality::capture(app, &context).is_blocked()
     {
-        let typing = context.egui_wants_keyboard_input();
+        let typing = crate::framework::widget_has_keyboard(&context);
         let platform = craft_keymap::egui::platform(&context);
         if !typing && let Some(entry) = context.input(|input| crate::node_shortcuts::pressed(&app.ui.prefs.node_shortcuts, input, platform)) {
             let under_pointer = camera.to_graph(position);

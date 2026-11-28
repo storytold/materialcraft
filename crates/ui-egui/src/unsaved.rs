@@ -118,22 +118,25 @@ fn perform(app: &mut MaterialCraftApp, action: Guarded) {
     }
 }
 
-/// Per frame: hold back a window close while there is unsaved work, and finish a confirmed quit
-pub fn handle_close(app: &mut MaterialCraftApp, ctx: &Context) {
-    if ctx.input(|i| i.viewport().close_requested()) && !app.quit_confirmed {
-        // Focused text is still a draft when the OS asks to close the window
-        crate::properties::GraphPropertyDraft::commit(app);
-        // While the Save dialog of a held action is open, the close waits for its answer
-        if app.awaiting_save.is_some() || holds_close(needs_confirmation(&app.session), app.quit_confirmed) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            // The prompt is drawn only while the window is visible
-            if ctx.input(|i| i.viewport().minimized) == Some(true) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            }
-            guard(app, Guarded::Quit);
-        }
+/// The root window was asked to close: whether unsaved work holds it open. Holding asks Save / Discard / Cancel for
+/// the modified packages, and the runtime keeps the window open and brings it forward while the question is up.
+/// Runs in the framework's close path ([`MaterialCraftApp::close_path`]).
+pub fn close_requested(app: &mut MaterialCraftApp) -> bool {
+    if app.quit_confirmed {
+        return false;
     }
+    // Focused text is still a draft when the OS asks to close the window
+    crate::properties::GraphPropertyDraft::commit(app);
+    // While the Save dialog of a held action is open, the close waits for its answer
+    let holds = app.awaiting_save.is_some() || holds_close(needs_confirmation(&app.session), app.quit_confirmed);
+    if holds {
+        guard(app, Guarded::Quit);
+    }
+    holds
+}
+
+/// Per frame: close the window once a quit is confirmed
+pub fn finish_quit(app: &MaterialCraftApp, ctx: &Context) {
     if app.quit_confirmed {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
@@ -174,7 +177,7 @@ pub fn show(app: &mut MaterialCraftApp, ctx: &Context) {
                 }
             });
         });
-    if choice.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+    if choice.is_none() && crate::framework::escape_pressed(ctx) {
         choice = Some(Choice::Cancel);
     }
     let Some(choice) = choice else { return };

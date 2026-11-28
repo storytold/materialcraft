@@ -8,11 +8,23 @@
 # (and whenever the AppImage's path changes) install the .desktop entry and the
 # hicolor icons into $XDG_DATA_HOME, then launch. Every failure here must leave
 # the launch untouched. Opt out with MATERIALCRAFT_NO_DESKTOP_INTEGRATION=1.
+#
+# A Nightly AppImage is this same script with DESK_ID rewritten to its own desktop
+# id by packaging/linux/package.sh. That channel also starts the GUI the flavor's
+# way -- `--launch-profile nightly-v1 --profile-root <dir> -- files...` -- so an
+# integrated or extracted Nightly AppImage reads and writes its private profile
+# instead of stable's settings, window state and recovery copies.
 
 set -u
 
 APPDIR="$(dirname "$(readlink -f "$0")")"
 DESK_ID=ai.storyteller.materialcraft
+# The Nightly channel is the one carrying its own window identity; everything else follows from the
+# id the packager writes here.
+case "$DESK_ID" in
+  *.nightly-v1) LAUNCH_PROFILE=nightly-v1 && PROFILE_DIR=materialcraft-nightly ;;
+  *) LAUNCH_PROFILE= && PROFILE_DIR= ;;
+esac
 
 integrate() {
   case "${MATERIALCRAFT_NO_DESKTOP_INTEGRATION:-}" in
@@ -69,4 +81,16 @@ integrate() {
 }
 
 integrate
+case "${1-}" in
+  # The Launcher already named the profile (its version query does too), in either accepted order;
+  # never pass it a second pair. A plain version or help query is answered without any profile.
+  --launch-profile | --profile-root | --version | -V | --help | -h) exec "$APPDIR/usr/bin/materialcraft" "$@" ;;
+esac
+if [ -n "$LAUNCH_PROFILE" ]; then
+  profile_base="${XDG_DATA_HOME:-${HOME:?HOME is required}/.local/share}"
+  # A caller-written `--` is ours to strip: the app receives exactly one, from here.
+  if [ "${1-}" = "--" ]; then shift; fi
+  exec "$APPDIR/usr/bin/materialcraft" \
+    --launch-profile "$LAUNCH_PROFILE" --profile-root "$profile_base/$PROFILE_DIR" -- "$@"
+fi
 exec "$APPDIR/usr/bin/materialcraft" "$@"

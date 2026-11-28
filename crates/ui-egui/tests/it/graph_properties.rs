@@ -25,7 +25,8 @@ fn harness(render: bool) -> Harness<'static, MaterialCraftApp> {
 }
 
 fn app_harness(app: MaterialCraftApp, render: bool) -> Harness<'static, MaterialCraftApp> {
-    let builder = Harness::builder().with_size(vec2(1600.0, 1000.0)).with_step_dt(1.0 / 60.0);
+    let builder =
+        Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 1000.0)).with_step_dt(1.0 / 60.0);
     let builder = if render { builder.wgpu() } else { builder };
     let mut harness = builder.build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
@@ -153,7 +154,9 @@ fn close_with_focused_graph_text(native_close: bool) {
     if native_close {
         let mut input = egui::RawInput::default();
         input.viewports.get_mut(&egui::ViewportId::ROOT).unwrap().events.push(egui::ViewportEvent::Close);
-        let mut output = egui::Context::default().run_ui(input, |ui| materialcraft_ui_egui::unsaved::handle_close(harness.state_mut(), ui.ctx()));
+        let ctx = egui::Context::default();
+        materialcraft_ui_egui::framework::install_headless(&ctx);
+        let mut output = ctx.run_ui(input, |ui| harness.state_mut().close_path(ui.ctx()));
 
         // This close-event frame has no renderer to consume texture updates
         output.textures_delta.clear();

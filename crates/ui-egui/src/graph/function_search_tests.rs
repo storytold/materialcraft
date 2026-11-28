@@ -104,6 +104,21 @@ fn space_tab_and_double_click_open_the_search_and_enter_adds() {
 }
 
 #[test]
+fn space_on_the_focused_canvas_keeps_the_selection() {
+    let (mut frames, constant) = function_canvas();
+    let at = empty(&frames);
+    frames.click(at, Modifiers::NONE);
+    let selection = vec![materialcraft_engine::core::NodeId(u64::from(constant))];
+    frames.app.session.selection = selection.clone();
+    frames.run(Vec::new(), Modifiers::NONE);
+    assert_eq!(frames.ctx.memory(|memory| memory.focused()), Some(crate::framework::canvas_id()));
+
+    frames.run(vec![press(Key::Space)], Modifiers::NONE);
+    assert!(search(&frames).is_some());
+    assert_eq!(frames.app.session.selection, selection, "egui's click for Space selects nothing");
+}
+
+#[test]
 fn wires_dropped_on_empty_canvas_search_and_connect_the_new_node() {
     let (mut frames, constant) = function_canvas();
 

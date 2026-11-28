@@ -7,7 +7,8 @@ use egui::{Align2, Color32, Rect, Sense, Stroke, Ui, Vec2, pos2, vec2};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn paint(app: &mut MaterialCraftApp, editor: &mut FunctionEditor, ui: &mut Ui) -> Option<FunctionCanvas> {
-    let (canvas_bounds, response) = ui.allocate_exact_size(ui.available_size().max(vec2(200.0, 200.0)), Sense::click_and_drag());
+    let size = ui.available_size().max(vec2(200.0, 200.0));
+    let (canvas_bounds, response) = crate::graph::canvas_focus::allocate(app, ui, size);
     app.graph.view = canvas_bounds;
     let graph = editor.current(app)?;
     let snap = app.ui.prefs.snap_to_grid;

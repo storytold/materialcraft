@@ -55,7 +55,7 @@ fn geometry_command_writes_only_the_captured_mesh() {
     session.custom_mesh = Some(("newer".into(), Arc::new(expected)));
 
     execute(&mut session, "view.3d.exportGeometry", &json!({"path": saved})).unwrap();
-    assert_eq!(std::fs::read_to_string(&saved).unwrap(), materialcraft_engine::formats::mesh::obj_text(&mesh));
+    assert_eq!(std::fs::read_to_string(&saved).unwrap(), materialcraft_engine::formats::mesh::obj_text(&mesh).unwrap());
     assert!(session.finish_display_handoff().is_none());
     assert_eq!(Arc::strong_count(&mesh), 1, "the command retained a mesh after writing it");
     std::fs::remove_file(saved).unwrap();

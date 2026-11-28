@@ -51,7 +51,8 @@ pub fn show(app: &mut MaterialCraftApp, ui: &mut Ui) {
 fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     let theme = Tokens::get(ui.ctx());
     let context = ui.ctx().clone();
-    let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+    let size = ui.available_size();
+    let (rect, response) = super::canvas_focus::allocate(app, ui, size);
     crate::widgets::name(&response, egui::Role::Canvas, "Node graph");
     app.graph.view = rect;
     if app.ui.frame_all || app.graph.framed_graph != Some(app.session.graph) {
@@ -350,6 +351,8 @@ fn canvas(app: &mut MaterialCraftApp, ui: &mut Ui) {
     }
 
     super::search::show(app, ui, &camera);
+    let over_canvas = super::canvas_focus::under_pointer(ui, &response, ui.rect_contains_pointer(rect), super::search::area());
+    super::canvas_focus::settle(app, ui, over_canvas && app.graph.search.is_none());
     let (failed, placeholders) = app.session.cook_failures();
     let mut at = rect.right_bottom() - vec2(8.0, 8.0);
     if !failed.is_empty() {

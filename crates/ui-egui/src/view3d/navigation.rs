@@ -130,7 +130,7 @@ pub(super) fn reset_selected(app: &mut MaterialCraftApp) {
 
 /// The keys of the view, while the pointer is over it and nothing else has the keyboard
 fn keys(app: &mut MaterialCraftApp, ui: &Ui, response: &Response) {
-    if !response.hovered() || ui.ctx().egui_wants_keyboard_input() || crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked() {
+    if !response.hovered() || crate::framework::widget_has_keyboard(ui.ctx()) || crate::shell::modality::Modality::capture(app, ui.ctx()).is_blocked() {
         return;
     }
 
@@ -156,7 +156,7 @@ fn keys(app: &mut MaterialCraftApp, ui: &Ui, response: &Response) {
     if pressed(Modifiers::NONE, Key::L) {
         app.view3d.tool = Tool::Light;
     }
-    if pressed(Modifiers::NONE, Key::Escape) {
+    if ui.input(|input| input.modifiers.is_none()) && crate::framework::escape_pressed(ui.ctx()) {
         app.view3d.selected = false;
     }
 }

@@ -97,6 +97,7 @@ fn clicked_wires_swap_with_x_and_delete_together() {
     app.run("graph.connect", json!({"from": a, "to": blend, "toPort": "foreground"}));
     app.run("graph.connect", json!({"from": b, "to": blend, "toPort": "background"}));
     let ctx = egui::Context::default();
+    crate::framework::install_headless(&ctx);
     let mut frame = |app: &mut MaterialCraftApp, mut events: Vec<egui::Event>, modifiers: egui::Modifiers| {
         events.insert(0, egui::Event::ModifiersChanged(modifiers));
         let input = egui::RawInput { events, ..Default::default() };

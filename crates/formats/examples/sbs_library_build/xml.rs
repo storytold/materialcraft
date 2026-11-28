@@ -4,7 +4,7 @@ use roxmltree::{Document, Node};
 pub fn parse(text: &str) -> Result<Document<'_>> {
     const MAX_XML_NODES: u32 = 8_000_000;
 
-    Ok(Document::parse_with_options(text, roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: MAX_XML_NODES })?)
+    Ok(Document::parse_with_options(text, roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: MAX_XML_NODES, ..roxmltree::ParsingOptions::default() })?)
 }
 
 pub fn child<'a, 'b>(node: Node<'a, 'b>, tag: &str) -> Option<Node<'a, 'b>> {

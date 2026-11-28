@@ -13,7 +13,8 @@ fn harness(render: bool) -> (Harness<'static, MaterialCraftApp>, NodeId) {
     app.run("file.new", json!({"template":"empty"})).unwrap();
     let id = NodeId(app.run("graph.node.add", json!({"def":"transformation"})).unwrap()["id"].as_u64().unwrap());
     app.session.reset_history();
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
+    let builder =
+        Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
     let builder = if render { builder.wgpu() } else { builder };
     let mut h = builder.build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
@@ -51,7 +52,8 @@ fn graph_name_typed_across_frames_commits_on_focus_loss() {
     let mut app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
     app.run("file.new", json!({"template":"empty"})).unwrap();
     app.session.reset_history();
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
+    let builder =
+        Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 960.0)).with_step_dt(1.0 / 60.0);
     let mut h = builder.build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
             app.step(&ui.ctx().clone());

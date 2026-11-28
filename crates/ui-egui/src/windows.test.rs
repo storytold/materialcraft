@@ -8,16 +8,17 @@ mod home_modality_tests {
         let app = MaterialCraftApp::headless(materialcraft_engine::sample_session(), UiState::default());
         // The icon font has to be in place for the frame that first draws Home
         let mut fonts_installed = false;
-        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(
-            move |ui, app: &mut MaterialCraftApp| {
-                if std::mem::replace(&mut fonts_installed, true) {
-                    crate::windows::show(app, ui.ctx());
-                } else {
-                    crate::theme::install(ui.ctx());
-                }
-            },
-            app,
-        );
+        let mut harness =
+            egui_kittest::Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(1200.0, 800.0)).build_ui_state(
+                move |ui, app: &mut MaterialCraftApp| {
+                    if std::mem::replace(&mut fonts_installed, true) {
+                        crate::windows::show(app, ui.ctx());
+                    } else {
+                        crate::theme::install(ui.ctx());
+                    }
+                },
+                app,
+            );
         let app = harness.state_mut();
         app.ui.windows.home = true;
         app.ui.recent.push("recent.sbs".into());

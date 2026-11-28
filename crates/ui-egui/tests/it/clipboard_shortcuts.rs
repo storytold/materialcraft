@@ -13,7 +13,7 @@ fn harness(render: bool) -> Harness<'static, MaterialCraftApp> {
     let levels = app.run("graph.node.add", json!({"def": "levels", "connectFrom": {"node": source}})).unwrap()["id"].as_u64().unwrap();
     app.run("graph.select", json!({"ids": [source, levels]})).unwrap();
 
-    let builder = Harness::builder().with_size(vec2(1600.0, 960.0));
+    let builder = Harness::builder().with_context_setup(materialcraft_ui_egui::framework::install_headless).with_size(vec2(1600.0, 960.0));
     let builder = if render { builder.wgpu() } else { builder };
     let mut harness = builder.build_ui_state(
         |ui, app: &mut MaterialCraftApp| {
