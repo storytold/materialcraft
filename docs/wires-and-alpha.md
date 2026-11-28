@@ -20,14 +20,15 @@ named by the input it feeds: the target node and its input port (`to`, `toPort`)
 | Gesture | What it does |
 |---|---|
 | Hover a wire | The wire turns white and the pointer becomes a hand: it can be clicked |
-| Click a wire | Selects it alone (drawn thicker, in the accent color); the node selection is cleared |
+| Click an unselected wire | Selects it alone (drawn thicker, in the accent color) and clears the node selection |
+| Click a selected wire | Keeps the wire selection and clears the node selection |
 | **Shift**+click a wire | Adds it to the wire selection |
-| **Ctrl**+click a wire | Adds it to the wire selection, or removes it when it is already selected |
+| **Ctrl**+click a wire (**Command**+click on macOS) | Adds it to the wire selection or removes it when it is already selected |
 | **Delete** or **Backspace** with wires selected | Deletes every selected wire (one undo step) |
 | **X** with exactly two wires selected | Swaps where the selected wires come from (see below); they stay selected, so **X** again swaps back |
 | Drag a wire | Pulls a reroute **Dot** out of the wire where it was pressed and moves it with the pointer, in one gesture |
 | Double-click a wire | Drops a reroute Dot at that point |
-| Right-click a wire | Opens the wire menu: **Insert reroute dot**, **Swap selected links (X)** (with exactly two selected), **Delete link** / **Delete selected links**. Right-clicking a wire that is already selected keeps the selection |
+| Right-click a wire | Opens the wire menu: **Insert reroute dot**, **Swap links** (`X`, when the two selected links can be swapped), **Delete link** / **Delete selected links**. Right-clicking a wire that is already selected keeps the selection |
 | Click anywhere else | Drops the wire selection |
 
 A wire is hit within 5 points of its curve. Node cards, ports and comments sit on top of wires, so
