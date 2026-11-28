@@ -1,4 +1,4 @@
-//! Exercise the distribution workflow through the public CLI, including reopening the archive in fresh processes.
+//! Exercise the public CLI in fresh processes, including reopening published archives.
 use std::path::Path;
 use std::process::Command;
 
@@ -97,5 +97,21 @@ fn failed_materialx_reexport_preserves_the_last_complete_material() {
     assert_eq!(std::fs::read(material.join("material.mtlx")).unwrap(), document);
     for (name, bytes) in original_files {
         assert_eq!(std::fs::read(material.join(name)).unwrap(), bytes, "{name}");
+    }
+}
+
+#[test]
+fn batch_rejects_invalid_script_shapes_before_saving() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
+    let script_path = dir.join("batch.json");
+    let invalid_root = (json!("not a batch"), "expected an array of steps or an object");
+    let invalid_steps = (json!({"steps": {}, "save": "unexpected.mcraft"}), "steps must be an array");
+    for (script, expected) in [invalid_root, invalid_steps] {
+        std::fs::write(&script_path, script.to_string()).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_materialcraft-cli")).current_dir(dir).args(["batch", "batch.json"]).output().unwrap();
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success() && error.contains(expected), "{script}: {error}");
+        assert!(!dir.join("unexpected.mcraft").exists());
     }
 }

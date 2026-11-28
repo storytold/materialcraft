@@ -281,16 +281,20 @@ fn run(cmd: &str, a: &Args) -> Result<(), String> {
             let text = std::fs::read_to_string(a.pos(0, "<script.json>")?).map_err(|e| e.to_string())?;
             let script: Value = serde_json::from_str(&text).map_err(|e| format!("script: {e}"))?;
             let (input, steps, save) = match &script {
-                Value::Array(s) => ("sample", s.clone(), None),
-                obj => (
-                    obj.get("open").and_then(Value::as_str).unwrap_or("sample"),
-                    obj.get("steps").and_then(Value::as_array).cloned().unwrap_or_default(),
-                    obj.get("save").and_then(Value::as_str),
-                ),
+                Value::Array(steps) => ("sample", steps.as_slice(), None),
+                Value::Object(obj) => {
+                    let steps = match obj.get("steps") {
+                        Some(Value::Array(steps)) => steps.as_slice(),
+                        None => &[],
+                        Some(_) => return Err("script: steps must be an array".into()),
+                    };
+                    (obj.get("open").and_then(Value::as_str).unwrap_or("sample"), steps, obj.get("save").and_then(Value::as_str))
+                }
+                _ => return Err("script: expected an array of steps or an object".into()),
             };
 
             let mut h = open(input)?;
-            let r = h.batch(&steps);
+            let r = h.batch(steps);
             print(&r);
             if !r["failed"].is_null() {
                 return Err("the batch stopped at an error".into());
