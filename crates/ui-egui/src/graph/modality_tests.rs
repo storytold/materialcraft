@@ -128,7 +128,9 @@ fn the_node_search_takes_no_keys_behind_a_prompt() {
     frames.run(vec![Event::Text("n".into())], Modifiers::NONE);
     assert_eq!(frames.app.graph.search.as_ref().unwrap().text, "n", "the search has the keyboard once the prompt is answered");
     frames.run(vec![press(Key::Escape)], Modifiers::NONE);
-    assert!(frames.app.graph.search.is_none(), "Escape closes the search once the prompt is answered");
+    assert_eq!(frames.app.graph.search.as_ref().unwrap().text, "", "Escape clears the typed text first");
+    frames.run(vec![press(Key::Escape)], Modifiers::NONE);
+    assert!(frames.app.graph.search.is_none(), "a second Escape closes the search once the prompt is answered");
 }
 
 #[test]

@@ -50,6 +50,8 @@ fn save_snapshot(harness: &mut Harness<'static, MaterialCraftApp>, name: &str) {
     }
 }
 
+#[path = "search/escape.rs"]
+mod escape;
 #[path = "search/query.rs"]
 mod query;
 #[path = "search/rows.rs"]
