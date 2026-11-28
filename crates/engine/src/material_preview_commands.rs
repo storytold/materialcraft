@@ -26,7 +26,7 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
         ),
         cmd!("view.3d.clear", "Clear material assignments", [], None, "{} clears the material without resetting the scene or camera", always, |session, _| {
             session.material_preview = MaterialPreview::default();
-            session.dirty = true;
+            session.mark_dirty();
             Ok(Value::Null)
         }),
     ]
@@ -56,7 +56,7 @@ fn outputs(session: &mut Session, parameters: &Value) -> Result<Value> {
     } else {
         session.material_preview.channels.extend(sources);
     }
-    session.dirty = true;
+    session.mark_dirty();
     Ok(json!(session.material_preview))
 }
 
@@ -95,6 +95,6 @@ fn assign(session: &mut Session, parameters: &Value) -> Result<Value> {
         session.material_preview = MaterialPreview::default();
     }
     session.material_preview.channels.insert(channel, source);
-    session.dirty = true;
+    session.mark_dirty();
     Ok(json!(session.material_preview))
 }

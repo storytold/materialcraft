@@ -157,7 +157,7 @@ pub fn replace_package(session: &mut Session, package: Package, path: Option<Str
 
     session.reset_history();
     session.modified = false;
-    session.dirty = true;
+    session.mark_dirty();
     session.load_warnings.clear();
 }
 

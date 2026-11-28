@@ -46,7 +46,7 @@ fn environment(session: &mut Session, parameters: &Json) -> Result<Json> {
 
     if session.environment != environment {
         session.environment = environment;
-        session.dirty = true;
+        session.mark_dirty();
         session.cook_epoch = session.cook_epoch.wrapping_add(1);
     }
     Ok(json!(environment))

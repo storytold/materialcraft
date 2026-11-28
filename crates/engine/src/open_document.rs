@@ -134,6 +134,6 @@ impl OpenDocument {
         session.clear_preview_results();
         session.cooked = Default::default();
         session.clear_decoded();
-        session.dirty = true;
+        session.mark_dirty();
     }
 }

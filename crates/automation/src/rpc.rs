@@ -45,6 +45,24 @@ fn f32_of(p: &Value, k: &str) -> Result<Option<f32>, AutomationError> {
     }
 }
 
+fn crop_of(p: &Value, k: &str) -> Result<Option<[f32; 4]>, AutomationError> {
+    match p.get(k) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => {
+            let arr = v.as_array().filter(|a| a.len() == 4).ok_or_else(|| bad(format!("`{k}` must be [x, y, width, height]")))?;
+            let mut out = [0.0f32; 4];
+            for (slot, elem) in out.iter_mut().zip(arr) {
+                let f = elem.as_f64().map(|n| n as f32).filter(|n| n.is_finite()).ok_or_else(|| bad(format!("`{k}` values must be finite numbers")))?;
+                *slot = f;
+            }
+            if out[2] <= 0.0 || out[3] <= 0.0 {
+                return Err(bad(format!("`{k}` width and height must be positive")));
+            }
+            Ok(Some(out))
+        }
+    }
+}
+
 fn bool_of(p: &Value, k: &str) -> Result<bool, AutomationError> {
     match p.get(k) {
         None | Some(Value::Null) => Ok(false),
@@ -59,6 +77,11 @@ fn required<'a>(p: &'a Value, k: &str) -> Result<&'a str, AutomationError> {
 impl Headless {
     /// Dispatch one request. Unknown methods and bad params are errors, never panics
     pub fn handle(&mut self, method: &str, p: &Value) -> Result<Value, AutomationError> {
+        self.handle_with_cancel(method, p, None)
+    }
+
+    /// Dispatch one request with an optional cancellation flag checked during long cooks.
+    pub fn handle_with_cancel(&mut self, method: &str, p: &Value, cancel: Option<&std::sync::atomic::AtomicBool>) -> Result<Value, AutomationError> {
         match method {
             "ping" => Ok(json!("pong")),
             "methods" => Ok(json!(METHODS)),
@@ -89,11 +112,12 @@ impl Headless {
                     port: u32_of(p, "port")?.map(|v| v as usize),
                     full: bool_of(p, "full")?,
                     tiling: f32_of(p, "tiling")?,
+                    crop: crop_of(p, "crop")?,
                     hq: bool_of(p, "hq")?,
                     displacement: f32_of(p, "displacement")?,
                 };
 
-                let r = self.render_png(&o)?;
+                let r = self.render_png_with_cancel(&o, cancel)?;
                 Ok(json!({ "width": r.width, "height": r.height, "png": base64::engine::general_purpose::STANDARD.encode(r.png) }))
             }
             m if m.starts_with("ui.") || m == "viewport.screenshot" => {
@@ -356,6 +380,23 @@ mod tests {
         let flat = call(&h, "render", json!({"width": 32, "height": 32, "displacement": 0.0})).unwrap();
         let strong = call(&h, "render", json!({"width": 32, "height": 32, "displacement": 0.5})).unwrap();
         assert_ne!(flat["png"], strong["png"], "displacement must change the 3D relief without hq");
+    }
+
+    #[test]
+    fn render_2d_supports_tiling_crop_and_preserves_preview_on_full() {
+        let h = session();
+        let single = call(&h, "render", json!({"view": "2d", "width": 32, "height": 32, "tiling": 1})).unwrap();
+        let tiled = call(&h, "render", json!({"view": "2d", "width": 32, "height": 32, "tiling": 3})).unwrap();
+        assert_ne!(single["png"], tiled["png"], "2d tiling must repeat the texture");
+
+        let cropped = call(&h, "render", json!({"view": "2d", "width": 32, "height": 32, "crop": [0.0, 0.0, 0.25, 0.25]})).unwrap();
+        assert_ne!(single["png"], cropped["png"], "2d crop must zoom into the requested UV rect");
+        assert!(call(&h, "render", json!({"view": "2d", "crop": [0.0, 0.0, 0.0, 0.5]})).is_err());
+
+        // Full 2D render must not leave the session dirty or clobber preview_size.
+        let full = call(&h, "render", json!({"view": "2d", "width": 32, "height": 32, "full": true})).unwrap();
+        assert_eq!(full["width"], 32);
+        assert!(!h.lock().unwrap().session.dirty, "full render must not dirty preview session");
     }
 
     #[test]

@@ -39,7 +39,7 @@ USAGE:
       --displacement-scale <units> scales signed MaterialX displacement (default 1).
   materialcraft-cli render <input> <out.png> [--size <W>x<H>] [--view 3d|2d] [--scene <id>] [--node <id>]
                    [--yaw <deg>] [--pitch <deg>] [--graph <index>] [--set <input>=<value>]... [--full]
-                   [--tiling <n>] [--hq [--displacement <radii>]]
+                   [--tiling <n>] [--crop <x,y,w,h>] [--hq [--displacement <radii>]]
       Render the material on a 3D scene (rounded_cube, cube, sphere, cylinder, plane, torus,
       material_ball), or one node's output (--view 2d), to PNG. No GPU needed. The height output
       raises the surface; --hq is a beauty render with a finer mesh, ambient occlusion and a key light.
@@ -85,7 +85,7 @@ const SUBCOMMANDS: &[(&str, &[&str], &[&str])] = &[
     ),
     (
         "render",
-        &["--size", "--view", "--scene", "--node", "--yaw", "--pitch", "--graph", "--graph-path", "--set", "--tiling", "--displacement"],
+        &["--size", "--view", "--scene", "--node", "--yaw", "--pitch", "--graph", "--graph-path", "--set", "--tiling", "--crop", "--displacement"],
         &["--full", "--hq"],
     ),
     ("mcp", &["--bridge", "--token", "--read-root", "--write-root", "--automation-read-root", "--automation-write-root"], &[]),
@@ -352,6 +352,17 @@ fn run(cmd: &str, a: &Args) -> Result<(), String> {
                 None => (None, None),
             };
 
+            let crop = match a.get("--crop") {
+                Some(s) => {
+                    let parts: Vec<f32> = s.split(',').map(|p| p.trim().parse::<f32>()).collect::<Result<_, _>>().map_err(|_| "--crop is x,y,w,h")?;
+                    if parts.len() != 4 || parts.iter().any(|v| !v.is_finite()) || parts[2] <= 0.0 || parts[3] <= 0.0 {
+                        return Err("--crop needs 4 finite numbers x,y,w,h with positive w and h".into());
+                    }
+                    Some([parts[0], parts[1], parts[2], parts[3]])
+                }
+                None => None,
+            };
+
             let o = RenderOptions {
                 view: a.get("--view").map(str::to_string),
                 width: w,
@@ -363,6 +374,7 @@ fn run(cmd: &str, a: &Args) -> Result<(), String> {
                 port: None,
                 full: a.has("--full"),
                 tiling: a.num("--tiling")?,
+                crop,
                 hq: a.has("--hq"),
                 displacement: a.num("--displacement")?,
             };
@@ -455,6 +467,12 @@ mod tests {
     fn automation_root_flags_need_a_value_and_stay_unknown_elsewhere() {
         assert!(parse("mcp", &strings(&["--automation-read-root"])).is_err());
         assert!(parse("cook", &strings(&["--automation-read-root", "/r"])).is_err());
+    }
+
+    #[test]
+    fn render_accepts_crop_flag() {
+        let a = parse("render", &strings(&["sample", "out.png", "--view", "2d", "--crop", "0.1,0.2,0.5,0.5"])).unwrap();
+        assert_eq!(a.get("--crop"), Some("0.1,0.2,0.5,0.5"));
     }
 
     #[test]

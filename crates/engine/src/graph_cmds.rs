@@ -80,7 +80,7 @@ fn open(s: &mut Session, p: &J) -> Result<J> {
     s.selection.clear();
     s.annotation_selection = None;
     s.view2d.node = None;
-    s.dirty = true;
+    s.mark_dirty();
     Ok(json!({"graph": i, "name": s.pkg.graphs.get(i).map(|g| g.name.clone())}))
 }
 
