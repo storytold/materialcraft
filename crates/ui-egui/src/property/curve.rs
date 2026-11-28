@@ -1,5 +1,5 @@
 use crate::theme::Tokens;
-use egui::{Pos2, Sense, Stroke, Ui, pos2, vec2};
+use egui::{PointerButton, Pos2, Sense, Stroke, Ui, pos2, vec2};
 use materialcraft_engine::core::Curve;
 
 /// A tone curve editor: drag points, double-click to add one, right-click a point to remove it. Returns the new curve when it changed
@@ -26,9 +26,9 @@ pub fn curve_editor(ui: &mut Ui, id: &str, curve: &Curve) -> Option<Curve> {
     let curve_points: Vec<Pos2> = (0..=64).map(|i| i as f32 / 64.0).map(|x| to_screen(x, curve.eval(x).clamp(0.0, 1.0))).collect();
     painter.add(egui::Shape::line(curve_points, Stroke::new(2.0, tokens.accent)));
     let drag_id = ui.make_persistent_id(id).with("drag");
-    let mut dragging: Option<usize> = ui.data(|d| d.get_temp(drag_id));
+    let mut dragging = ui.data(|d| d.get_temp::<Option<usize>>(drag_id).flatten());
     let pointer = response.interact_pointer_pos().or(response.hover_pos());
-    let nearest = pointer.and_then(|pointer_position| {
+    let nearest_point = |pointer_position| {
         curve
             .points
             .iter()
@@ -37,7 +37,8 @@ pub fn curve_editor(ui: &mut Ui, id: &str, curve: &Curve) -> Option<Curve> {
             .filter(|(_, d)| *d < 10.0)
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(i, _)| i)
-    });
+    };
+    let nearest = pointer.and_then(nearest_point);
     for (i, point) in curve.points.iter().enumerate() {
         let hot = Some(i) == nearest || Some(i) == dragging;
         painter.circle(
@@ -48,10 +49,10 @@ pub fn curve_editor(ui: &mut Ui, id: &str, curve: &Curve) -> Option<Curve> {
         );
     }
     let mut edited_curve: Option<Curve> = None;
-    if response.drag_started() {
-        dragging = nearest;
+    if response.drag_started_by(PointerButton::Primary) {
+        dragging = ui.input(|input| input.pointer.press_origin()).and_then(nearest_point);
     }
-    if response.dragged()
+    if response.dragged_by(PointerButton::Primary)
         && let (Some(i), Some(pointer_position)) = (dragging, pointer)
     {
         let (x, y) = from_screen(pointer_position);
@@ -63,9 +64,14 @@ pub fn curve_editor(ui: &mut Ui, id: &str, curve: &Curve) -> Option<Curve> {
                 point.x = x;
             }
             point.y = y;
+            let moved_x = point.x;
+
+            // Stable sorting breaks ties by the points' previous positions.
+            let new_index = updated_curve.points.iter().enumerate().filter(|(index, other)| other.x.total_cmp(&moved_x).then(index.cmp(&i)).is_lt()).count();
+            updated_curve.points.sort_by(|a, b| a.x.total_cmp(&b.x));
+            dragging = Some(new_index);
+            edited_curve = Some(updated_curve);
         }
-        updated_curve.points.sort_by(|a, b| a.x.total_cmp(&b.x));
-        edited_curve = Some(updated_curve);
     }
     if response.drag_stopped() {
         dragging = None;
@@ -90,4 +96,67 @@ pub fn curve_editor(ui: &mut Ui, id: &str, curve: &Curve) -> Option<Curve> {
         edited_curve = Some(updated_curve);
     }
     edited_curve
+}
+
+#[cfg(test)]
+mod tests {
+    use egui::{Event, Modifiers, PointerButton, vec2};
+    use egui_kittest::{Harness, kittest::Queryable};
+    use materialcraft_engine::core::{Curve, CurvePoint};
+
+    fn harness(curve: Curve) -> Harness<'static, Curve> {
+        Harness::builder().with_context_setup(crate::theme::install).build_ui_state(
+            |ui, curve: &mut Curve| {
+                if let Some(edited) = super::curve_editor(ui, "test_curve", curve) {
+                    *curve = edited;
+                }
+            },
+            curve,
+        )
+    }
+
+    fn press(h: &mut Harness<'_, Curve>, start: egui::Pos2) {
+        h.event(Event::PointerMoved(start));
+        h.event(Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+        h.step();
+    }
+
+    #[test]
+    fn dragging_starts_from_the_point_under_the_initial_press() {
+        let mut curve = Curve::default();
+        curve.points.insert(1, CurvePoint::new(0.5, 0.5));
+        let mut h = harness(curve);
+        let start = h.get_by_label("Curve editor").rect().center();
+        press(&mut h, start);
+        let moved = start + vec2(24.0, -20.0);
+        h.event(Event::PointerMoved(moved));
+        h.step();
+
+        let points = &h.state().points;
+        assert!(points[1].x > 0.5 && points[1].y > 0.5, "the pressed point should follow the pointer");
+        assert_eq!(points[0], CurvePoint::new(0.0, 0.0));
+        assert_eq!(points[2], CurvePoint::new(1.0, 1.0));
+    }
+
+    #[test]
+    fn dragging_across_another_point_keeps_the_original_point_captured() {
+        let neighbor = CurvePoint::new(0.5, 0.4);
+        let curve = Curve { points: vec![CurvePoint::new(0.0, 0.0), CurvePoint::new(0.25, 0.5), neighbor, CurvePoint::new(1.0, 1.0)] };
+        let mut h = harness(curve);
+        let rect = h.get_by_label("Curve editor").rect();
+        let at = |x, y| rect.left_bottom() + vec2(rect.width() * x, -rect.height() * y);
+        press(&mut h, at(0.25, 0.5));
+
+        h.event(Event::PointerMoved(at(0.7, 0.6)));
+        h.step();
+        assert_eq!(h.state().points[1], neighbor);
+        let after_crossing = h.state().points[2];
+        assert!(after_crossing.x > neighbor.x);
+
+        h.event(Event::PointerMoved(at(0.8, 0.7)));
+        h.step();
+        assert_eq!(h.state().points[1], neighbor, "the neighboring point stays in place");
+        let dragged = h.state().points[2];
+        assert!(dragged.x > after_crossing.x && dragged.y > after_crossing.y, "the captured point follows the second movement");
+    }
 }
