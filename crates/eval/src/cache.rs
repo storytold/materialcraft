@@ -2,7 +2,7 @@ use crate::NodeOutput;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-const DEFAULT_LIMIT_BYTES: usize = 256 << 20;
+const DEFAULT_LIMIT_BYTES: usize = 512 << 20;
 const MAX_ENTRIES: usize = 8192;
 
 /// LRU cache of node outputs, bounded by bytes

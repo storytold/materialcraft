@@ -13,5 +13,6 @@ materialcraft-core = { workspace = true }
 craft-texture = { workspace = true }
 materialcraft-nodes = { workspace = true }
 half = { workspace = true }
+rayon = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }

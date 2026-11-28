@@ -3693,6 +3693,7 @@ dependencies = [
  "materialcraft-formats",
  "materialcraft-geom",
  "materialcraft-nodes",
+ "rayon",
  "rustix 1.1.6",
  "serde",
  "serde_json",
@@ -3709,6 +3710,7 @@ dependencies = [
  "half",
  "materialcraft-core",
  "materialcraft-nodes",
+ "rayon",
  "serde",
  "serde_json",
 ]
