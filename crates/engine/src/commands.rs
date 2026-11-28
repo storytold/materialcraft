@@ -161,9 +161,10 @@ pub(crate) fn strp<'a>(p: &'a J, key: &str) -> Option<&'a str> {
 
 /// A node id param (`key`), defaulting to the last selected node
 pub(crate) fn node_param(s: &Session, cmd: &str, p: &J, key: &str) -> Result<NodeId> {
-    let id = match u64p(p, key) {
-        Some(id) => NodeId(id),
-        None => *s.selection.last().ok_or_else(|| bad(cmd, format!("no node selected and no `{key}` given")))?,
+    let id = match (u64p(p, key), p.get(key).is_some_and(|v| !v.is_null())) {
+        (Some(id), _) => NodeId(id),
+        (None, true) => return Err(bad(cmd, format!("invalid `{key}`"))),
+        (None, false) => *s.selection.last().ok_or_else(|| bad(cmd, format!("no node selected and no `{key}` given")))?,
     };
 
     s.graph()?.node(id).map_err(|_| bad(cmd, format!("no node {}", id.0)))?;
@@ -172,11 +173,13 @@ pub(crate) fn node_param(s: &Session, cmd: &str, p: &J, key: &str) -> Result<Nod
 
 /// A list of node ids (`ids`), defaulting to the selection
 pub(crate) fn ids_param(s: &Session, cmd: &str, p: &J) -> Result<Vec<NodeId>> {
-    let ids: Vec<NodeId> = match p.get("ids").and_then(J::as_array) {
-        Some(a) => a.iter().filter_map(J::as_u64).map(NodeId).collect(),
-        None => match u64p(p, "id") {
-            Some(id) => vec![NodeId(id)],
-            None => s.selection.clone(),
+    let ids: Vec<NodeId> = match p.get("ids").filter(|v| !v.is_null()) {
+        Some(J::Array(a)) => a.iter().map(|v| v.as_u64().map(NodeId).ok_or_else(|| bad(cmd, "invalid entry in `ids`"))).collect::<Result<_>>()?,
+        Some(_) => return Err(bad(cmd, "invalid `ids`")),
+        None => match (u64p(p, "id"), p.get("id").is_some_and(|v| !v.is_null())) {
+            (Some(id), _) => vec![NodeId(id)],
+            (None, true) => return Err(bad(cmd, "invalid `id`")),
+            (None, false) => s.selection.clone(),
         },
     };
 
